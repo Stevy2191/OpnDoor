@@ -513,12 +513,14 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
 
 # ---------- schedules ----------
 
-SCHEDULE_TYPES = [("", "All schedules"), ("default", "Regular hours"), ("unlock", "Events (unlocked)"),
-                  ("lock", "Kept locked"), ("calendar", "From calendars")]
+# The Schedules page is about events and overrides; regular hours live on each door's page
+# and only show here when asked for ("Regular hours" or "Everything").
+SCHEDULE_TYPES = [("", "Events and overrides"), ("unlock", "Events (unlocked)"), ("lock", "Kept locked"),
+                  ("calendar", "From calendars"), ("default", "Regular hours"), ("all", "Everything")]
 
 
 def _sched_type_ok(s: Schedule, t: str) -> bool:
-    return (not t or (t == "default" and s.kind == "default")
+    return ((not t and s.kind == "override") or t == "all" or (t == "default" and s.kind == "default")
             or (t == "unlock" and s.kind == "override" and s.action == "unlock")
             or (t == "lock" and s.kind == "override" and s.action == "lock")
             or (t == "calendar" and s.source == "calendar"))

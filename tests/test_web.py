@@ -116,7 +116,9 @@ def test_regular_hours_and_override_via_forms(client):
                                         "door_ids": ["1:demo-front"], "day": "2030-12-25", "start": "00:00", "end": "23:59"})
     assert "Saved" in r.text
     page = client.get("/schedules?view=list").text
-    assert "Regular hours" in page and "Office hours" in page and "Kept locked" in page
+    assert "Office hours" not in page and "Kept locked" in page  # regular hours live on door pages
+    page = client.get("/schedules?view=list&type=default").text
+    assert "Office hours" in page and "Closed for holiday" not in page
     door = client.get("/doors/1:demo-front").text
     assert "Next 7 days" in door and "Closed for holiday" in door and "Office hours" in door
 
@@ -206,7 +208,8 @@ def test_schedules_page_week_list_filters(client):
     client.post("/schedules", data={"kind": "override", "action": "lock", "label": "Holiday", "door_ids": ["1:demo-office"],
                                     "day": "2030-12-25", "start": "00:00", "end": "23:59"})
     week = client.get("/schedules?view=week").text
-    assert "Office hours" in week and "Gym rental" in week and "Holiday" not in week and "Today" in week
+    assert "Office hours" not in week and "Gym rental" in week and "Holiday" not in week and "Today" in week
+    assert "Office hours" in client.get("/schedules?view=week&type=all").text
     nxt = client.get("/schedules?view=week&week=2030-12-23").text
     assert "Holiday" in nxt and "Gym rental" not in nxt
 
@@ -216,7 +219,7 @@ def test_schedules_page_week_list_filters(client):
     assert "Holiday" in client.get("/schedules").text
     assert "Holiday" not in client.get("/schedules?type=unlock").text
     assert "Gym rental" in client.get("/schedules?q=coach").text
-    assert "Office hours" not in client.get("/schedules?q=coach").text
+    assert "Office hours" not in client.get("/schedules?q=coach&type=all").text
     assert "Fellowship Hall" in client.get("/schedules?q=fellowship").text  # door names are searchable
 
 
