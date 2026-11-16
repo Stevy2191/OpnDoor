@@ -9,7 +9,13 @@
 {% if not doors %}
 <div class="card empty">
   {% if user.is_admin %}
-    <p>No doors yet. <form method="post" action="/doors/sync" class="inline"><button class="link">Load doors from UniFi Access</button></form></p>
+    {% if not sites %}
+    <p><strong>Connect your UniFi Access console to get started.</strong></p>
+    <p><a class="button primary" href="/sites/new">Connect a console</a></p>
+    {% else %}
+    <p>No doors loaded yet. <form method="post" action="/doors/sync" class="inline"><button class="link">Load doors from UniFi Access</button></form>
+      or <a href="/sites">check your sites</a>.</p>
+    {% endif %}
   {% else %}
     <p>You don't have access to any doors yet. Ask an administrator to give you access.</p>
   {% endif %}

@@ -29,15 +29,21 @@ def site_tz(site: Optional[Site]):
 
 
 def ensure_sites() -> None:
-    """First start: create a site from env vars, or a demo site."""
+    """First start: create a site from the console the installer saved in .env.
+
+    With no console configured, no site is made: the main admin is asked to add
+    one after first sign-in. A demo site is only made when DRY_RUN is on.
+    """
     with session_scope() as s:
         if s.exec(select(Site)).first():
             return
         if config.UNIFI_HOST and config.UNIFI_TOKEN not in {"", "changeme"}:
             site = Site(name=config.UNIFI_SITE_NAME, host=config.UNIFI_HOST, token=config.UNIFI_TOKEN,
                         verify_tls=config.UNIFI_VERIFY_TLS, timezone=config.TZ_NAME)
-        else:
+        elif config.DRY_RUN:
             site = Site(name="Demo site", host="demo", timezone=config.TZ_NAME)
+        else:
+            return
         s.add(site)
         s.commit()
 
