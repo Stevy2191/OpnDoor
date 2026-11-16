@@ -4,12 +4,17 @@
 {% block content %}
 <div class="card auth">
   <div class="brand big"><span class="logo"></span>OpnDoor</div>
-  <p class="muted">Welcome. Create the first administrator account. You can add other people afterwards.</p>
+  <p class="muted">Welcome! Create the <strong>main admin</strong> account. This account runs OpnDoor and can't be changed or removed by anyone else. You can add other people afterwards.</p>
   <form method="post" action="/setup">
     <label>Your name <input name="name" required autofocus></label>
     <label>Email <input type="email" name="email" required autocomplete="username"></label>
-    <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password"></label>
-    <button class="primary wide">Create admin account</button>
+    <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password">
+      <small class="muted">At least 8 characters. Keep it safe: it always works, even if Microsoft sign-in is set up later.</small></label>
+    {% if config.SETUP_CODE %}
+    <label>Setup code <input name="setup_code" required autocomplete="off" placeholder="shown at the end of the install" style="text-transform:uppercase">
+      <small class="muted">Shown when the installer finished, and saved as SETUP_CODE in OpnDoor's .env file.</small></label>
+    {% endif %}
+    <button class="primary wide">Create main admin account</button>
   </form>
 </div>
 {% endblock %}

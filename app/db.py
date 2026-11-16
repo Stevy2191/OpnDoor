@@ -39,6 +39,11 @@ def init_db() -> None:
     engine = get_engine()
     SQLModel.metadata.create_all(engine)
     _add_missing_columns(engine)
+    with engine.begin() as conn:
+        # Installs from before the "main admin" existed: the earliest admin becomes it.
+        conn.exec_driver_sql(
+            'UPDATE "user" SET is_owner = 1 WHERE id = (SELECT MIN(id) FROM "user" WHERE is_admin = 1) '
+            'AND NOT EXISTS (SELECT 1 FROM "user" WHERE is_owner = 1)')
 
 
 def _sql_literal(v) -> str:

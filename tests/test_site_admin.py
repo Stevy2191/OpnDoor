@@ -136,3 +136,27 @@ def test_operator_cannot_reach_manager_pages(world):
     login(c, "nora@example.com")
     for path in ["/users", "/calendars", "/history", "/sites"]:
         assert c.get(path).status_code == 403, path
+
+
+def test_main_admin_is_protected(client):
+    c = client
+    c.post("/setup", data={"name": "Ada", "email": "ada@example.com", "password": "password123"})
+    assert "Main admin" in c.get("/users").text
+    add(c, "Ben", "ben@example.com", role="admin")
+    login(c, "ben@example.com")
+    assert "Only an admin" in c.get("/users/1", follow_redirects=True).text
+    c.post("/users/1", data={"name": "x", "email": "ada@example.com", "role": "operator", "signin": "password"})
+    login(c, "ada@example.com")
+    r = c.get("/users").text
+    assert "★ Main admin" in r and ">x<" not in r
+
+
+def test_setup_code_required(client, monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, "SETUP_CODE", "ABCD-1234")
+    r = client.post("/setup", data={"name": "Mal", "email": "mal@example.com", "password": "password123",
+                                    "setup_code": "nope"})
+    assert "setup code isn" in r.text
+    r = client.post("/setup", data={"name": "Ada", "email": "ada@example.com", "password": "password123",
+                                    "setup_code": "abcd-1234"})
+    assert "Hi, Ada" in r.text

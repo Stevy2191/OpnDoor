@@ -12,7 +12,10 @@
   <label>Email <input type="email" name="email" value="{{ target.email if target else '' }}" required {% if not full %}readonly{% endif %}>
     {% if config.SSO_ENABLED and full %}<small class="muted">Use the email they sign in to Microsoft with.</small>{% endif %}</label>
 
-  {% if user.is_admin %}
+  {% if target and target.is_owner %}
+  <input type="hidden" name="role" value="admin">
+  <p class="small">Role: <strong>★ Main admin</strong> <span class="muted">· set up OpnDoor; always an admin</span></p>
+  {% elif user.is_admin %}
   <fieldset>
     <legend>Role</legend>
     <div class="choices">

@@ -18,8 +18,8 @@
   {% for u in users %}
     <tr class="{{ '' if u.active else 'gone' }}">
       <td><strong>{{ u.name or '—' }}</strong><br><small class="muted">{{ u.email }}</small></td>
-      <td>{% if not u.active %}<span class="tag">Turned off</span>{% elif u.is_admin %}<span class="tag rep">Admin</span>{% elif u.is_site_admin %}<span class="tag cal">Site admin</span>{% else %}<span class="tag">Door operator</span>{% endif %}</td>
-      <td>{% if u.is_admin %}Everything{% else %}{% if u.is_site_admin %}<small class="muted">Manages: </small>{% endif %}{% for n in access.get(u.id, []) %}<span class="tag {{ 'def' if n.startswith('All doors') else '' }}">{{ n.replace('All doors at ', '') if u.is_site_admin else n }}</span> {% else %}{% if u.id not in elsewhere %}<span class="muted">Nothing yet</span>{% endif %}{% endfor %}{% if u.id in elsewhere and not user.is_admin %}<small class="muted"> + other sites</small>{% endif %}{% endif %}</td>
+      <td>{% if not u.active %}<span class="tag">Turned off</span>{% elif u.is_owner %}<span class="tag rep">★ Main admin</span>{% elif u.is_admin %}<span class="tag rep">Admin</span>{% elif u.is_site_admin %}<span class="tag cal">Site admin</span>{% else %}<span class="tag">Door operator</span>{% endif %}</td>
+      <td>{% if u.is_admin %}Everything{% if u.is_owner %} <small class="muted">· can't be changed by others</small>{% endif %}{% else %}{% if u.is_site_admin %}<small class="muted">Manages: </small>{% endif %}{% for n in access.get(u.id, []) %}<span class="tag {{ 'def' if n.startswith('All doors') else '' }}">{{ n.replace('All doors at ', '') if u.is_site_admin else n }}</span> {% else %}{% if u.id not in elsewhere %}<span class="muted">Nothing yet</span>{% endif %}{% endfor %}{% if u.id in elsewhere and not user.is_admin %}<small class="muted"> + other sites</small>{% endif %}{% endif %}</td>
       <td>{{ 'Password' if u.password_hash else 'Microsoft' }}{% if u.last_login_at %}<br><small class="muted">last {{ (u.last_login_at|local)|day }}</small>{% endif %}</td>
       <td class="right">{% if u.id in editable %}<a class="small" href="/users/{{ u.id }}">Edit</a>{% endif %}</td>
     </tr>

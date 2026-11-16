@@ -176,16 +176,22 @@ def setup_page(request: Request, session: Session = Depends(get_session)):
 
 @router.post("/setup")
 def setup(request: Request, name: str = Form(...), email: str = Form(...), password: str = Form(...),
-          session: Session = Depends(get_session)):
+          setup_code: str = Form(""), session: Session = Depends(get_session)):
     if has_users(session):
         return redirect("/login")
+    import hmac
+    if config.SETUP_CODE and not hmac.compare_digest(setup_code.strip().upper(), config.SETUP_CODE.upper()):
+        flash(request, "That setup code isn't right. It was shown at the end of the install "
+              "(and is saved in the .env file as SETUP_CODE).", "error")
+        return redirect("/setup")
     if len(password) < 8:
         flash(request, "Password must be at least 8 characters.", "error")
         return redirect("/setup")
-    user = User(name=name.strip(), email=email.strip().lower(), password_hash=hash_password(password), is_admin=True)
+    user = User(name=name.strip(), email=email.strip().lower(), password_hash=hash_password(password), is_admin=True,
+                is_owner=True)
     session.add(user)
     session.commit()
-    audit.record(session, "user.setup", f"{user.display} set up OpnDoor and became the first admin", user=user)
+    audit.record(session, "user.setup", f"{user.display} set up OpnDoor and became the main admin", user=user)
     login_user(request, session, user, "a password")
     engine.ensure_sites()
     engine.sync_doors()
@@ -761,6 +767,8 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
             target.password_hash = ""
         elif password:
             target.password_hash = hash_password(password)
+    if target.is_owner:
+        role = "admin"  # the main admin always stays an admin
     target.is_admin, target.is_site_admin = role == "admin", role == "site_admin"
     session.add(target)
     session.flush()

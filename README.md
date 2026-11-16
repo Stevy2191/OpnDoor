@@ -61,36 +61,61 @@ developer API (`PUT /api/v1/developer/doors/{id}/lock_rule`):
 After a restart it catches up on whatever should be happening now. Doors are listed with
 `GET /api/v1/developer/doors` on each site's console every 10 minutes.
 
-## Deploy
+## Install
 
-Image: `ghcr.io/stevy2191/opndoor:latest` (published on every push to `main`).
+On a Linux machine (Ubuntu, Debian, Raspberry Pi OS, etc.) that can reach your UniFi Access console:
 
 ```bash
-mkdir -p /srv/docker/opndoor/data && cd /srv/docker/opndoor
-sudo chown 10001 data          # the container runs as uid 10001
-# copy docker-compose.yml and .env.example here
-cp .env.example .env           # fill in the UniFi host and API token
-docker compose pull && docker compose up -d
+curl -fsSL https://raw.githubusercontent.com/Stevy2191/OpnDoor/main/install.sh | sudo bash
 ```
 
-Open `http://<server>:8080`. The first visit asks you to create the admin account.
-The console in `.env` becomes your first site. Add more consoles under **Sites**
-(address, API token, timezone). Then add users (Users → Add user) and tick the doors each one may schedule.
+The installer does everything except sign in for you:
 
-The API token is created in UniFi Access under Settings → General → Advanced → API Token,
-with permission to view and operate doors. One token per console.
+1. Installs Docker if it's missing.
+2. Checks which ports are already in use and only picks free ones.
+3. Asks how people should reach OpnDoor:
+   - **Secure (HTTPS) with a built-in certificate** (recommended). Adds Caddy with a self-signed
+     certificate. Browsers show a one-time warning; install `opndoor-certificate.crt` from the
+     install folder on your computers to remove it.
+   - **Your own reverse proxy** (nginx, Traefik, Nginx Proxy Manager, Cloudflare Tunnel...).
+     OpnDoor listens on a local port for your proxy to forward to.
+   - **No HTTPS**, for testing only.
+4. Connects your UniFi Access console (and tests the API token), or skips it so you can add
+   consoles later under **Sites**.
+5. Optionally sets up Microsoft sign-in.
+6. Opens the firewall port if `ufw` or `firewalld` is on, downloads OpnDoor and starts it.
 
-Put it behind a reverse proxy with HTTPS if it's reachable from outside your network,
-and set `SECURE_COOKIES=true`.
+At the end it prints the web address and a **setup code**. Open the address, enter the code and
+create your account: that first account is the **main admin**, which nobody else can change or remove.
 
-If the package is private, log in first:
-`echo <PAT with read:packages> | docker login ghcr.io -u Stevy2191 --password-stdin`
+Everything lives in `/srv/docker/opndoor` (settings in `.env`, data in `data/`).
 
-### Try it without a controller
+| To... | Run |
+| --- | --- |
+| Update to the newest version | `sudo /srv/docker/opndoor/update.sh` |
+| Change settings (HTTPS, ports, Microsoft sign-in) | the install command again → *Change settings* |
+| Uninstall (keeps data unless you say otherwise) | the install command again → *Uninstall* |
+| See logs | `cd /srv/docker/opndoor && sudo docker compose logs -f` |
 
-Leave `UNIFI_ACCESS_TOKEN=changeme`. OpnDoor creates a **Demo site** with four pretend doors
-and logs what it would have sent. Add more demo sites by entering `demo` as a site's address.
-Remove the demo site once your real consoles are added.
+Re-running the installer never touches your schedules, people or history.
+
+### How the image is built
+
+GitHub Actions (`.github/workflows/docker.yml`) runs the tests and checks the installer on every
+push and pull request. On every push to `main` it builds the Docker image for regular PCs and
+servers (amd64) and ARM boards like the Raspberry Pi 4/5 (arm64), and publishes it to GitHub's
+container registry as `ghcr.io/stevy2191/opndoor:latest` (plus a tag for the commit). Tagging a
+release `v1.2.0` also publishes `1.2.0` and `1.2`.
+
+After the first build, check that the package is public: GitHub → your profile → **Packages** →
+**opndoor** → **Package settings** → **Change visibility** → Public. (If it's private, the installer
+asks for a GitHub token with `read:packages` instead.)
+
+### Manual install
+
+Prefer to do it by hand? Copy `docker-compose.yml` and `.env.example` (as `.env`) into a folder,
+fill in `.env`, create `data/` owned by uid 10001 (`sudo chown 10001 data`), then
+`docker compose up -d`.
 
 ## Sign in with Microsoft
 
@@ -104,7 +129,8 @@ Do this once, as someone who can register apps in your Microsoft 365 tenant.
 3. On the app's **Overview** page, copy the **Application (client) ID** and **Directory (tenant) ID**.
 4. **Certificates & secrets** → **New client secret** → copy the secret's **Value** (not its ID).
    Note when it expires and make a new one before then.
-5. Add these to OpnDoor's `.env` and restart it (`docker compose up -d`):
+5. Run the installer again → *Change settings* and paste them in when it asks. (Or add them to
+   `/srv/docker/opndoor/.env` yourself and run `sudo docker compose up -d` in that folder):
    ```
    MS_TENANT_ID=<Directory (tenant) ID>
    MS_CLIENT_ID=<Application (client) ID>
@@ -136,7 +162,3 @@ DATA_DIR=./data uvicorn app.main:app --reload --port 8080
 | `app/calendars.py` | ICS fetching, rule matching, booking → schedule sync |
 | `app/unifi.py` | UniFi Access API client (one per site) and the demo console |
 | `app/models.py` | Database tables |
-
-## Releases
-
-Push to `main` → `latest` + short SHA tags. Tag `v1.0.0` → semver tags.

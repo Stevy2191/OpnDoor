@@ -90,6 +90,8 @@ def person_site_ids(session: Session, person: User) -> set[int]:
 def can_manage_person(session: Session, manager: User, person: User) -> bool:
     """Admins manage everyone. Site admins manage door operators who work at their sites
     (or who have no access anywhere yet)."""
+    if person.is_owner:
+        return manager.id == person.id  # only the main admin changes the main admin
     if manager.is_admin:
         return True
     if not manager.is_site_admin or person.is_admin or person.is_site_admin:

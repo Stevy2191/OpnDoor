@@ -43,6 +43,10 @@ CALENDAR_SYNC_MINUTES = int(os.getenv("CALENDAR_SYNC_MINUTES", "5"))
 CALENDAR_LOOKAHEAD_DAYS = int(os.getenv("CALENDAR_LOOKAHEAD_DAYS", "60"))
 # Set to false in tests to keep the background scheduler from starting.
 RUN_SCHEDULER = _bool("RUN_SCHEDULER", True)
+# One-time code asked for on the first-time setup page (the installer sets it), so
+# only the person installing OpnDoor can create the main admin account.
+SETUP_CODE = os.getenv("SETUP_CODE", "").strip()
+
 # Set true when served over HTTPS (reverse proxy) so the session cookie is Secure.
 SECURE_COOKIES = _bool("SECURE_COOKIES", False)
 

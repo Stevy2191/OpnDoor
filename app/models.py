@@ -28,6 +28,7 @@ class User(SQLModel, table=True):
     name: str = ""
     password_hash: str = ""  # "" = no password; signs in with Microsoft only
     is_admin: bool = False
+    is_owner: bool = False  # the main admin: the account made at first setup; others can't change it
     is_site_admin: bool = False
     active: bool = True
     created_by: Optional[int] = None
@@ -37,6 +38,8 @@ class User(SQLModel, table=True):
 
     @property
     def role_name(self) -> str:
+        if self.is_owner:
+            return "Main admin"
         return "Admin" if self.is_admin else "Site admin" if self.is_site_admin else "Door operator"
 
     @property
