@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Schedules · OpnDoor{% endblock %}
+{% macro table(rows, show_source) %}
+<div class="table card">
+<table>
+  <thead><tr><th>Name</th><th>When</th><th>Doors</th>{% if show_source %}<th>Source</th>{% endif %}<th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}{% set s = r.s %}
+    <tr>
+      <td><strong>{{ event_icon(s) }} {{ s.label }}</strong>
+        {% if s.kind == 'override' %}<small class="muted"> · {{ event_name(s) }}</small>{% endif %}
+        {% if s.contact %}<br><small class="muted">Contact: {{ s.contact }}</small>{% endif %}
+        {% if s.kind == 'override' %}<br><span class="tag {{ 'lock' if s.action == 'lock' else 'rep' }}">{{ '🔒 Keep locked' if s.action == 'lock' else '🔓 Unlocked' }}</span>{% endif %}
+        {% if s.notes and s.source != 'calendar' %}<br><small class="muted">{{ s.notes }}</small>{% endif %}</td>
+      <td>
+        {% if s.repeat_weekdays %}{{ describe_repeat(s) }}<br><small class="muted">from {{ s.start_local|day }}</small>
+        {% else %}{{ s.start_local|day }}{% endif %}<br>
+        <small>{{ span(s.start_local, s.start_local + minutes(s.duration_minutes)) }}</small>
+      </td>
+      <td>{% for n in r.doors %}<span class="tag">{{ n }}</span> {% endfor %}</td>
+      {% if show_source %}<td>{% if s.source == 'calendar' %}📅 {{ r.feed }}{% elif s.source == 'quick' %}Unlock now{% else %}Manual{% endif %}</td>{% endif %}
+      <td class="right">
+        {% if r.editable %}
+          <a class="small" href="/schedules/{{ s.id }}">Edit</a>
+          <form method="post" action="/schedules/{{ s.id }}/delete" class="inline" onsubmit="return confirm('Delete “{{ s.label|e }}”?')"><button class="link danger-text">Delete</button></form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="head">
+  <h1>Schedules</h1>
+  <a class="button primary" href="/doors">+ Schedule doors</a>
+</div>
+
+<h2>Regular hours</h2>
+{% if defaults %}{{ table(defaults, False) }}
+{% else %}<div class="card empty"><p>No regular hours set. Doors stay locked unless an override unlocks them.</p></div>{% endif %}
+
+<h2>Overrides and events</h2>
+{% if overrides %}{{ table(overrides, True) }}
+{% else %}<div class="card empty"><p>No current or upcoming overrides.</p></div>{% endif %}
+{% endblock %}

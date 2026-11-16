@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_line %}
+{% block title %}{{ door.name }} · OpnDoor{% endblock %}
+{% block content %}
+<p class="small"><a href="/doors">← Doors</a></p>
+<div class="head">
+  <div>
+    <h1 style="margin-bottom:.2rem">{{ door.name }}</h1>
+    <div class="muted small">{% if sites|length > 1 %}{{ site.name }} · {% endif %}times in {{ site.timezone }}</div>
+    <div style="margin-top:.4rem">{{ status_line(status) }}</div>
+  </div>
+  <div class="btnrow">
+    <a class="button" href="/schedules/new?kind=default&door={{ door.id|urlencode }}">Set regular hours</a>
+    <a class="button primary" href="/schedules/new?door={{ door.id|urlencode }}">+ Add override</a>
+  </div>
+</div>
+
+<div class="grid2 wide-left">
+  <section class="card">
+    <h2>Next 7 days</h2>
+    <p class="muted small">What this door will actually do, with overrides applied.</p>
+    {% for day, items in days.items() %}
+      <h3 class="day">{{ day|day }}</h3>
+      <ul class="tl">
+      {% for it in items %}{% set seg = it.seg %}
+        <li class="{{ seg.state or 'normal' }}{{ ' def' if seg.schedule and seg.schedule.kind == 'default' }}">
+          <span class="when">{{ span(it.start, it.end) }}</span>
+          <span class="what">
+            {% if seg.state == 'unlock' %}<strong>Unlocked</strong>{% elif seg.state == 'lock' %}<strong>Kept locked</strong>{% else %}Locked{% endif %}
+            {% if seg.schedule %}<small>· {{ event_icon(seg.schedule) }} {{ 'Regular hours' if seg.schedule.kind == 'default' else seg.schedule.label }}</small>{% endif %}
+          </span>
+        </li>
+      {% endfor %}
+      </ul>
+    {% endfor %}
+  </section>
+
+  <section>
+    <h2 style="margin-top:0">Schedules on this door</h2>
+    {% for r in rows %}{% set s = r.s %}
+      <div class="card sched {{ 'def' if s.kind == 'default' else ('lockov' if s.action == 'lock' else '') }}">
+        <div class="tags" style="margin:0 0 .3rem">
+          <span class="tag {{ 'def' if s.kind == 'default' else ('lock' if s.action == 'lock' else 'rep') }}">{{ describe_kind(s) }}</span>
+          {% if s.source == 'calendar' %}<span class="tag cal">📅 calendar</span>{% endif %}
+        </div>
+        <strong>{{ event_icon(s) }} {{ s.label }}</strong>
+        {% if s.kind == 'override' %}<small class="muted"> · {{ event_name(s) }}</small>{% endif %}
+        {% if s.contact %}<div class="small muted">Contact: {{ s.contact }}</div>{% endif %}
+        <div class="small">
+          {% if s.repeat_weekdays %}{{ describe_repeat(s) }}{% else %}{{ s.start_local|day }}{% endif %},
+          {{ span(s.start_local, s.start_local + minutes(s.duration_minutes)) }}
+        </div>
+        {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}
+      </div>
+    {% else %}
+      <div class="card empty"><p>No schedules yet. The door stays on its normal UniFi rule.</p></div>
+    {% endfor %}
+
+    <h2>Recent changes</h2>
+    {% for e in history %}
+      <div class="hist small">
+        <div class="muted">{{ (e.at|local)|day }} {{ (e.at|local)|time }} · <strong>{{ e.actor }}</strong></div>
+        <div>{{ e.detail }}</div>
+        {% set ch = audit_mod.changes_of(e) %}
+        {% if ch and e.action == 'schedule.update' %}<ul class="changes">{% for k, b, a in ch %}<li>{{ k }}: <del>{{ b or '—' }}</del> → <ins>{{ a or '—' }}</ins></li>{% endfor %}</ul>{% endif %}
+      </div>
+    {% else %}<p class="muted small">No changes recorded yet.</p>{% endfor %}
+    {% if can_history %}<p class="small"><a href="/history?door={{ door.id|urlencode }}">Full history for this door →</a></p>{% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import door_chips, status_line %}
+{% block content %}
+<div class="head">
+  <h1>Hi{% if user.name %}, {{ user.name.split(' ')[0] }}{% endif %}</h1>
+  <a class="button primary" href="/doors">+ Schedule doors</a>
+</div>
+
+{% if not doors %}
+<div class="card empty">
+  {% if user.is_admin %}
+    <p>No doors yet. <form method="post" action="/doors/sync" class="inline"><button class="link">Load doors from UniFi Access</button></form></p>
+  {% else %}
+    <p>You don't have access to any doors yet. Ask an administrator to give you access.</p>
+  {% endif %}
+</div>
+{% else %}
+
+<section class="grid2">
+  <div class="card">
+    <div class="head" style="margin-bottom:.25rem"><h2 style="margin:0">Doors</h2><a class="small" href="/doors">Schedule several doors →</a></div>
+    {% for site_id, group in doors|groupby('site_id') %}
+    {% if sites|length > 1 %}<div class="sitehead">{{ sites[site_id].name }}</div>{% endif %}
+    <ul class="doorlist">
+    {% for d in group %}
+      <li>
+        <span class="grow"><a class="strong" href="/doors/{{ d.id|urlencode }}">{{ d.name }}</a>
+          <small>{{ status_line(status.get(d.id, {})) }}</small>
+        </span>
+        <a class="small" href="/schedules/new?door={{ d.id|urlencode }}">Override</a>
+      </li>
+    {% endfor %}
+    </ul>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <h2>Unlock now</h2>
+    <form method="post" action="/quick-unlock">
+      {{ door_chips(doors, 'door_ids', [], sites, True) }}
+      <p class="muted small">Unlock for</p>
+      <div class="btnrow">
+        {% for m, lbl in [(15,'15 min'),(30,'30 min'),(60,'1 hour'),(120,'2 hours')] %}
+        <button name="minutes" value="{{ m }}">{{ lbl }}</button>
+        {% endfor %}
+      </div>
+    </form>
+  </div>
+</section>
+
+{% if happening %}
+<section>
+  <h2>Happening now</h2>
+  {% for e in happening %}{% set o = e.o %}{% include "_occ.html" %}{% endfor %}
+</section>
+{% endif %}
+
+<section>
+  <h2>Coming up <small class="muted">overrides and events, next 14 days · regular hours are on each door’s page</small></h2>
+  {% for day, entries in upcoming.items() %}
+    <h3 class="day">{{ day|day }}</h3>
+    {% for e in entries %}{% set o = e.o %}{% include "_occ.html" %}{% endfor %}
+  {% else %}
+    <div class="card empty"><p>No overrides or events coming up.</p></div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

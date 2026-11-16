@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_line %}
+{% block title %}Doors · OpnDoor{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Doors</h1>
+  {% if user.is_admin %}
+  <form method="post" action="/doors/sync"><button>↻ Reload doors from UniFi Access</button></form>
+  {% endif %}
+</div>
+{% set usable = doors|selectattr('present')|list %}
+{% if usable %}
+<p class="muted">Select doors, then set their <strong>regular hours</strong> or add an <strong>override</strong> (an event, or keep them locked). Overrides replace the regular hours while they last.</p>
+<form id="pick" method="get" action="/schedules/new">
+  <input type="hidden" name="kind" id="pickkind" value="override">
+  {% for site_id, group in usable|groupby('site_id') %}
+  <div class="pickbar-top">
+    {% if sites|length > 1 %}<h2 class="sitetitle">{{ sites[site_id].name }} <small class="muted">{{ sites[site_id].timezone }}</small></h2>{% else %}<span></span>{% endif %}
+    <button type="button" class="link selall" data-site="{{ site_id }}">Select all</button>
+  </div>
+  <div class="doorgrid">
+  {% for d in group %}
+    <label class="doorcard">
+      <input type="checkbox" name="door" value="{{ d.id }}" data-site="{{ site_id }}">
+      <span class="box">
+        <span class="tick"></span>
+        <span class="info">
+          <strong>{{ d.name }}</strong>
+          {% if d.full_name and d.full_name != d.name %}<small class="muted">{{ d.full_name }}</small>{% endif %}
+          <small>{{ status_line(status.get(d.id, {})) }}</small>
+          <small class="muted">{% if d.id in has_default %}Regular hours set{% else %}No regular hours (locked unless overridden){% endif %}{% if user.is_admin and counts.get(d.id) %} · {{ counts[d.id] }} {{ 'user' if counts[d.id] == 1 else 'users' }} assigned{% endif %}</small>
+          <a class="small" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View schedule →</a>
+        </span>
+      </span>
+    </label>
+  {% endfor %}
+  </div>
+  {% endfor %}
+  <div class="pickbar" id="pickbar" hidden>
+    <span id="pickcount"></span>
+    <button class="ghost" onclick="document.getElementById('pickkind').value='default'">Set regular hours</button>
+    <button class="primary" onclick="document.getElementById('pickkind').value='override'">Add override</button>
+  </div>
+</form>
+{% endif %}
+
+{% set gone = doors|rejectattr('present')|list %}
+{% if gone %}
+<h2>No longer on the console</h2>
+<p class="muted small">These doors were removed from UniFi Access. Their schedules are kept but do nothing.</p>
+<ul>{% for d in gone %}<li>{{ d.name }}{% if sites|length > 1 %} <span class="muted">({{ sites[d.site_id].name }})</span>{% endif %}</li>{% endfor %}</ul>
+{% endif %}
+
+{% if not doors %}
+<div class="card empty"><p>{% if user.is_admin %}No doors loaded yet. <a href="/sites">Check your sites</a> (console address and API token), then reload.{% else %}You don't have access to any doors yet. Ask an administrator.{% endif %}</p></div>
+{% endif %}
+
+<script>
+(function () {
+  const form = document.getElementById('pick'); if (!form) return;
+  const boxes = [...form.querySelectorAll('input[name=door]')];
+  const bar = document.getElementById('pickbar'), count = document.getElementById('pickcount');
+  const alls = [...form.querySelectorAll('.selall')];
+  function update() {
+    const n = boxes.filter(b => b.checked).length;
+    bar.hidden = n === 0;
+    count.textContent = n + (n === 1 ? ' door selected' : ' doors selected');
+    alls.forEach(a => {
+      const mine = boxes.filter(b => b.dataset.site === a.dataset.site);
+      a.textContent = mine.every(b => b.checked) ? 'Clear' : 'Select all';
+    });
+  }
+  boxes.forEach(b => b.addEventListener('change', update));
+  alls.forEach(a => a.addEventListener('click', () => {
+    const mine = boxes.filter(b => b.dataset.site === a.dataset.site);
+    const on = mine.some(b => !b.checked);
+    mine.forEach(b => b.checked = on); update();
+  }));
+  update();
+})();
+</script>
+{% endblock %}

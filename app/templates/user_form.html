@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if target else 'Add' }} person · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<p class="small"><a href="/users">← People</a></p>
+<h1>{{ target.display if target else 'Add a person' }}</h1>
+{% if not full %}
+<div class="flash">{{ target.display }} also works at other sites, so you can only change their access at your sites. An admin can change the rest.</div>
+{% endif %}
+<form method="post" action="/users{% if target %}/{{ target.id }}{% endif %}" class="card stack" id="userform">
+  <label>Name <input name="name" value="{{ target.name if target else '' }}" required {% if not full %}readonly{% endif %}></label>
+  <label>Email <input type="email" name="email" value="{{ target.email if target else '' }}" required {% if not full %}readonly{% endif %}>
+    {% if config.SSO_ENABLED and full %}<small class="muted">Use the email they sign in to Microsoft with.</small>{% endif %}</label>
+
+  {% if target and target.is_owner %}
+  <input type="hidden" name="role" value="admin">
+  <p class="small">Role: <strong>★ Main admin</strong> <span class="muted">· set up OpnDoor; always an admin</span></p>
+  {% elif user.is_admin %}
+  <fieldset>
+    <legend>Role</legend>
+    <div class="choices">
+      <label class="choice"><input type="radio" name="role" value="operator" {% if not target or target.role == 'operator' %}checked{% endif %}>
+        <span><strong>Door operator</strong><small>Can see and schedule only the doors you pick below.</small></span></label>
+      <label class="choice"><input type="radio" name="role" value="site_admin" {% if target and target.role == 'site_admin' %}checked{% endif %}>
+        <span><strong>Site admin</strong><small>Runs the sites you pick below: all their doors, the door operators there, calendars and history.</small></span></label>
+      <label class="choice"><input type="radio" name="role" value="admin" {% if target and target.role == 'admin' %}checked{% endif %}>
+        <span><strong>Admin</strong><small>Can do everything, at every site, including adding sites and admins.</small></span></label>
+    </div>
+  </fieldset>
+  {% else %}
+  <input type="hidden" name="role" value="operator">
+  <p class="small">Role: <strong>Door operator</strong> <span class="muted">· can see and schedule only the doors you pick below.</span></p>
+  {% endif %}
+
+  <fieldset class="only-operator">
+    <legend><span class="for-operator">Which doors can they schedule?</span><span class="for-siteadmin">Which sites do they run?</span></legend>
+    {% for site in sites.values() %}
+      {% set group = doors|selectattr('site_id', 'equalto', site.id)|list %}
+      <div class="access-site">
+        <label class="check sitewide"><input type="checkbox" name="site_ids" value="{{ site.id }}" {% if site.id in selected_sites %}checked{% endif %}>
+          <span><strong><span class="for-operator">All doors at </span>{{ site.name }}</strong> <small class="muted for-operator">· includes doors added later</small></span></label>
+        {% if group %}
+        <div class="persite">
+          <div class="muted small">or only these doors:</div>
+          <div class="chips">
+          {% for d in group %}
+            <label class="chip"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if d.id in selected %}checked{% endif %}><span>{{ d.name }}</span></label>
+          {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    {% else %}<p class="muted">No sites yet.</p>{% endfor %}
+  </fieldset>
+
+  {% if full %}
+  <fieldset>
+    <legend>How do they sign in?</legend>
+    {% set pw = (target and target.password_hash) or not config.SSO_ENABLED %}
+    {% if config.SSO_ENABLED %}
+    <div class="seg">
+      <label><input type="radio" name="signin" value="microsoft" {% if not pw %}checked{% endif %}><span>Microsoft account</span></label>
+      <label><input type="radio" name="signin" value="password" {% if pw %}checked{% endif %}><span>Password</span></label>
+    </div>
+    {% else %}<input type="hidden" name="signin" value="password">{% endif %}
+    <label class="pwfield">{{ 'New password (leave blank to keep the current one)' if target and target.password_hash else 'Password' }}
+      <input type="password" name="password" minlength="8" autocomplete="new-password">
+      <small class="muted">At least 8 characters. Tell them it in person.</small></label>
+  </fieldset>
+
+  {% if target and target.id != user.id %}
+  <label class="check"><input type="checkbox" name="active" value="true" {% if target.active %}checked{% endif %}>
+    Account on <small class="muted">(untick to stop them signing in; their schedules stay)</small></label>
+  {% else %}<input type="hidden" name="active" value="true">{% endif %}
+  {% else %}
+  <input type="hidden" name="signin" value="{{ 'password' if target.password_hash else 'microsoft' }}">
+  <input type="hidden" name="active" value="true">
+  {% endif %}
+
+  <div class="btnrow">
+    <button class="primary">Save</button>
+    <a class="button" href="/users">Cancel</a>
+  </div>
+</form>
+{% endblock %}
