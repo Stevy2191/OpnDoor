@@ -1,0 +1,13 @@
+# Deploy under /srv/docker/opndoor on the server.
+services:
+  opndoor:
+    image: ghcr.io/stevy2191/opndoor:latest
+    container_name: opndoor
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: America/Chicago
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
