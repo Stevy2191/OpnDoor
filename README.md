@@ -8,12 +8,20 @@ Runs as a single Docker container (FastAPI + SQLite). Images are built by GitHub
 
 ## Features
 
+- **Regular hours + overrides.** Give each door its normal weekly unlocked hours. Then add
+  overrides on top: an event that unlocks it, or a closure that keeps it locked. While an
+  override is on, it completely replaces the regular hours; when it ends, the regular hours
+  resume. If overrides overlap, the most recently added one wins. Each door's page shows the
+  next 7 days with everything applied.
+- **Multiple sites / consoles.** Add each UniFi Access console as a site with its own address,
+  API token and timezone. Doors are grouped by site everywhere, and schedule times are local to
+  each door's site.
 - **Sign-in and per-door permissions.** Admins see and manage everything. Other users can only
   schedule the doors an admin grants them.
-- **Easy scheduling.** Name it, tap the doors, pick a date and times. Weekly repeats (any weekdays,
-  optional end date) and overnight windows are supported.
+- **Easy scheduling.** On the Doors page, tick the doors, then **Set regular hours** or **Add override**.
+  Weekly repeats (any weekdays, optional end date) and overnight windows are supported.
 - **Unlock now** for 15 min to 2 hours, straight from the home page.
-- **Calendar automation.** Add any iCal (.ics) link (Google Calendar, Outlook / Microsoft 365,
+- **Calendar automation.** Each booking becomes an unlock override. Add any iCal (.ics) link (Google Calendar, Outlook / Microsoft 365,
   booking systems). Rules map bookings to doors by text in the title, location or description
   (e.g. location contains "Fellowship Hall" → Fellowship Hall + Side Door), with unlock-early /
   lock-late padding. Moved or cancelled bookings update automatically. **Preview** shows what a
@@ -22,14 +30,23 @@ Runs as a single Docker container (FastAPI + SQLite). Images are built by GitHub
 
 ## How door control works
 
-Every 30 seconds OpnDoor works out which doors should be unlocked right now and for how long.
-For each one it sets a UniFi Access *temporary lock rule* (`custom`, N minutes) through the
-developer API. The controller counts down and relocks the door itself, so doors still lock on
-time if OpnDoor is stopped. Overlapping or back-to-back schedules are merged into one unlock.
-If a schedule is deleted or shortened while a door is open, OpnDoor sends `reset` to lock it.
-After a restart it catches up on anything that should be open.
+For each door, OpnDoor builds a timeline from its schedules:
 
-API calls used: `GET /api/v1/developer/doors` and `PUT /api/v1/developer/doors/{id}/lock_rule`.
+1. An active **override** decides: unlocked or kept locked (newest override wins).
+2. Otherwise, during **regular hours**, the door is unlocked.
+3. Otherwise OpnDoor leaves the door on its normal UniFi rule (locked).
+
+Every 30 seconds it compares that with what it last told each console, through the UniFi Access
+developer API (`PUT /api/v1/developer/doors/{id}/lock_rule`):
+
+| Door should be | Command | Notes |
+| --- | --- | --- |
+| Unlocked until T | `custom`, interval = minutes until T | The console relocks by itself at T, even if OpnDoor is down. Back-to-back periods (e.g. regular hours running into an event) are sent as one unlock. |
+| Kept locked | `keep_lock` | Also overrides unlock schedules set up inside UniFi Access itself. |
+| Back to normal | `reset` | Sent when an override or unlock ends early, is deleted, or a lock override ends. |
+
+After a restart it catches up on whatever should be happening now. Doors are listed with
+`GET /api/v1/developer/doors` on each site's console every 10 minutes.
 
 ## Deploy
 
@@ -44,7 +61,11 @@ docker compose pull && docker compose up -d
 ```
 
 Open `http://<server>:8080`. The first visit asks you to create the admin account.
-Then add users (Users → Add user) and tick the doors each one may schedule.
+The console in `.env` becomes your first site. Add more consoles under **Sites**
+(address, API token, timezone). Then add users (Users → Add user) and tick the doors each one may schedule.
+
+The API token is created in UniFi Access under Settings → General → Advanced → API Token,
+with permission to view and operate doors. One token per console.
 
 Put it behind a reverse proxy with HTTPS if it's reachable from outside your network,
 and set `SECURE_COOKIES=true`.
@@ -54,8 +75,9 @@ If the package is private, log in first:
 
 ### Try it without a controller
 
-Leave `UNIFI_ACCESS_TOKEN=changeme` (or set `DRY_RUN=true`). OpnDoor runs with four demo
-doors and logs what it would have sent.
+Leave `UNIFI_ACCESS_TOKEN=changeme`. OpnDoor creates a **Demo site** with four pretend doors
+and logs what it would have sent. Add more demo sites by entering `demo` as a site's address.
+Remove the demo site once your real consoles are added.
 
 ## Local development
 
@@ -71,10 +93,10 @@ DATA_DIR=./data uvicorn app.main:app --reload --port 8080
 | --- | --- |
 | `app/main.py` | App setup, background jobs |
 | `app/web.py` | Pages and form handling |
-| `app/engine.py` | Reconcile loop (schedules → door commands), door sync, audit log |
-| `app/schedules.py` | Repeat expansion, merging overlapping windows, time zones |
+| `app/engine.py` | Reconcile loop (timelines → door commands), site/door sync, audit log |
+| `app/schedules.py` | Repeat expansion, default/override timeline, time zones |
 | `app/calendars.py` | ICS fetching, rule matching, booking → schedule sync |
-| `app/unifi.py` | UniFi Access API client and the dry-run fake |
+| `app/unifi.py` | UniFi Access API client (one per site) and the demo console |
 | `app/models.py` | Database tables |
 
 ## Releases

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import door_chips %}
 {% block title %}{{ 'Edit' if target else 'Add' }} user · OpnDoor{% endblock %}
 {% block mainclass %}narrow{% endblock %}
 {% block content %}
@@ -13,11 +14,7 @@
   <fieldset>
     <legend>Doors they can schedule</legend>
     {% if doors %}
-    <div class="chips">
-    {% for d in doors %}
-      <label class="chip"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if d.id in selected %}checked{% endif %}><span>{{ d.name }}</span></label>
-    {% endfor %}
-    </div>
+    {{ door_chips(doors, 'door_ids', selected, sites) }}
     {% else %}<p class="muted">No doors loaded yet.</p>{% endif %}
   </fieldset>
 

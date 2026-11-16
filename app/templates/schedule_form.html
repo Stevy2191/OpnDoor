@@ -1,35 +1,52 @@
 {% extends "base.html" %}
+{% from "_macros.html" import door_chips %}
 {% block title %}{{ 'Edit' if sched else 'New' }} schedule · OpnDoor{% endblock %}
 {% block mainclass %}narrow{% endblock %}
 {% block content %}
-<h1>{{ 'Edit schedule' if sched else 'Schedule a door' }}</h1>
+<h1>{% if sched %}Edit schedule{% elif kind == 'default' %}Set regular hours{% else %}Add an override{% endif %}</h1>
 {% if not doors %}
 <div class="card empty"><p>You don't have access to any doors yet.</p></div>
 {% else %}
-<form method="post" action="/schedules{% if sched %}/{{ sched.id }}{% endif %}" class="card stack">
-  <label>What's it for?
-    <input name="label" value="{{ sched.label if sched else '' }}" placeholder="e.g. Smith wedding rehearsal" required autofocus>
-  </label>
-
+<form method="post" action="/schedules{% if sched %}/{{ sched.id }}{% endif %}" class="card stack" id="schedform">
   <fieldset>
-    <legend>Which doors?</legend>
-    <div class="chips">
-    {% for d in doors %}
-      <label class="chip"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if d.id in selected or doors|length == 1 %}checked{% endif %}><span>{{ d.name }}</span></label>
-    {% endfor %}
+    <legend>Type</legend>
+    <div class="seg kind">
+      <label><input type="radio" name="kind" value="default" {% if kind == 'default' %}checked{% endif %}><span>Regular hours</span></label>
+      <label><input type="radio" name="kind" value="override" {% if kind != 'default' %}checked{% endif %}><span>Override</span></label>
+    </div>
+    <p class="muted small only-default">The door's normal weekly unlocked hours. Outside these hours it stays locked.</p>
+    <p class="muted small only-override">Replaces the regular hours while it's on, e.g. an event, a rental, or a holiday closure.</p>
+  </fieldset>
+
+  <fieldset class="only-override">
+    <legend>During the override, the doors are</legend>
+    <div class="seg">
+      <label><input type="radio" name="action" value="unlock" {% if action != 'lock' %}checked{% endif %}><span>🔓 Unlocked</span></label>
+      <label><input type="radio" name="action" value="lock" {% if action == 'lock' %}checked{% endif %}><span>🔒 Kept locked</span></label>
     </div>
   </fieldset>
 
+  <label>Name
+    <input name="label" value="{{ sched.label if sched else ('Regular hours' if kind == 'default' else '') }}" placeholder="e.g. Smith wedding, Thanksgiving closure" required>
+  </label>
+
+  <fieldset>
+    <legend>Doors</legend>
+    {{ door_chips(doors, 'door_ids', selected, sites, True) }}
+    {% if sites|length > 1 %}<p class="muted small">Times are local to each door's site.</p>{% endif %}
+  </fieldset>
+
   <div class="row3">
-    <label>Date <input type="date" name="day" value="{{ date_val }}" required></label>
-    <label>Unlock at <input type="time" name="start" value="{{ start_val }}" required></label>
-    <label>Lock at <input type="time" name="end" value="{{ end_val }}" required></label>
+    <label><span class="only-override-inline">Date</span><span class="only-default-inline">Starting</span>
+      <input type="date" name="day" value="{{ date_val }}" required></label>
+    <label>From <input type="time" name="start" value="{{ start_val }}" required></label>
+    <label>To <input type="time" name="end" value="{{ end_val }}" required></label>
   </div>
-  <p class="muted small">If the lock time is earlier than the unlock time, it runs overnight into the next day.</p>
+  <p class="muted small">If the end time is earlier than the start time, it runs overnight into the next day.</p>
 
   <fieldset>
     <legend>Repeat</legend>
-    <div class="seg">
+    <div class="seg only-override">
       <label><input type="radio" name="repeat" value="none" {% if not days %}checked{% endif %}><span>Just once</span></label>
       <label><input type="radio" name="repeat" value="weekly" {% if days %}checked{% endif %}><span>Every week</span></label>
     </div>
@@ -46,12 +63,12 @@
   <label>Notes (optional) <textarea name="notes" rows="2">{{ sched.notes if sched else '' }}</textarea></label>
 
   <div class="btnrow">
-    <button class="primary">{{ 'Save changes' if sched else 'Create schedule' }}</button>
-    <a class="button" href="/">Cancel</a>
+    <button class="primary">{{ 'Save changes' if sched else 'Save' }}</button>
+    <a class="button" href="/doors">Cancel</a>
   </div>
 </form>
 {% if sched %}
-<form method="post" action="/schedules/{{ sched.id }}/delete" onsubmit="return confirm('Delete this schedule? If the door is unlocked by it right now, it will lock.')">
+<form method="post" action="/schedules/{{ sched.id }}/delete" onsubmit="return confirm('Delete this schedule? Doors it is holding open or locked right now go back to their other schedules.')">
   <button class="danger">Delete schedule</button>
 </form>
 {% endif %}

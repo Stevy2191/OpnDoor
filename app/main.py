@@ -34,8 +34,9 @@ async def lifespan(app: FastAPI):
     init_db()
     sched = None
     if config.RUN_SCHEDULER:
+        engine.ensure_sites()
         if config.DRY_RUN:
-            log.warning("DRY RUN: no UniFi Access host/token configured; using demo doors, no real unlocks.")
+            log.warning("DRY_RUN is on: all sites use demo consoles; nothing is sent to UniFi Access.")
         engine.safe(engine.sync_doors)()
         engine.safe(calendars.sync_all)()
         engine.safe(engine.reconcile)()  # catch up after a restart
@@ -68,3 +69,4 @@ async def _admin_required(request: Request, exc: AdminRequired):
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "version": config.VERSION, "tz": config.TZ_NAME, "dry_run": config.DRY_RUN}
+

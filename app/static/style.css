@@ -176,3 +176,34 @@ code { font-size: .8rem; background: var(--bg); padding: .05rem .35rem; border-r
   padding: .6rem .6rem .6rem 1.2rem; border-radius: 999px; box-shadow: 0 8px 24px rgba(0,0,0,.2); white-space: nowrap; }
 .pickbar[hidden] { display: none; }
 .pickbar button.primary { border-radius: 999px; }
+
+/* sites, overrides, door timeline */
+.sitehead { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; margin: .75rem 0 .4rem; }
+.sitehead:first-child { margin-top: 0; }
+.sitetitle { margin: 1rem 0 0; font-size: 1.05rem; }
+.pickbar-top { align-items: baseline; justify-content: space-between; }
+a.strong { font-weight: 600; color: var(--text); }
+.dot.held { background: var(--err); box-shadow: 0 0 0 4px var(--err-soft); }
+.tag.def { background: var(--ok-soft); border-color: transparent; color: var(--ok); }
+.tag.lock { background: var(--err-soft); border-color: transparent; color: var(--err); }
+.occ.def, .card.sched.def { border-left: 4px solid var(--ok); }
+.occ.lockov, .card.sched.lockov { border-left: 4px solid var(--err); }
+.card.sched { border-left: 4px solid var(--accent); padding: .8rem 1rem; margin-bottom: .6rem; }
+.pickbar button.ghost { background: transparent; color: var(--bg); border-color: rgba(127,127,127,.5); border-radius: 999px; }
+.grid2.wide-left { grid-template-columns: 3fr 2fr; align-items: start; }
+@media (max-width: 760px) { .grid2.wide-left { grid-template-columns: 1fr; } .pickbar { flex-wrap: wrap; justify-content: center; border-radius: 16px; } }
+.tl { list-style: none; margin: 0 0 .5rem; padding: 0; }
+.tl li { display: flex; gap: 1rem; padding: .45rem .7rem; border-radius: 8px; margin-bottom: .25rem; border-left: 4px solid var(--line); background: var(--bg); }
+.tl li.unlock { border-left-color: var(--accent); background: var(--accent-soft); }
+.tl li.unlock.def { border-left-color: var(--ok); background: var(--ok-soft); }
+.tl li.lock { border-left-color: var(--err); background: var(--err-soft); }
+.tl li.normal { color: var(--muted); }
+.tl .when { min-width: 10.5rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .tl li { flex-direction: column; gap: 0; } }
+
+/* schedule form: show the right fields for regular hours vs override */
+#schedform:has(input[name=kind][value=default]:checked) .only-override,
+#schedform:has(input[name=kind][value=default]:checked) .only-override-inline { display: none; }
+#schedform:has(input[name=kind][value=override]:checked) .only-default,
+#schedform:has(input[name=kind][value=override]:checked) .only-default-inline { display: none; }
+#schedform:has(input[name=kind][value=default]:checked) .repeat-opts { display: block; }

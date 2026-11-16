@@ -1,9 +1,11 @@
-<div class="occ card {{ o.schedule.source }}">
+<div class="occ card {{ o.schedule.source }}{{ ' lockov' if o.schedule.kind == 'override' and o.schedule.action == 'lock' }}{{ ' def' if o.schedule.kind == 'default' }}">
   <div class="when">{{ span(o.start, o.end) }}</div>
   <div class="what">
     <strong>{{ o.schedule.label }}</strong>
     <div class="tags">
       {% for n in e.doors %}<span class="tag">{{ n }}</span>{% endfor %}
+      {% if o.schedule.kind == 'default' %}<span class="tag def">Regular hours</span>
+      {% elif o.schedule.action == 'lock' %}<span class="tag lock">🔒 Keep locked</span>{% endif %}
       {% if o.schedule.source == 'calendar' %}<span class="tag cal">📅 calendar</span>{% endif %}
       {% if o.schedule.repeat_weekdays %}<span class="tag rep">↻ {{ describe_repeat(o.schedule) }}</span>{% endif %}
     </div>

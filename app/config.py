@@ -19,12 +19,14 @@ TZ = ZoneInfo(TZ_NAME)
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'scheduler.db'}")
 
+# Optional: on first start, a site is created from these. More sites (consoles)
+# are added in the web UI (Sites page). With no host/token, a demo site is created.
 UNIFI_HOST = os.getenv("UNIFI_ACCESS_HOST", "").rstrip("/")
 UNIFI_TOKEN = os.getenv("UNIFI_ACCESS_TOKEN", "")
 UNIFI_VERIFY_TLS = _bool("UNIFI_VERIFY_TLS", False)
-# Dry run: no calls to the controller; a fake set of doors is used instead.
-# On automatically when no host/token is configured.
-DRY_RUN = _bool("DRY_RUN", not UNIFI_HOST or UNIFI_TOKEN in {"", "changeme"})
+UNIFI_SITE_NAME = os.getenv("UNIFI_SITE_NAME", "Main site")
+# Force every site to use fake consoles (no controller calls). Used by tests.
+DRY_RUN = _bool("DRY_RUN", False)
 
 RECONCILE_SECONDS = int(os.getenv("RECONCILE_SECONDS", "30"))
 DOOR_SYNC_MINUTES = int(os.getenv("DOOR_SYNC_MINUTES", "10"))

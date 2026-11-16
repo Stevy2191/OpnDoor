@@ -17,8 +17,9 @@ def fresh_db(tmp_path):
     db.set_engine(engine)
     SQLModel.metadata.create_all(engine)
     fake = unifi.FakeUnifiClient()
-    unifi.set_client(fake)
+    unifi.set_factory(lambda site: fake)  # every site shares one recorder
     yield fake
+    unifi.set_factory(None)
     engine.dispose()
 
 

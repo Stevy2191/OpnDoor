@@ -21,14 +21,15 @@ def event(uid, title, start, hours=2, location="", extra=""):
 
 
 def setup_feed(default=""):
+    engine.ensure_sites()
     engine.sync_doors()
     with session_scope() as s:
         f = CalendarFeed(name="Bookings", url="https://example.invalid/x.ics", default_door_ids=default,
                          lead_minutes=15, lag_minutes=10)
         s.add(f)
         s.flush()
-        s.add(CalendarRule(feed_id=f.id, field="location", contains="hall", door_ids="demo-hall,demo-side"))
-        s.add(CalendarRule(feed_id=f.id, field="title", contains="staff", door_ids="demo-office"))
+        s.add(CalendarRule(feed_id=f.id, field="location", contains="hall", door_ids="1:demo-hall,1:demo-side"))
+        s.add(CalendarRule(feed_id=f.id, field="title", contains="staff", door_ids="1:demo-office"))
         s.commit()
         return f.id
 
@@ -50,20 +51,21 @@ def doors_by_label():
 
 
 def test_rules_defaults_padding_and_idempotency():
-    fid = setup_feed(default="demo-front")
+    fid = setup_feed(default="1:demo-front")
     t = (now_local() + timedelta(days=2)).replace(hour=18, minute=0, second=0, microsecond=0)
     data = ics(event("a", "Smith Wedding", t, location="Fellowship Hall"),
                event("b", "Staff meeting in the Hall", t + timedelta(days=1), location="Fellowship Hall"),
                event("c", "Yoga", t + timedelta(days=2)))
     assert run(fid, data) == {"created": 3, "updated": 0, "removed": 0}
     d = doors_by_label()
-    assert d["Smith Wedding · Fellowship Hall"] == ["demo-hall", "demo-side"]
-    assert d["Staff meeting in the Hall · Fellowship Hall"] == ["demo-hall", "demo-office", "demo-side"]
-    assert d["Yoga"] == ["demo-front"]
+    assert d["Smith Wedding · Fellowship Hall"] == ["1:demo-hall", "1:demo-side"]
+    assert d["Staff meeting in the Hall · Fellowship Hall"] == ["1:demo-hall", "1:demo-office", "1:demo-side"]
+    assert d["Yoga"] == ["1:demo-front"]
     with session_scope() as s:
         sch = s.exec(select(Schedule).where(Schedule.label == "Yoga")).one()
         assert sch.start_local == t + timedelta(days=2, minutes=-15)
         assert sch.duration_minutes == 120 + 15 + 10
+        assert (sch.kind, sch.action) == ("override", "unlock")
 
     assert run(fid, data) == {"created": 0, "updated": 0, "removed": 0}
 
@@ -71,7 +73,7 @@ def test_rules_defaults_padding_and_idempotency():
     data2 = ics(event("a", "Smith Wedding", t, location="Room 2"),
                 event("c", "Yoga", t + timedelta(days=2), extra="STATUS:CANCELLED\r\n"))
     assert run(fid, data2) == {"created": 0, "updated": 1, "removed": 2}
-    assert doors_by_label() == {"Smith Wedding · Room 2": ["demo-front"]}
+    assert doors_by_label() == {"Smith Wedding · Room 2": ["1:demo-front"]}
 
 
 def test_unmatched_skipped_without_defaults_and_recurring_expanded():
@@ -85,7 +87,7 @@ def test_unmatched_skipped_without_defaults_and_recurring_expanded():
 
 
 def test_all_day_events_skipped_by_default():
-    fid = setup_feed(default="demo-front")
+    fid = setup_feed(default="1:demo-front")
     d = (now_local() + timedelta(days=3)).date()
     data = ics(f"BEGIN:VEVENT\r\nUID:ad\r\nSUMMARY:Holiday\r\nDTSTART;VALUE=DATE:{d:%Y%m%d}\r\nEND:VEVENT")
     assert run(fid, data)["created"] == 0

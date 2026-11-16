@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import door_chips %}
 {% block title %}{{ feed.name if feed else 'Connect a calendar' }} · OpnDoor{% endblock %}
 {% block content %}
 <div class="head">
@@ -24,7 +25,7 @@
     {% for p in preview %}
       <tr class="{{ '' if p.doors else 'gone' }}">
         <td><strong>{{ p.b.title }}</strong>{% if p.b.location %}<br><small class="muted">{{ p.b.location }}</small>{% endif %}</td>
-        <td>{{ p.b.start|day }}<br><small>{{ span(p.b.start, p.b.end) }}</small></td>
+        <td>{{ p.b.start_local|day }}<br><small>{{ span(p.b.start_local, p.b.end_local) }}</small></td>
         <td>{% for n in p.doors %}<span class="tag">{{ n }}</span> {% else %}<span class="muted">No matching door, skipped</span>{% endfor %}</td>
       </tr>
     {% endfor %}
@@ -48,6 +49,7 @@
 
   <fieldset>
     <legend>Rules: which doors does a booking unlock?</legend>
+    <p class="muted small">Each booking becomes an <strong>unlock override</strong>, so it opens the doors even outside their regular hours.</p>
     <p class="muted small">If a booking's text contains the words you enter, those doors unlock. A booking can match several rules. For example: location contains "Fellowship Hall" → Fellowship Hall + Side Door.</p>
     <div id="rules">
     {% set blank = 2 if rules else 3 %}
@@ -63,12 +65,7 @@
           <span>contains</span>
           <input name="rule_{{ i }}_contains" value="{{ r.contains if r else '' }}" placeholder="e.g. Gym">
         </div>
-        <div class="chips">
-        {% set rd = r.door_ids.split(',') if r else [] %}
-        {% for d in doors %}
-          <label class="chip"><input type="checkbox" name="rule_{{ i }}_doors" value="{{ d.id }}" {% if d.id in rd %}checked{% endif %}><span>{{ d.name }}</span></label>
-        {% endfor %}
-        </div>
+        {{ door_chips(doors, 'rule_' ~ i ~ '_doors', r.door_ids.split(',') if r else [], sites) }}
       </div>
     {% endfor %}
     </div>
@@ -78,11 +75,7 @@
   <fieldset>
     <legend>Bookings that match no rule</legend>
     <p class="muted small">Unlock these doors for any booking no rule matches. Leave all unticked to skip those bookings.</p>
-    <div class="chips">
-    {% for d in doors %}
-      <label class="chip"><input type="checkbox" name="default_doors" value="{{ d.id }}" {% if d.id in defaults %}checked{% endif %}><span>{{ d.name }}</span></label>
-    {% endfor %}
-    </div>
+    {{ door_chips(doors, 'default_doors', defaults, sites) }}
   </fieldset>
 
   <label class="check"><input type="checkbox" name="include_all_day" {% if feed and feed.include_all_day %}checked{% endif %}> Include all-day events <small class="muted">(unlocks the whole day)</small></label>

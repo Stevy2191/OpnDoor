@@ -1,6 +1,13 @@
-"""Turning schedules into concrete unlock windows."""
+"""Turning schedules into what a door should be doing, and when.
+
+Rules for a door at any moment:
+  1. If one or more *override* schedules are active, the most recently added
+     one decides: the door is unlocked or kept locked, and defaults are ignored.
+  2. Otherwise, if a *default* schedule is active, the door is unlocked.
+  3. Otherwise OpnDoor leaves the door on its normal UniFi rule (locked).
+"""
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from typing import Iterable, Optional
 
 from . import config
@@ -9,18 +16,18 @@ from .models import Schedule
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
-def to_utc(local_naive: datetime) -> datetime:
-    """Naive local (app tz) -> naive UTC."""
-    return local_naive.replace(tzinfo=config.TZ).astimezone(timezone.utc).replace(tzinfo=None)
+def to_utc(local_naive: datetime, tz: Optional[tzinfo] = None) -> datetime:
+    """Naive wall-clock in tz -> naive UTC."""
+    return local_naive.replace(tzinfo=tz or config.TZ).astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def to_local(utc_naive: datetime) -> datetime:
-    """Naive UTC -> naive local (app tz)."""
-    return utc_naive.replace(tzinfo=timezone.utc).astimezone(config.TZ).replace(tzinfo=None)
+def to_local(utc_naive: datetime, tz: Optional[tzinfo] = None) -> datetime:
+    """Naive UTC -> naive wall-clock in tz."""
+    return utc_naive.replace(tzinfo=timezone.utc).astimezone(tz or config.TZ).replace(tzinfo=None)
 
 
-def now_local() -> datetime:
-    return datetime.now(config.TZ).replace(tzinfo=None)
+def now_local(tz: Optional[tzinfo] = None) -> datetime:
+    return datetime.now(tz or config.TZ).replace(tzinfo=None)
 
 
 def weekdays_of(s: Schedule) -> list[int]:
@@ -30,36 +37,41 @@ def weekdays_of(s: Schedule) -> list[int]:
 def series_last_date(s: Schedule) -> date:
     if weekdays_of(s):
         return s.repeat_until or date.max
-    return s.start_local.date()
+    return (s.start_local + timedelta(minutes=s.duration_minutes)).date()
 
 
 def describe_repeat(s: Schedule) -> str:
     days = weekdays_of(s)
     if not days:
         return ""
-    names = "Every day" if len(days) == 7 else "Every " + ", ".join(WEEKDAYS[d] for d in days)
+    if len(days) == 7:
+        names = "Every day"
+    elif days == [0, 1, 2, 3, 4]:
+        names = "Weekdays"
+    elif days == [5, 6]:
+        names = "Weekends"
+    else:
+        names = "Every " + ", ".join(WEEKDAYS[d] for d in days)
     if s.repeat_until:
         names += f" until {s.repeat_until:%b %-d, %Y}"
     return names
 
 
+def describe_kind(s: Schedule) -> str:
+    if s.kind == "default":
+        return "Regular hours"
+    return "Override: keep locked" if s.action == "lock" else "Override: unlocked"
+
+
 @dataclass
 class Occurrence:
     schedule: Schedule
-    start: datetime  # naive local
-    end: datetime  # naive local
-
-    @property
-    def start_utc(self) -> datetime:
-        return to_utc(self.start)
-
-    @property
-    def end_utc(self) -> datetime:
-        return to_utc(self.end)
+    start: datetime  # naive wall-clock
+    end: datetime  # naive wall-clock
 
 
 def occurrences(s: Schedule, range_start: datetime, range_end: datetime) -> list[Occurrence]:
-    """Occurrences of s overlapping [range_start, range_end) (naive local times)."""
+    """Occurrences of s overlapping [range_start, range_end) (naive wall-clock)."""
     dur = timedelta(minutes=s.duration_minutes)
     days = weekdays_of(s)
     if not days:
@@ -90,20 +102,52 @@ def expand(schedules: Iterable[Schedule], range_start: datetime, range_end: date
     return out
 
 
-def unlocked_until(windows: list[tuple[datetime, datetime]], now: datetime) -> Optional[datetime]:
-    """If `now` falls inside a window, return when the (merged) unlock ends.
+@dataclass
+class Segment:
+    start: datetime  # naive UTC
+    end: datetime  # naive UTC
+    state: Optional[str]  # "unlock" | "lock" | None (normal UniFi rule)
+    schedule: Optional[Schedule]  # what decided it
 
-    Windows that overlap or touch are chained, so back-to-back bookings keep the
-    door open without a relock in between. All values are naive UTC.
-    """
-    until = max((end for start, end in windows if start <= now < end), default=None)
-    if until is None:
+
+def _decide(active: list[tuple[datetime, datetime, Schedule]]) -> tuple[Optional[str], Optional[Schedule]]:
+    overrides = [s for _, _, s in active if s.kind == "override"]
+    if overrides:
+        winner = max(overrides, key=lambda s: (s.id or 0))
+        return winner.action, winner
+    defaults = [s for _, _, s in active if s.kind == "default"]
+    if defaults:
+        return "unlock", min(defaults, key=lambda s: (s.id or 0))
+    return None, None
+
+
+def timeline(schedules: Iterable[Schedule], lo: datetime, hi: datetime, tz: tzinfo) -> list[Segment]:
+    """A door's state from lo to hi (naive UTC), as consecutive segments."""
+    pad = timedelta(days=2)
+    occ = [(to_utc(o.start, tz), to_utc(o.end, tz), o.schedule)
+           for o in expand(schedules, to_local(lo, tz) - pad, to_local(hi, tz) + pad)]
+    occ = [(s, e, sch) for s, e, sch in occ if s < hi and e > lo]
+    cuts = sorted({lo, hi} | {t for s, e, _ in occ for t in (s, e) if lo < t < hi})
+    segs: list[Segment] = []
+    for a, b in zip(cuts, cuts[1:]):
+        state, sched = _decide([x for x in occ if x[0] <= a < x[1]])
+        prev = segs[-1] if segs else None
+        if prev and prev.state == state and (prev.schedule and prev.schedule.id) == (sched and sched.id):
+            prev.end = b
+        else:
+            segs.append(Segment(a, b, state, sched))
+    return segs
+
+
+def current_plan(segs: list[Segment]) -> Optional[Segment]:
+    """The door's state right now (segs[0]) extended through following segments
+    in the same state, e.g. regular hours running straight into an event."""
+    if not segs or segs[0].state is None:
         return None
-    changed = True
-    while changed:
-        changed = False
-        for start, end in windows:
-            if start <= until < end:
-                until = end
-                changed = True
-    return until
+    first = segs[0]
+    until = first.end
+    for seg in segs[1:]:
+        if seg.state != first.state:
+            break
+        until = seg.end
+    return Segment(first.start, until, first.state, first.schedule)

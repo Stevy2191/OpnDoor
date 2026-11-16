@@ -1,8 +1,9 @@
 """Database tables.
 
-Times: schedule start times are stored as naive *local* datetimes in the app
-timezone (config.TZ), so a weekly 9:00 schedule stays at 9:00 across DST
-changes. Everything else (audit log, door state) is stored as naive UTC.
+Times: schedule start times are stored as naive wall-clock datetimes and are
+read in the timezone of each door's site, so a weekly 9:00 schedule stays at
+9:00 local time across DST changes and across sites. Everything else (audit
+log, door state, sync times) is stored as naive UTC.
 """
 from datetime import date, datetime, timezone
 from typing import Optional
@@ -24,8 +25,29 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class Site(SQLModel, table=True):
+    """One UniFi Access console (controller)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    host: str = ""  # https://192.168.1.1:12445, or "demo" for a fake console
+    token: str = ""
+    verify_tls: bool = False
+    timezone: str = "America/Chicago"
+    enabled: bool = True
+    last_sync_at: Optional[datetime] = None
+    last_sync_status: str = ""
+    created_at: datetime = Field(default_factory=utcnow)
+
+    @property
+    def is_demo(self) -> bool:
+        return self.host.strip().lower() in {"", "demo"}
+
+
 class Door(SQLModel, table=True):
-    id: str = Field(primary_key=True)  # UniFi Access door id
+    id: str = Field(primary_key=True)  # "<site_id>:<unifi door id>"
+    site_id: int = Field(foreign_key="site.id", index=True)
+    remote_id: str  # UniFi Access door id on that console
     name: str
     full_name: str = ""
     present: bool = True  # False once the door disappears from the controller
@@ -40,9 +62,19 @@ class UserDoor(SQLModel, table=True):
 
 
 class Schedule(SQLModel, table=True):
+    """A door schedule.
+
+    kind="default":  the door's regular unlocked hours (always unlock).
+    kind="override": while active, replaces the default entirely and sets the
+                     door to `action` ("unlock" or "lock"). Newest override wins.
+    Times are wall-clock, interpreted in each door's site timezone.
+    """
+
     id: Optional[int] = Field(default=None, primary_key=True)
     label: str
-    start_local: datetime  # first occurrence start, naive, app timezone
+    kind: str = "override"  # default | override
+    action: str = "unlock"  # unlock | lock (overrides only)
+    start_local: datetime  # first occurrence start, naive wall-clock time
     duration_minutes: int
     # Weekly repeat: comma-separated weekday numbers (0=Mon .. 6=Sun); "" = one-off.
     repeat_weekdays: str = ""
@@ -64,7 +96,9 @@ class DoorState(SQLModel, table=True):
     """What OpnDoor last told the controller for a door."""
 
     door_id: str = Field(primary_key=True)
-    unlocked_until: Optional[datetime] = None  # UTC; None = we hold no unlock
+    mode: str = ""  # "unlock" | "lock" | "" (door on its normal UniFi rule)
+    until: Optional[datetime] = None  # UTC end of the current mode
+    schedule_id: Optional[int] = None  # schedule that put the door in this mode
     applied_at: Optional[datetime] = None
     last_error: str = ""
 

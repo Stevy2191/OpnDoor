@@ -12,11 +12,11 @@ from sqlmodel import Session, func, select
 from . import calendars, config, engine
 from .auth import (AdminRequired, LoginRequired, allowed_door_ids, current_user,
                    hash_password, verify_password)
-from .db import get_session
+from .db import get_session, session_scope
 from .models import (AuditLog, CalendarFeed, CalendarRule, Door, DoorState, Schedule,
-                     ScheduleDoor, User, UserDoor, utcnow)
-from .schedules import (WEEKDAYS, describe_repeat, expand, now_local, series_last_date,
-                        to_local, weekdays_of)
+                     ScheduleDoor, Site, User, UserDoor, utcnow)
+from .schedules import (WEEKDAYS, describe_kind, describe_repeat, expand, now_local,
+                        series_last_date, to_local, weekdays_of)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -44,8 +44,8 @@ def _span(start: datetime, end: datetime) -> str:
 
 
 templates.env.filters.update(time=_time, day=_day, local=to_local)
-templates.env.globals.update(span=_span, minutes=lambda m: timedelta(minutes=m), WEEKDAYS=WEEKDAYS, describe_repeat=describe_repeat,
-                             config=config)
+templates.env.globals.update(span=_span, minutes=lambda m: timedelta(minutes=m), WEEKDAYS=WEEKDAYS,
+                             describe_repeat=describe_repeat, describe_kind=describe_kind, config=config)
 
 
 # ---------- helpers ----------
@@ -60,7 +60,11 @@ def redirect(url: str) -> RedirectResponse:
 
 def render(request: Request, name: str, user: Optional[User], **ctx) -> HTMLResponse:
     msgs = request.session.pop("flash", [])
-    return templates.TemplateResponse(request, name, {"user": user, "flashes": msgs, **ctx})
+    with session_scope() as s:
+        sites = {x.id: x for x in s.exec(select(Site).order_by(Site.name)).all()}
+    demo = config.DRY_RUN or any(x.is_demo for x in sites.values())
+    ctx.setdefault("sites", sites)
+    return templates.TemplateResponse(request, name, {"user": user, "flashes": msgs, "demo": demo, **ctx})
 
 
 def require_user(request: Request, session: Session = Depends(get_session)) -> User:
@@ -78,8 +82,32 @@ def require_admin(user: User = Depends(require_user)) -> User:
 
 def doors_for(session: Session, user: User) -> list[Door]:
     allowed = allowed_door_ids(session, user)
-    doors = session.exec(select(Door).where(Door.present == True).order_by(Door.name)).all()  # noqa: E712
-    return [d for d in doors if d.id in allowed]
+    return [d for d in all_doors(session) if d.id in allowed]
+
+
+def all_doors(session: Session) -> list[Door]:
+    """Present doors, ordered by site then name."""
+    return list(session.exec(select(Door).where(Door.present == True)  # noqa: E712
+                             .order_by(Door.site_id, Door.name)).all())
+
+
+def door_status(session: Session, doors: list[Door]) -> dict[str, dict]:
+    """door_id -> {mode, until (site-local), label, error} for doors OpnDoor is currently holding."""
+    states = {st.door_id: st for st in session.exec(select(DoorState)).all()}
+    sites = {x.id: x for x in session.exec(select(Site)).all()}
+    now = utcnow()
+    out = {}
+    for d in doors:
+        st = states.get(d.id)
+        if not st:
+            continue
+        info = {"mode": "", "error": st.last_error}
+        if st.mode == "lock" or (st.mode == "unlock" and st.until and st.until > now):
+            sched = session.get(Schedule, st.schedule_id) if st.schedule_id else None
+            info.update(mode=st.mode, label=sched.label if sched else "",
+                        until=to_local(st.until, engine.site_tz(sites.get(d.site_id))) if st.until else None)
+        out[d.id] = info
+    return out
 
 
 def schedule_doors(session: Session, ids: list[int]) -> dict[int, list[str]]:
@@ -106,6 +134,15 @@ def can_edit(session: Session, user: User, sched: Schedule, door_ids: list[str])
     if sched.source == "calendar":
         return False
     return user.is_admin or set(door_ids) <= allowed_door_ids(session, user)
+
+
+def group_by_site(session: Session, door_ids: list[str]) -> dict[int, list[str]]:
+    out: dict[int, list[str]] = {}
+    for d in door_ids:
+        door = session.get(Door, d)
+        if door:
+            out.setdefault(door.site_id, []).append(d)
+    return out
 
 
 def kick_reconcile(bg: BackgroundTasks) -> None:
@@ -139,12 +176,16 @@ def setup(request: Request, name: str = Form(...), email: str = Form(...), passw
     engine.audit(session, "user.setup", f"Created first admin {user.email}", user=user)
     session.commit()
     request.session["uid"] = user.id
-    try:
-        engine.sync_doors()
-        flash(request, "Welcome! Your doors were loaded from UniFi Access.")
-    except Exception as e:
-        flash(request, f"Account created, but loading doors failed: {e}", "error")
+    engine.ensure_sites()
+    engine.sync_doors()
+    flash(request, "Welcome! Add your UniFi Access consoles under Sites." if demo_only(session)
+          else "Welcome! Your doors were loaded from UniFi Access.")
     return redirect("/")
+
+
+def demo_only(session: Session) -> bool:
+    sites = session.exec(select(Site)).all()
+    return bool(sites) and all(x.is_demo for x in sites)
 
 
 @router.get("/login")
@@ -218,19 +259,15 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
         return {"o": o, "doors": [door_names.get(d, d) for d in ids],
                 "editable": can_edit(session, user, o.schedule, sd[o.schedule.id])}
 
+    occ = [o for o in occ if o.schedule.kind == "override"]  # regular hours live on each door's page
     happening = [entry(o) for o in occ if o.start <= now]
     upcoming: dict[date, list] = {}
     for o in occ:
         if o.start > now:
             upcoming.setdefault(o.start.date(), []).append(entry(o))
 
-    states = {s.door_id: s for s in session.exec(select(DoorState)).all()}
-    now_utc = utcnow()
-    open_now = {d.id: to_local(states[d.id].unlocked_until) for d in doors
-                if d.id in states and states[d.id].unlocked_until and states[d.id].unlocked_until > now_utc}
-    errors = {d.id: states[d.id].last_error for d in doors if d.id in states and states[d.id].last_error}
     return render(request, "dashboard.html", user, doors=doors, happening=happening, upcoming=upcoming,
-                  open_now=open_now, errors=errors)
+                  status=door_status(session, doors))
 
 
 @router.post("/quick-unlock")
@@ -243,13 +280,13 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
         flash(request, "Pick at least one door.", "error")
         return redirect("/")
     minutes = max(1, min(minutes, 12 * 60))
-    start = now_local().replace(second=0, microsecond=0)
-    sched = Schedule(label=f"Quick unlock by {user.name or user.email}", start_local=start,
-                     duration_minutes=minutes + 1, source="quick", created_by=user.id)
-    session.add(sched)
-    session.flush()
-    for d in door_ids:
-        session.add(ScheduleDoor(schedule_id=sched.id, door_id=d))
+    for site_id, ids in group_by_site(session, door_ids).items():
+        start = now_local(engine.site_tz(session.get(Site, site_id))).replace(second=0, microsecond=0)
+        sched = Schedule(label=f"Unlock now by {user.name or user.email}", kind="override", action="unlock",
+                         start_local=start, duration_minutes=minutes + 1, source="quick", created_by=user.id)
+        session.add(sched)
+        session.flush()
+        calendars.set_schedule_doors(session, sched.id, ids)
     names = ", ".join(session.get(Door, d).name for d in door_ids)
     engine.audit(session, "schedule.quick", f"{names} for {minutes} min", user=user)
     session.commit()
@@ -270,27 +307,38 @@ def schedules_list(request: Request, user: User = Depends(require_user), session
     feeds = {f.id: f.name for f in session.exec(select(CalendarFeed)).all()}
     rows = [{"s": s, "doors": [names.get(d, d) for d in sd[s.id]],
              "editable": can_edit(session, user, s, sd[s.id]), "feed": feeds.get(s.feed_id)} for s in scheds]
-    return render(request, "schedules.html", user, rows=rows)
+    return render(request, "schedules.html", user,
+                  defaults=[r for r in rows if r["s"].kind == "default"],
+                  overrides=[r for r in rows if r["s"].kind != "default"])
 
 
-def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str]):
+def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kind: str = "override"):
     now = now_local()
     if sched:
+        kind = sched.kind
         start = sched.start_local
         end = start + timedelta(minutes=sched.duration_minutes)
+        days = weekdays_of(sched)
+    elif kind == "default":
+        start = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        end = start.replace(hour=17)
+        days = [0, 1, 2, 3, 4]
     else:
         start = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
         end = start + timedelta(hours=2)
-    return dict(sched=sched, doors=doors_for(session, user), selected=set(selected),
+        days = []
+    return dict(sched=sched, doors=doors_for(session, user), selected=set(selected), kind=kind,
+                action=sched.action if sched else "unlock",
                 date_val=start.date().isoformat(), start_val=start.strftime("%H:%M"),
-                end_val=end.strftime("%H:%M"), days=weekdays_of(sched) if sched else [])
+                end_val=end.strftime("%H:%M"), days=days)
 
 
 @router.get("/schedules/new")
-def schedule_new(request: Request, door: list[str] = Query([]), user: User = Depends(require_user),
-                 session: Session = Depends(get_session)):
-    """`?door=a&door=b` preselects doors (from the Doors page or a door's Schedule link)."""
-    return render(request, "schedule_form.html", user, **_form_ctx(session, user, None, door))
+def schedule_new(request: Request, door: list[str] = Query([]), kind: str = "override",
+                 user: User = Depends(require_user), session: Session = Depends(get_session)):
+    """`?door=a&door=b` preselects doors; `?kind=default` starts a regular-hours schedule."""
+    kind = "default" if kind == "default" else "override"
+    return render(request, "schedule_form.html", user, **_form_ctx(session, user, None, door, kind))
 
 
 @router.get("/schedules/{sid}")
@@ -307,8 +355,15 @@ def schedule_edit(request: Request, sid: int, user: User = Depends(require_user)
     return render(request, "schedule_form.html", user, **_form_ctx(session, user, sched, doors))
 
 
-def _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays, until, allowed):
+def _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays, until, allowed,
+                    kind="override", action="unlock"):
     errors = []
+    kind = "default" if kind == "default" else "override"
+    action = "lock" if kind == "override" and action == "lock" else "unlock"
+    if kind == "default":
+        repeat = "weekly"
+        if not [w for w in weekdays if w.isdigit()]:
+            errors.append("Pick the days for the regular hours.")
     label = label.strip()
     if not label:
         errors.append("Give the schedule a name.")
@@ -337,7 +392,7 @@ def _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays,
                 errors.append("Repeat-until date is before the start date.")
     if not days and end_dt < now_local():
         errors.append("That time has already passed.")
-    return dict(label=label, door_ids=door_ids, start_local=start_dt,
+    return dict(label=label, kind=kind, action=action, door_ids=door_ids, start_local=start_dt,
                 duration_minutes=int((end_dt - start_dt).total_seconds() // 60),
                 repeat_weekdays=",".join(map(str, days)), repeat_until=until_d), errors
 
@@ -348,6 +403,7 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
                   label: str = Form(""), door_ids: list[str] = Form([]), day: str = Form(...),
                   start: str = Form(...), end: str = Form(...), repeat: str = Form("none"),
                   weekdays: list[str] = Form([]), until: str = Form(""), notes: str = Form(""),
+                  kind: str = Form("override"), action: str = Form("unlock"),
                   user: User = Depends(require_user), session: Session = Depends(get_session)):
     allowed = allowed_door_ids(session, user)
     sched = None
@@ -356,7 +412,8 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
         if not sched or not can_edit(session, user, sched, schedule_doors(session, [sid])[sid]):
             flash(request, "You can't edit that schedule.", "error")
             return redirect("/schedules")
-    data, errors = _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays, until, allowed)
+    data, errors = _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays, until, allowed,
+                                   kind, action)
     if errors:
         for e in errors:
             flash(request, e, "error")
@@ -376,7 +433,7 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
     calendars.set_schedule_doors(session, sched.id, ids)
     names = ", ".join(session.get(Door, d).name for d in ids)
     end_dt = sched.start_local + timedelta(minutes=sched.duration_minutes)
-    engine.audit(session, action, f"“{sched.label}” {_day(sched.start_local)} {_span(sched.start_local, end_dt)} · {names}"
+    engine.audit(session, action, f"{describe_kind(sched)} “{sched.label}” {_day(sched.start_local)} {_span(sched.start_local, end_dt)} · {names}"
                  + (f" · {describe_repeat(sched)}" if sched.repeat_weekdays else ""), user=user)
     session.commit()
     kick_reconcile(bg)
@@ -402,26 +459,136 @@ def schedule_delete(request: Request, sid: int, bg: BackgroundTasks, user: User 
 @router.get("/doors")
 def doors_page(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
     if user.is_admin:
-        doors = session.exec(select(Door).order_by(Door.present.desc(), Door.name)).all()
+        doors = list(session.exec(select(Door).order_by(Door.site_id, Door.name)).all())
     else:
         doors = doors_for(session, user)
     counts = dict(session.exec(select(UserDoor.door_id, func.count()).group_by(UserDoor.door_id)).all())
-    states = {s.door_id: s for s in session.exec(select(DoorState)).all()}
-    now_utc = utcnow()
-    open_now = {k: to_local(v.unlocked_until) for k, v in states.items()
-                if v.unlocked_until and v.unlocked_until > now_utc}
-    return render(request, "doors.html", user, doors=doors, counts=counts, open_now=open_now,
-                  errors={k: v.last_error for k, v in states.items() if v.last_error})
+    has_default = set(session.exec(select(ScheduleDoor.door_id).join(Schedule, Schedule.id == ScheduleDoor.schedule_id)
+                                   .where(Schedule.kind == "default")).all())
+    return render(request, "doors.html", user, doors=doors, counts=counts, status=door_status(session, doors),
+                  has_default=has_default)
 
 
 @router.post("/doors/sync")
 def doors_sync(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
-    try:
-        n = engine.sync_doors()
-        flash(request, f"Loaded {n} doors from UniFi Access.")
-    except Exception as e:
-        flash(request, f"Couldn't load doors: {e}", "error")
+    engine.sync_doors()
+    for site in session.exec(select(Site).where(Site.enabled == True)).all():  # noqa: E712
+        session.refresh(site)
+        flash(request, f"{site.name}: {site.last_sync_status}", "error" if site.last_sync_status.startswith("Error") else "ok")
     return redirect("/doors")
+
+
+@router.get("/doors/{door_id}")
+def door_page(request: Request, door_id: str, user: User = Depends(require_user),
+              session: Session = Depends(get_session)):
+    door = session.get(Door, door_id)
+    if not door or door_id not in allowed_door_ids(session, user):
+        flash(request, "That door isn't available to you.", "error")
+        return redirect("/doors")
+    site = session.get(Site, door.site_id)
+    tz = engine.site_tz(site)
+    scheds = engine.door_schedules(session, [door.id]).get(door.id, [])
+    now = utcnow()
+    days: dict[date, list] = {}
+    for seg in engine.door_timeline(session, door, now, now + timedelta(days=7), scheds):
+        start, end = to_local(seg.start, tz), to_local(seg.end, tz)
+        days.setdefault(start.date(), []).append({"seg": seg, "start": start, "end": end})
+    sd = schedule_doors(session, [x.id for x in scheds])
+    today = now_local(tz).date()
+    listed = sorted([x for x in scheds if series_last_date(x) >= today - timedelta(days=1)],
+                    key=lambda x: (x.kind != "default", x.start_local))
+    rows = [{"s": x, "editable": can_edit(session, user, x, sd[x.id])} for x in listed]
+    return render(request, "door.html", user, door=door, site=site, days=days, rows=rows,
+                  status=door_status(session, [door]).get(door.id, {}))
+
+
+# ---------- sites (admin) ----------
+
+COMMON_TZ = ["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles",
+             "America/Anchorage", "Pacific/Honolulu", "America/Toronto", "Europe/London", "Europe/Berlin",
+             "Australia/Sydney", "UTC"]
+
+
+@router.get("/sites")
+def sites_page(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
+    counts = dict(session.exec(select(Door.site_id, func.count()).where(Door.present == True)  # noqa: E712
+                               .group_by(Door.site_id)).all())
+    return render(request, "sites.html", user, counts=counts)
+
+
+@router.get("/sites/{site_id}")
+@router.get("/sites/new")
+def site_form(request: Request, site_id: Optional[int] = None, user: User = Depends(require_admin),
+              session: Session = Depends(get_session)):
+    site = session.get(Site, site_id) if site_id else None
+    return render(request, "site_form.html", user, site=site, timezones=COMMON_TZ)
+
+
+@router.post("/sites")
+@router.post("/sites/{site_id}")
+def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = None, name: str = Form(...),
+              host: str = Form(""), token: str = Form(""), timezone: str = Form("America/Chicago"),
+              verify_tls: bool = Form(False), enabled: bool = Form(False), user: User = Depends(require_admin),
+              session: Session = Depends(get_session)):
+    from zoneinfo import ZoneInfo
+    back = f"/sites/{site_id}" if site_id else "/sites/new"
+    try:
+        ZoneInfo(timezone.strip())
+    except Exception:
+        flash(request, f"Unknown timezone “{timezone}”. Use a name like America/Chicago.", "error")
+        return redirect(back)
+    host = host.strip().rstrip("/")
+    if host and host != "demo" and not host.startswith(("http://", "https://")):
+        host = "https://" + host
+    site = session.get(Site, site_id) if site_id else Site(name=name)
+    if not site_id and not token.strip() and host != "demo":
+        flash(request, "Enter the console's API token.", "error")
+        return redirect(back)
+    site.name, site.host, site.timezone = name.strip(), host or "demo", timezone.strip()
+    site.verify_tls, site.enabled = verify_tls, enabled if site_id else True
+    if token.strip():
+        site.token = token.strip()
+    session.add(site)
+    engine.audit(session, "site.update" if site_id else "site.create", f"{site.name} ({site.host})", user=user)
+    session.commit()
+    status = engine.sync_site(site.id) if site.enabled else "Saved (disabled)."
+    kick_reconcile(bg)
+    flash(request, f"Saved {site.name}. {status}", "error" if status.startswith("Error") else "ok")
+    return redirect(f"/sites/{site.id}")
+
+
+@router.post("/sites/{site_id}/delete")
+def site_delete(request: Request, site_id: int, user: User = Depends(require_admin),
+                session: Session = Depends(get_session)):
+    site = session.get(Site, site_id)
+    if not site:
+        return redirect("/sites")
+    door_ids = list(session.exec(select(Door.id).where(Door.site_id == site_id)).all())
+    for row in session.exec(select(UserDoor).where(UserDoor.door_id.in_(door_ids))).all():
+        session.delete(row)
+    touched = set()
+    for row in session.exec(select(ScheduleDoor).where(ScheduleDoor.door_id.in_(door_ids))).all():
+        touched.add(row.schedule_id)
+        session.delete(row)
+    for row in session.exec(select(DoorState).where(DoorState.door_id.in_(door_ids))).all():
+        if row.mode:  # release anything OpnDoor is holding on that console
+            try:
+                from . import unifi
+                unifi.get_client(site).reset(session.get(Door, row.door_id).remote_id)
+            except Exception as e:
+                flash(request, f"Couldn't reset {row.door_id} on the console: {e}", "error")
+        session.delete(row)
+    session.flush()
+    for sid in touched:  # schedules left with no doors
+        if not session.exec(select(ScheduleDoor).where(ScheduleDoor.schedule_id == sid)).first():
+            session.delete(session.get(Schedule, sid))
+    for d in door_ids:
+        session.delete(session.get(Door, d))
+    engine.audit(session, "site.delete", site.name, user=user)
+    session.delete(site)
+    session.commit()
+    flash(request, f"Removed {site.name} and its doors. Doors were left on their normal UniFi rules.")
+    return redirect("/sites")
 
 
 # ---------- users (admin) ----------
@@ -442,7 +609,7 @@ def user_form(request: Request, uid: Optional[int] = None, user: User = Depends(
               session: Session = Depends(get_session)):
     target = session.get(User, uid) if uid else None
     selected = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == uid)).all()) if uid else set()
-    doors = session.exec(select(Door).where(Door.present == True).order_by(Door.name)).all()  # noqa: E712
+    doors = all_doors(session)
     return render(request, "user_form.html", user, target=target, doors=doors, selected=selected)
 
 
@@ -507,7 +674,7 @@ def calendar_form(request: Request, fid: Optional[int] = None, user: User = Depe
     feed = session.get(CalendarFeed, fid) if fid else None
     rules = session.exec(select(CalendarRule).where(CalendarRule.feed_id == fid)
                          .order_by(CalendarRule.position)).all() if fid else []
-    doors = session.exec(select(Door).where(Door.present == True).order_by(Door.name)).all()  # noqa: E712
+    doors = all_doors(session)
     upcoming = []
     if feed:
         now = now_local()
@@ -589,7 +756,7 @@ def calendar_preview(request: Request, fid: int, user: User = Depends(require_ad
     except Exception as e:
         flash(request, f"Couldn't read the calendar: {e}", "error")
         return redirect(f"/calendars/{fid}")
-    doors = session.exec(select(Door).where(Door.present == True).order_by(Door.name)).all()  # noqa: E712
+    doors = all_doors(session)
     names = {d.id: d.name for d in doors}
     preview = [{"b": b, "doors": [names[d] for d in b.door_ids]} for b in bookings]
     rules = session.exec(select(CalendarRule).where(CalendarRule.feed_id == fid).order_by(CalendarRule.position)).all()

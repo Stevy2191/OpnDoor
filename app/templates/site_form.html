@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ site.name if site else 'Add a site' }} · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<p class="small"><a href="/sites">← Sites</a></p>
+<h1>{{ site.name if site else 'Add a site' }}</h1>
+{% if site and site.last_sync_status %}
+<p class="small {{ 'err' if site.last_sync_status.startswith('Error') else 'muted' }}">Last check: {{ site.last_sync_status }}</p>
+{% endif %}
+<form method="post" action="/sites{% if site %}/{{ site.id }}{% endif %}" class="card stack">
+  <label>Site name <input name="name" value="{{ site.name if site else '' }}" placeholder="e.g. Main Campus" required></label>
+  <label>Console address
+    <input name="host" value="{{ site.host if site else '' }}" placeholder="https://192.168.1.1:12445" {% if not site %}required{% endif %}>
+    <small class="muted">The UniFi Access API, usually port 12445 on the console. Enter <code>demo</code> for a pretend console.</small>
+  </label>
+  <label>API token
+    <input type="password" name="token" autocomplete="off" placeholder="{{ 'Saved: leave blank to keep' if site and site.token else 'Paste the token' }}">
+    <small class="muted">In UniFi Access: Settings → General → Advanced → API Token. Give it permission to view and operate doors.</small>
+  </label>
+  <label>Timezone
+    <input name="timezone" list="tzs" value="{{ site.timezone if site else config.TZ_NAME }}" required>
+    <datalist id="tzs">{% for tz in timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
+  </label>
+  <label class="check"><input type="checkbox" name="verify_tls" value="true" {% if site and site.verify_tls %}checked{% endif %}>
+    Verify the console's HTTPS certificate <small class="muted">(leave off for the console's built-in self-signed certificate)</small></label>
+  {% if site %}
+  <label class="check"><input type="checkbox" name="enabled" value="true" {% if site.enabled %}checked{% endif %}> Active</label>
+  {% endif %}
+  <div class="btnrow">
+    <button class="primary">{{ 'Save and test' if site else 'Add and load doors' }}</button>
+    <a class="button" href="/sites">Cancel</a>
+  </div>
+</form>
+{% if site %}
+<form method="post" action="/sites/{{ site.id }}/delete" onsubmit="return confirm('Remove {{ site.name|e }}? Its doors, their schedules and user access are removed from OpnDoor. Doors go back to their normal UniFi rules.')">
+  <button class="danger">Remove site</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -20,8 +20,8 @@ from sqlmodel import Session, select
 
 from . import config
 from .db import session_scope
-from .engine import audit
-from .models import CalendarFeed, CalendarRule, Door, Schedule, ScheduleDoor, utcnow
+from .engine import audit, site_tz
+from .models import CalendarFeed, CalendarRule, Door, Schedule, ScheduleDoor, Site, utcnow
 from .schedules import now_local
 
 log = logging.getLogger(__name__)
@@ -33,20 +33,25 @@ class Booking:
     title: str
     location: str
     description: str
-    start: datetime  # naive local
-    end: datetime  # naive local
+    start: datetime  # tz-aware, or naive for floating/all-day times
+    end: datetime
     all_day: bool = False
     door_ids: list[str] = field(default_factory=list)
+    start_local: Optional[datetime] = None  # app-timezone wall clock, for display
+    end_local: Optional[datetime] = None
 
 
 def split_ids(s: str) -> list[str]:
     return [x for x in (p.strip() for p in s.split(",")) if x]
 
 
+def wall(dt: datetime, tz) -> datetime:
+    """Booking time as naive wall-clock in tz (floating/all-day times stay as written)."""
+    return dt.astimezone(tz).replace(tzinfo=None) if dt.tzinfo else dt
+
+
 def _local(v) -> tuple[datetime, bool]:
     if isinstance(v, datetime):
-        if v.tzinfo is not None:
-            v = v.astimezone(config.TZ).replace(tzinfo=None)
         return v, False
     if isinstance(v, date):
         return datetime.combine(v, datetime.min.time()), True
@@ -109,6 +114,8 @@ def plan_feed(session: Session, feed: CalendarFeed, ics: bytes) -> list[Booking]
     """Parse a feed and work out which doors each booking unlocks (no DB writes)."""
     now = now_local()
     bookings = parse_bookings(ics, now - timedelta(days=1), now + timedelta(days=config.CALENDAR_LOOKAHEAD_DAYS))
+    for b in bookings:  # for display in the preview
+        b.start_local, b.end_local = wall(b.start, config.TZ), wall(b.end, config.TZ)
     rules = session.exec(select(CalendarRule).where(CalendarRule.feed_id == feed.id)).all()
     known = set(session.exec(select(Door.id)).all())
     defaults = split_ids(feed.default_door_ids)
@@ -124,30 +131,38 @@ def apply_feed(session: Session, feed: CalendarFeed, bookings: list[Booking]) ->
     }
     seen = set()
     created = updated = 0
+    door_site = dict(session.exec(select(Door.id, Door.site_id)).all())
+    tzs = {site.id: site_tz(site) for site in session.exec(select(Site)).all()}
     for b in bookings:
-        if not b.door_ids:
-            continue
-        seen.add(b.uid)
-        start = b.start - timedelta(minutes=feed.lead_minutes)
-        duration = int((b.end - b.start).total_seconds() // 60) + feed.lead_minutes + feed.lag_minutes
-        label = b.title + (f" · {b.location}" if b.location else "")
-        sched = existing.get(b.uid)
-        if sched is None:
-            sched = Schedule(label=label, start_local=start, duration_minutes=duration, source="calendar",
-                             feed_id=feed.id, source_uid=b.uid, notes=f"From calendar “{feed.name}”")
-            session.add(sched)
-            session.flush()
-            set_schedule_doors(session, sched.id, b.door_ids)
-            created += 1
-            continue
-        changed = False
-        if (sched.label, sched.start_local, sched.duration_minutes) != (label, start, duration):
-            sched.label, sched.start_local, sched.duration_minutes = label, start, duration
-            session.add(sched)
-            changed = True
-        if set_schedule_doors(session, sched.id, b.door_ids):
-            changed = True
-        updated += changed
+        by_site: dict[int, list[str]] = {}
+        for d in b.door_ids:
+            by_site.setdefault(door_site[d], []).append(d)
+        for site_id, door_ids in by_site.items():
+            uid = f"{b.uid}#site{site_id}"
+            seen.add(uid)
+            tz = tzs.get(site_id, config.TZ)
+            b_start, b_end = wall(b.start, tz), wall(b.end, tz)
+            start = b_start - timedelta(minutes=feed.lead_minutes)
+            duration = int((b_end - b_start).total_seconds() // 60) + feed.lead_minutes + feed.lag_minutes
+            label = b.title + (f" · {b.location}" if b.location else "")
+            sched = existing.get(uid)
+            if sched is None:
+                sched = Schedule(label=label, kind="override", action="unlock", start_local=start,
+                                 duration_minutes=duration, source="calendar", feed_id=feed.id, source_uid=uid,
+                                 notes=f"From calendar “{feed.name}”")
+                session.add(sched)
+                session.flush()
+                set_schedule_doors(session, sched.id, door_ids)
+                created += 1
+                continue
+            changed = False
+            if (sched.label, sched.start_local, sched.duration_minutes) != (label, start, duration):
+                sched.label, sched.start_local, sched.duration_minutes = label, start, duration
+                session.add(sched)
+                changed = True
+            if set_schedule_doors(session, sched.id, door_ids):
+                changed = True
+            updated += changed
 
     # Bookings that vanished from the calendar (cancelled/moved): drop unless already over.
     now = now_local()
