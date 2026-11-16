@@ -31,6 +31,7 @@ ACTIONS = {
     "site.update": ("site", "Changed a site"),
     "site.delete": ("site", "Removed a site"),
     "site.error": ("site", "Problem reaching a site"),
+    "building.update": ("site", "Changed buildings"),
     "calendar.create": ("calendar", "Connected a calendar"),
     "calendar.update": ("calendar", "Changed a calendar"),
     "calendar.delete": ("calendar", "Disconnected a calendar"),

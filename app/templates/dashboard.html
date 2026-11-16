@@ -113,13 +113,21 @@
       <h2>Unlock now</h2>
       <button type="button" class="link" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
     </div>
-    <input type="search" class="doorsearch" placeholder="Search {{ doors|length }} doors…" autocomplete="off" aria-label="Search doors">
+    <input type="search" class="doorsearch" placeholder="Search {{ doors|length }} doors or buildings…" autocomplete="off" aria-label="Search doors">
     <div class="doorpick">
-      {% for site_id, group in doors|groupby('site_id') %}
-        {% if sites|length > 1 and not current_site %}<div class="sitehead">{{ sites[site_id].name }}</div>{% endif %}
-        {% for d in group %}
-        <label class="pickrow"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if doors|length == 1 %}checked{% endif %}>
-          <span>{{ d.name }}</span><small class="muted">{{ d.full_name }}</small></label>
+      {% for site_id, groups in door_tree(doors) %}
+        {% set sname = sites[site_id].name if site_id in sites else '' %}
+        {% if sites|length > 1 and not current_site %}<div class="sitehead" data-head>{{ sname }}</div>{% endif %}
+        {% set has_b = groups|length > 1 or groups[0][0] %}
+        {% for b, group in groups %}
+          <div class="pickgroup" data-group>
+          {% if has_b %}<div class="bhead" data-head><span class="bname">{{ b.name if b else 'Other doors' }}</span>
+            {% if group|length > 1 %}<label class="ball"><input type="checkbox" class="groupall"> All {{ group|length }}</label>{% endif %}</div>{% endif %}
+          {% for d in group %}
+          <label class="pickrow" data-find="{{ (d.name ~ ' ' ~ (b.name if b else '') ~ ' ' ~ sname)|lower }}"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if doors|length == 1 %}checked{% endif %}>
+            <span>{{ d.name }}</span></label>
+          {% endfor %}
+          </div>
         {% endfor %}
       {% endfor %}
       <p class="muted nomatch" hidden>No doors match.</p>
@@ -138,12 +146,13 @@
 (function () {
   const dlg = document.getElementById('unlockdlg'); if (!dlg) return;
   const q = dlg.querySelector('.doorsearch'), rows = [...dlg.querySelectorAll('.pickrow')];
-  const heads = [...dlg.querySelectorAll('.sitehead')], none = dlg.querySelector('.nomatch'), picked = dlg.querySelector('.picked');
+  const none = dlg.querySelector('.nomatch'), picked = dlg.querySelector('.picked');
   function filter() {
     const t = q.value.trim().toLowerCase(); let shown = 0;
-    rows.forEach(r => { const hit = !t || r.textContent.toLowerCase().includes(t); r.hidden = !hit; shown += hit; });
-    heads.forEach(h => { let n = h.nextElementSibling, any = false;
-      while (n && n.classList.contains('pickrow')) { any = any || !n.hidden; n = n.nextElementSibling; } h.hidden = !any; });
+    rows.forEach(r => { const hit = !t || r.dataset.find.includes(t); r.hidden = !hit; shown += hit; });
+    dlg.querySelectorAll('.pickgroup').forEach(g => { g.hidden = !g.querySelector('.pickrow:not([hidden])'); });
+    dlg.querySelectorAll('.sitehead').forEach(h => { let n = h.nextElementSibling, any = false;
+      while (n && n.classList.contains('pickgroup')) { any = any || !n.hidden; n = n.nextElementSibling; } h.hidden = !any; });
     none.hidden = shown > 0;
   }
   function count() {
@@ -151,7 +160,7 @@
     picked.textContent = n ? n + (n === 1 ? ' door picked' : ' doors picked') : 'Pick one or more doors';
   }
   q.addEventListener('input', filter);
-  dlg.addEventListener('change', count);
+  dlg.addEventListener('change', () => setTimeout(count));
   dlg.querySelector('form').addEventListener('submit', e => {
     if (!rows.some(r => r.querySelector('input').checked)) { e.preventDefault(); picked.textContent = 'Pick at least one door first'; }
   });

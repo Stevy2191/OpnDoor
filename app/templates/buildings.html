@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Buildings · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Buildings</h1>
+    <p class="muted">Group {{ site.name }}'s doors by building, so people can pick a whole building or just some of its doors.</p>
+  </div>
+  {% if managed_sites|length > 1 %}
+  <form method="get" action="/buildings">
+    <select name="site" onchange="this.form.submit()" aria-label="Site">
+      {% for x in managed_sites.values() %}<option value="{{ x.id }}" {% if x.id == site.id %}selected{% endif %}>{{ x.name }}</option>{% endfor %}
+    </select>
+  </form>
+  {% endif %}
+</div>
+
+{% if not buildings and doors %}
+<section class="card">
+  <h2>Quick start</h2>
+  <p>UniFi names doors like <code>{{ (doors|map(attribute='full_name')|select|first) or 'Event Center - 1F - North Door' }}</code>.
+    OpnDoor can make buildings from those names. You can fix anything afterwards.</p>
+  <div class="btnrow">
+    <form method="post" action="/buildings/auto"><input type="hidden" name="site" value="{{ site.id }}"><input type="hidden" name="part" value="0">
+      <button>Group by UniFi building name</button></form>
+    <form method="post" action="/buildings/auto"><input type="hidden" name="site" value="{{ site.id }}"><input type="hidden" name="part" value="1">
+      <button>Group by UniFi floor name</button></form>
+  </div>
+  <p class="muted small">Or type your buildings below and choose a building for each door.</p>
+</section>
+{% endif %}
+
+<form method="post" action="/buildings" id="bform">
+  <input type="hidden" name="site" value="{{ site.id }}">
+
+  <section class="card">
+    <h2>Buildings at {{ site.name }}</h2>
+    {% if buildings %}
+    <table class="list bl">
+      <thead><tr><th>Name</th><th>Doors</th><th>Remove</th></tr></thead>
+      <tbody>
+      {% for b in buildings %}
+        <tr>
+          <td><input name="name_{{ b.id }}" value="{{ b.name }}" aria-label="Building name"></td>
+          <td>{{ counts[b.id] }}</td>
+          <td><label class="check"><input type="checkbox" name="delete_{{ b.id }}"> <small class="muted">remove (doors are kept)</small></label></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    <label>Add buildings <small class="muted">(one per line)</small>
+      <textarea name="new_buildings" rows="2" placeholder="Event Center&#10;Sales Building&#10;VIP Building"></textarea></label>
+    <div class="btnrow" style="margin-top:.75rem"><button class="primary">Save</button></div>
+  </section>
+
+  {% if doors %}
+  <section class="card">
+    <div class="pagehead" style="margin-bottom:.5rem">
+      <h2 style="margin:0">Which building is each door in?</h2>
+      <input type="search" class="tablesearch" placeholder="Search {{ doors|length }} doors…" aria-label="Search doors" style="max-width:260px;margin:0">
+    </div>
+    {% if buildings %}
+    <div class="bulkbar">
+      <span class="muted small"><span class="nsel">0</span> selected</span>
+      <select class="bulkto" aria-label="Move to building">
+        <option value="">Move selected to…</option>
+        {% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+        <option value="none">No building</option>
+      </select>
+      <span class="muted small">then Save</span>
+    </div>
+    {% endif %}
+    <table class="list assign">
+      <thead><tr><th><input type="checkbox" class="selall" aria-label="Select all"></th><th>Door</th><th>Name in UniFi</th><th>Building</th></tr></thead>
+      <tbody>
+      {% for d in doors %}
+        <tr>
+          <td><input type="checkbox" class="rowsel" aria-label="Select {{ d.name }}"></td>
+          <td><strong>{{ d.name }}</strong></td>
+          <td class="muted small">{{ d.full_name }}</td>
+          <td>
+            <select name="door_{{ d.id }}" aria-label="Building for {{ d.name }}">
+              <option value="">No building</option>
+              {% for b in buildings %}<option value="{{ b.id }}" {% if d.building_id == b.id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+            </select>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="btnrow" style="margin-top:.75rem"><button class="primary">Save</button>
+      {% if not buildings %}<span class="muted small">Add buildings above first, then choose them here.</span>{% endif %}</div>
+  </section>
+  {% endif %}
+</form>
+
+<script>
+(function () {
+  const f = document.getElementById('bform'); if (!f) return;
+  const rows = [...f.querySelectorAll('table.assign tbody tr')];
+  const q = f.querySelector('.tablesearch'), all = f.querySelector('.selall'), to = f.querySelector('.bulkto'), n = f.querySelector('.nsel');
+  const sel = () => rows.filter(r => !r.hidden && r.querySelector('.rowsel').checked);
+  const count = () => { if (n) n.textContent = sel().length; };
+  q && q.addEventListener('input', () => { const t = q.value.toLowerCase(); rows.forEach(r => r.hidden = t && !r.textContent.toLowerCase().includes(t)); });
+  all && all.addEventListener('change', () => { rows.forEach(r => { if (!r.hidden) r.querySelector('.rowsel').checked = all.checked; }); count(); });
+  f.addEventListener('change', e => { if (e.target.classList.contains('rowsel')) count(); });
+  to && to.addEventListener('change', () => {
+    if (!to.value) return;
+    sel().forEach(r => { r.querySelector('select').value = to.value === 'none' ? '' : to.value; r.querySelector('.rowsel').checked = false; });
+    to.value = ''; all.checked = false; count();
+  });
+})();
+</script>
+{% endblock %}

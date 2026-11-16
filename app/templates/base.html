@@ -75,5 +75,24 @@
   {% block content %}{% endblock %}
 </main>
 </div>
+<script>
+// "All" tick boxes for a building's doors: tick to select all, untick to clear; shows partly-selected.
+(function () {
+  function sync(g) {
+    const all = g.querySelector('.groupall'); if (!all) return;
+    const boxes = [...g.querySelectorAll('input[type=checkbox]:not(.groupall)')];
+    const on = boxes.filter(b => b.checked).length;
+    all.checked = on === boxes.length && on > 0; all.indeterminate = on > 0 && on < boxes.length;
+  }
+  document.querySelectorAll('[data-group]').forEach(sync);
+  document.addEventListener('change', e => {
+    const g = e.target.closest('[data-group]'); if (!g) return;
+    if (e.target.classList.contains('groupall')) {
+      g.querySelectorAll('input[type=checkbox]:not(.groupall)').forEach(b => { if (!b.closest('[hidden]')) b.checked = e.target.checked; });
+    }
+    sync(g);
+  });
+})();
+</script>
 </body>
 </html>
