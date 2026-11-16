@@ -137,3 +137,35 @@ def test_add_second_site_groups_doors(client):
     # remove it again
     r = client.post("/sites/2/delete")
     assert "Removed North Campus" in r.text and "2:demo-front" not in client.get("/doors").text
+
+
+def test_deleting_things_that_have_schedules(client):
+    """Regression: deletes must remove dependent rows first (SQLite enforces foreign keys)."""
+    from app.db import session_scope
+    from app.models import CalendarFeed, Schedule, ScheduleDoor
+    from datetime import datetime
+    setup_admin(client)
+    client.post("/sites", data={"name": "North", "host": "demo", "timezone": "America/New_York"})
+    for door in ["1:demo-front", "2:demo-front"]:
+        client.post("/schedules", data={"label": f"S {door}", "door_ids": [door], "day": "2030-01-01",
+                                        "start": "10:00", "end": "11:00"})
+    client.post("/quick-unlock", data={"door_ids": ["1:demo-side"], "minutes": "15"})
+    with session_scope() as s:
+        feed = CalendarFeed(name="Cal", url="http://127.0.0.1:9/x.ics", default_door_ids="1:demo-hall")
+        s.add(feed)
+        s.flush()
+        sch = Schedule(label="Booking", start_local=datetime(2030, 1, 2, 9), duration_minutes=60,
+                       source="calendar", feed_id=feed.id, source_uid="b1")
+        s.add(sch)
+        s.flush()
+        s.add(ScheduleDoor(schedule_id=sch.id, door_id="1:demo-hall"))
+        s.commit()
+        fid = feed.id
+
+    assert "Deleted" in client.post("/schedules/1/delete").text
+    assert "Deleted" in client.post("/schedules/3/delete").text  # the unlock-now
+    assert "Removed North" in client.post("/sites/2/delete").text  # site with a schedule
+    r = client.post(f"/calendars/{fid}/delete")
+    assert r.status_code == 200 and "Removed" in r.text  # calendar with a schedule
+    for path in ["/", "/schedules", "/doors", "/history"]:
+        assert client.get(path).status_code == 200

@@ -17,16 +17,19 @@ def get_engine():
         if url.startswith("sqlite:///") and not url.startswith("sqlite:///:memory:"):
             Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
         _engine = create_engine(url, connect_args={"check_same_thread": False})
-
-        @event.listens_for(_engine, "connect")
-        def _pragmas(conn, _):
-            cur = conn.cursor()
-            cur.execute("PRAGMA foreign_keys=ON")
-            cur.execute("PRAGMA journal_mode=WAL")
-            cur.execute("PRAGMA busy_timeout=5000")
-            cur.close()
-
+        apply_pragmas(_engine)
     return _engine
+
+
+def apply_pragmas(engine) -> None:
+    """Enforce foreign keys (and use WAL) on every SQLite connection."""
+    @event.listens_for(engine, "connect")
+    def _pragmas(conn, _):
+        cur = conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=5000")
+        cur.close()
 
 
 def set_engine(engine) -> None:

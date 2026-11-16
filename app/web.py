@@ -649,8 +649,10 @@ def site_delete(request: Request, site_id: int, user: User = Depends(require_adm
     for sid in touched:  # schedules left with no doors
         if not session.exec(select(ScheduleDoor).where(ScheduleDoor.schedule_id == sid)).first():
             session.delete(session.get(Schedule, sid))
+    session.flush()
     for d in door_ids:
         session.delete(session.get(Door, d))
+    session.flush()  # doors must go before their site (foreign key)
     audit.record(session, "site.delete", f"{user.display} removed site “{site.name}” and its {len(door_ids)} doors",
                  user=user, site_ids=[site.id])
     session.delete(site)
@@ -962,6 +964,7 @@ def calendar_delete(request: Request, fid: int, bg: BackgroundTasks, user: User 
             calendars.delete_schedule(session, s)
         for r in session.exec(select(CalendarRule).where(CalendarRule.feed_id == fid)).all():
             session.delete(r)
+        session.flush()  # schedules and rules must go before the calendar (foreign key)
         session.delete(feed)
         audit.record(session, "calendar.delete", f"{user.display} disconnected calendar “{feed.name}”", user=user)
         session.commit()
