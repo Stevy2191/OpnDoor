@@ -790,13 +790,6 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
         doors = doors_for(session, user)
     doors = [d for d in doors if site_id is None or d.site_id == site_id]
     status = door_status(session, doors)
-    # each door's regular hours, in words
-    regular: dict[str, list[str]] = {}
-    for door_id, scheds in engine.door_schedules(session, [d.id for d in doors]).items():
-        for x in scheds:
-            if x.kind == "default":
-                end = x.start_local + timedelta(minutes=x.duration_minutes)
-                regular.setdefault(door_id, []).append(f"{describe_repeat(x).split(' until')[0]}, {_span(x.start_local, end)}")
     # each door's next event (override) in the coming 30 days
     nextev: dict[str, object] = {}
     now = now_local()
@@ -812,10 +805,9 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
     counts = {
         "unlock": sum(1 for d in usable if state[d.id] == "unlock"),
         "lock": sum(1 for d in usable if state[d.id] == "lock"),
-        "noreg": sum(1 for d in usable if d.id not in regular),
         "error": sum(1 for d in usable if state[d.id] == "error"),
     }
-    return render(request, "doors.html", user, doors=doors, status=status, regular=regular, state=state,
+    return render(request, "doors.html", user, doors=doors, status=status, state=state,
                   counts=counts, nextev=nextev, now=now, site_id=site_id,
                   multi_site=len(visible) > 1)
 

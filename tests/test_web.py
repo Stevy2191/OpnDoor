@@ -257,4 +257,5 @@ def test_theme_setting_and_doors_list(client):
     client.post("/schedules", data={"kind": "default", "label": "Hours", "door_ids": ["1:demo-front"],
                                     "day": "2030-01-07", "start": "08:00", "end": "17:00", "weekdays": ["0", "1", "2", "3", "4"]})
     doors = client.get("/doors").text
-    assert "No regular hours" in doors and "Weekdays, 8 AM – 5 PM" in doors and 'class="drow"' in doors
+    assert 'class="drow"' in doors and "Next event" in doors
+    assert "Regular hours</span>" not in doors and "No regular hours" not in doors

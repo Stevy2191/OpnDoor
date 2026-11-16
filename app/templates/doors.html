@@ -24,7 +24,6 @@
     <button type="button" data-f="" class="on">All <span>{{ usable|length }}</span></button>
     <button type="button" data-f="unlock">Unlocked <span>{{ counts.unlock }}</span></button>
     <button type="button" data-f="lock">Kept locked <span>{{ counts.lock }}</span></button>
-    <button type="button" data-f="noreg">No regular hours <span>{{ counts.noreg }}</span></button>
     {% if counts.error %}<button type="button" data-f="error" class="bad">Problems <span>{{ counts.error }}</span></button>{% endif %}
   </div>
 </div>
@@ -43,9 +42,9 @@
         <span class="chev" aria-hidden="true">▾</span>
       </summary>
       <div class="drows">
-        <div class="drow dhdr" aria-hidden="true"><span></span><span>Door</span><span>Right now</span><span>Regular hours</span><span>Next event</span><span></span></div>
+        <div class="drow dhdr" aria-hidden="true"><span></span><span>Door</span><span>Right now</span><span>Next event</span><span></span></div>
         {% for d in group %}{% set st = status.get(d.id, {}) %}
-        <label class="drow" data-state="{{ state[d.id] }}" data-noreg="{{ '0' if d.id in regular else '1' }}"
+        <label class="drow" data-state="{{ state[d.id] }}"
                data-find="{{ (d.name ~ ' ' ~ (b.name if b else '') ~ ' ' ~ d.full_name)|lower }}">
           <input type="checkbox" name="door" value="{{ d.id }}" aria-label="Select {{ d.name }}">
           <span class="dname">{{ d.name }}</span>
@@ -55,7 +54,6 @@
             {% elif st.mode == 'lock' %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ '' if (st.until|day) == 'Today' else (st.until|day) ~ ' ' }}{{ st.until|time }}</small>{% endif %}
             {% else %}<span class="muted">Locked</span>{% endif %}
           </span>
-          <span class="dreg">{% if d.id in regular %}{{ regular[d.id][0] }}{% if regular[d.id]|length > 1 %} <small class="muted">+{{ regular[d.id]|length - 1 }} more</small>{% endif %}{% else %}<span class="muted">None</span>{% endif %}</span>
           <span class="dnext">{% set ev = nextev.get(d.id) %}{% if ev %}{{ event_icon(ev.schedule) }} {{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
           <a class="small dview" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View →</a>
         </label>
@@ -103,7 +101,7 @@
   function filter() {
     const t = q.value.trim().toLowerCase(); let shown = 0;
     rows.forEach(r => {
-      const okF = !f || (f === 'noreg' ? r.dataset.noreg === '1' : r.dataset.state === f);
+      const okF = !f || r.dataset.state === f;
       const hit = okF && (!t || r.dataset.find.includes(t));
       r.hidden = !hit; shown += hit;
     });

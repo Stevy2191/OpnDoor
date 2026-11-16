@@ -515,3 +515,6 @@ table.assign td:first-child, table.assign th:first-child { width: 2rem; }
 .dpsitehead::-webkit-details-marker { display: none; }
 .dpsname { font-weight: 600; }
 .dpsite:not([open]) .chev { transform: rotate(-90deg); }
+/* doors list: door, right now, next event */
+.drow { grid-template-columns: 1.5rem minmax(10rem, 1.4fr) minmax(9rem, 1fr) minmax(10rem, 1.4fr) 3.5rem; }
+@media (max-width: 760px) { .drow { grid-template-columns: 1.5rem 1fr auto; } }
