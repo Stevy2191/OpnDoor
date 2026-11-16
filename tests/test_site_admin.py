@@ -160,3 +160,13 @@ def test_setup_code_required(client, monkeypatch):
     r = client.post("/setup", data={"name": "Ada", "email": "ada@example.com", "password": "password123",
                                     "setup_code": "abcd-1234"})
     assert "Hi, Ada" in r.text
+
+
+def test_real_install_without_console_has_no_demo_site(client, monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, "DRY_RUN", False)
+    r = client.post("/setup", data={"name": "Ada", "email": "ada@example.com", "password": "password123"})
+    assert r.url.path == "/sites/new" and "Connect your UniFi Access console" in r.text
+    assert "Demo mode" not in r.text
+    home = client.get("/").text
+    assert "Connect a console" in home and "Fellowship Hall" not in home

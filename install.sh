@@ -376,7 +376,7 @@ main() {
     say "  OpnDoor needs your console's address and an API token to see and control doors."
     note "Make the token in UniFi Access: Settings → General → Advanced → API Token"
     note "(allow it to view and operate doors). You can also skip this and add consoles later"
-    note "in OpnDoor under Sites. Until then, OpnDoor shows demo doors."
+    note "in OpnDoor: it asks for them right after you first sign in."
     if yes_no "  Connect a console now?" Y; then
       while true; do
         ask "  Console IP address or name (e.g. 192.168.1.1)" "${UNIFI_HOST#https://}"
@@ -397,7 +397,8 @@ main() {
         fi
         printf '%sdidn'"'"'t work%s\n' "$RED" "$R"
         if [ -z "$resp" ]; then note "No answer from $UNIFI_HOST. Check the address, and that this machine can reach the console."
-        elif printf '%s' "$resp" | grep -qi 'unauthor\|401\|token'; then note "The console said the token isn't valid."
+        elif printf '%s' "$resp" | grep -qi 'unauthor\|401\|token'; then note "The console said the token isn't valid. Use a token from the UniFi Access app"
+          note "(Settings → General → Advanced → API Token), not a UniFi OS API key."
         else note "Unexpected answer: $(printf '%s' "$resp" | head -c 150)"; fi
         if ! yes_no "  Try again?" Y; then
           if yes_no "  Keep these details anyway (you can fix them later under Sites)?" N; then break; fi
@@ -603,7 +604,8 @@ EOF
     say ""
   fi
   if [ -z "$UNIFI_HOST" ] && [ "$RECONFIGURE" = 0 ]; then
-    say "  No console connected yet: OpnDoor shows demo doors until you add one under ${B}Sites${R}."
+    say "  No console connected yet: after you sign in, OpnDoor will ask for your console's"
+    say "  address and API token."
     say ""
   fi
   if [ -n "$MS_CLIENT" ]; then

@@ -195,6 +195,9 @@ def setup(request: Request, name: str = Form(...), email: str = Form(...), passw
     login_user(request, session, user, "a password")
     engine.ensure_sites()
     engine.sync_doors()
+    if not session.exec(select(Site)).first():
+        flash(request, "Welcome! Next step: connect your UniFi Access console so OpnDoor can see your doors.")
+        return redirect("/sites/new")
     flash(request, "Welcome! Add your UniFi Access consoles under Sites." if demo_only(session)
           else "Welcome! Your doors were loaded from UniFi Access.")
     return redirect("/")

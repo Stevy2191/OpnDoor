@@ -258,3 +258,5 @@ ins { color: var(--ok); text-decoration: none; font-weight: 500; }
 #userform:has(input[name=role][value=site_admin]:checked) .for-operator { display: none; }
 #userform:has(input[name=role][value=site_admin]:checked) .persite { display: none; }
 input[readonly] { background: var(--bg); color: var(--muted); }
+/* hide secrets without making them password fields (so password managers leave them alone) */
+input.secret { -webkit-text-security: disc; text-security: disc; }

@@ -3,7 +3,10 @@
 {% block mainclass %}narrow{% endblock %}
 {% block content %}
 <p class="small"><a href="/sites">← Sites</a></p>
-<h1>{{ site.name if site else 'Add a site' }}</h1>
+<h1>{{ site.name if site else ('Connect your UniFi Access console' if not sites else 'Add a site') }}</h1>
+{% if not site and not sites %}
+<p class="muted">A site is one UniFi Access console. Enter its address and an API token, and OpnDoor will load its doors. You can add more consoles later.</p>
+{% endif %}
 {% if site and site.last_sync_status %}
 <p class="small {{ 'err' if site.last_sync_status.startswith('Error') else 'muted' }}">Last check: {{ site.last_sync_status }}</p>
 {% endif %}
@@ -14,8 +17,10 @@
     <small class="muted">The UniFi Access API, usually port 12445 on the console. Enter <code>demo</code> for a pretend console.</small>
   </label>
   <label>API token
-    <input type="password" name="token" autocomplete="off" placeholder="{{ 'Saved: leave blank to keep' if site and site.token else 'Paste the token' }}">
-    <small class="muted">In UniFi Access: Settings → General → Advanced → API Token. Give it permission to view and operate doors.</small>
+    <input type="text" name="token" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
+      placeholder="{{ 'Saved: leave blank to keep' if site and site.token else 'Paste the token' }}">
+    <small class="muted">Create it in the <strong>UniFi Access</strong> app: Settings → General → Advanced → API Token, with permission to view and operate doors.
+      UniFi shows it only once, so copy it right away. (A UniFi OS / Control Plane API key won't work.)</small>
   </label>
   <label>Timezone
     <input name="timezone" list="tzs" value="{{ site.timezone if site else config.TZ_NAME }}" required>
