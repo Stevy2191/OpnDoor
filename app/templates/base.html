@@ -7,27 +7,66 @@
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='5' y='2' width='14' height='20' rx='2' fill='%232563eb'/><circle cx='15' cy='12' r='1.6' fill='white'/></svg>">
 </head>
-<body>
+<body class="{{ 'app' if user else 'bare' }}">
+{% macro icon(name) -%}
+<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+{%- if name == 'home' %}<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>
+{%- elif name == 'door' %}<path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17"/><path d="M4 21h16"/><circle cx="14.5" cy="12" r="1"/>
+{%- elif name == 'list' %}<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/>
+{%- elif name == 'cal' %}<path d="M4 6h16v14H4zM4 10h16M9 3v4M15 3v4"/><path d="M8.5 15l2 2 4-4"/>
+{%- elif name == 'people' %}<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>
+{%- elif name == 'site' %}<path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/>
+{%- elif name == 'history' %}<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>
+{%- elif name == 'user' %}<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>
+{%- endif %}</svg>
+{%- endmacro %}
+
 {% if user %}
-<header class="topbar">
+<input type="checkbox" id="navtoggle" class="navtoggle" aria-label="Menu">
+<header class="mobilebar">
+  <label for="navtoggle" class="burger" aria-label="Open menu">☰</label>
   <a class="brand" href="/"><span class="logo"></span>OpnDoor</a>
-  <nav>
-    <a href="/" {% if request.url.path == '/' %}class="on"{% endif %}>Home</a>
-    <a href="/schedules" {% if request.url.path.startswith('/schedules') %}class="on"{% endif %}>Schedules</a>
-    <a href="/doors" {% if request.url.path.startswith('/doors') %}class="on"{% endif %}>Doors</a>
-    {% if user.is_manager %}
-    <a href="/calendars" {% if request.url.path.startswith('/calendars') %}class="on"{% endif %}>Calendars</a>
-    <a href="/users" {% if request.url.path.startswith('/users') %}class="on"{% endif %}>People</a>
-    {% if user.is_admin %}<a href="/sites" {% if request.url.path.startswith('/sites') %}class="on"{% endif %}>Sites</a>{% endif %}
-    <a href="/history" {% if request.url.path.startswith('/history') %}class="on"{% endif %}>History</a>
-    {% endif %}
+</header>
+<aside class="sidebar">
+  <a class="brand" href="/"><span class="logo"></span>OpnDoor</a>
+
+  {% if nav_sites|length > 1 %}
+  <form class="sitepick" method="get" action="/site">
+    <label for="sitepick" class="navlabel">Site</label>
+    <select id="sitepick" name="id" onchange="this.form.submit()">
+      <option value="">All sites</option>
+      {% for x in nav_sites.values() %}<option value="{{ x.id }}" {% if current_site == x.id %}selected{% endif %}>{{ x.name }}</option>{% endfor %}
+    </select>
+    <input type="hidden" name="next" value="{{ request.url.path }}">
+    <noscript><button class="small">Go</button></noscript>
+  </form>
+  {% endif %}
+
+  {% set p = request.url.path %}
+  <nav class="navgroup">
+    <a href="/" class="{{ 'on' if p == '/' }}">{{ icon('home') }}Home</a>
+    <a href="/doors" class="{{ 'on' if p.startswith('/doors') }}">{{ icon('door') }}Doors</a>
+    <a href="/schedules" class="{{ 'on' if p.startswith('/schedules') }}">{{ icon('list') }}Schedules</a>
+    {% if user.is_manager %}<a href="/calendars" class="{{ 'on' if p.startswith('/calendars') }}">{{ icon('cal') }}Calendars</a>{% endif %}
   </nav>
-  <div class="me">
-    <a href="/account">{{ user.display }} <span class="role">{{ user.role_name }}</span></a>
+  {% if user.is_manager %}
+  <div class="navlabel">Manage</div>
+  <nav class="navgroup">
+    <a href="/users" class="{{ 'on' if p.startswith('/users') }}">{{ icon('people') }}People</a>
+    {% if user.is_admin %}<a href="/sites" class="{{ 'on' if p.startswith('/sites') }}">{{ icon('site') }}Sites</a>{% endif %}
+    <a href="/history" class="{{ 'on' if p.startswith('/history') }}">{{ icon('history') }}History</a>
+  </nav>
+  {% endif %}
+
+  <div class="navme">
+    <a href="/account" class="{{ 'on' if p.startswith('/account') }}">{{ icon('user') }}<span><strong>{{ user.display }}</strong><small>{{ user.role_name }}</small></span></a>
     <form method="post" action="/logout"><button class="link">Sign out</button></form>
   </div>
-</header>
+</aside>
+<label for="navtoggle" class="scrim" aria-hidden="true"></label>
 {% endif %}
+
+<div class="content">
 {% if demo and user %}
 <div class="banner">Demo mode: {% if config.DRY_RUN %}DRY_RUN is on{% else %}a demo site is set up{% endif %}, so its doors are examples and nothing is really unlocked.{% if user.is_admin %} <a href="/sites">Add your UniFi Access consoles →</a>{% endif %}</div>
 {% endif %}
@@ -35,5 +74,6 @@
   {% for kind, msg in flashes %}<div class="flash {{ kind }}">{{ msg }}</div>{% endfor %}
   {% block content %}{% endblock %}
 </main>
+</div>
 </body>
 </html>

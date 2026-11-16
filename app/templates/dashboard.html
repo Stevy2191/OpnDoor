@@ -1,74 +1,162 @@
 {% extends "base.html" %}
-{% from "_macros.html" import door_chips, status_line %}
+{% from "_macros.html" import status_line %}
 {% block content %}
-<div class="head">
-  <h1>Hi{% if user.name %}, {{ user.name.split(' ')[0] }}{% endif %}</h1>
-  <a class="button primary" href="/doors">+ Schedule doors</a>
+{% set hour = now_hour %}
+<div class="pagehead">
+  <div>
+    <h1>Hi{% if user.name %}, {{ user.name.split(' ')[0] }}{% endif %}</h1>
+    <p class="muted">{% if current_site and sites.get(current_site) %}{{ sites[current_site].name }} · {% endif %}{{ doors|length }} door{{ '' if doors|length == 1 else 's' }}</p>
+  </div>
+  {% if doors %}
+  <div class="btnrow">
+    <button type="button" class="button" onclick="document.getElementById('unlockdlg').showModal()">🔓 Unlock a door now</button>
+    <a class="button primary" href="/doors">+ Schedule doors</a>
+  </div>
+  {% endif %}
 </div>
 
 {% if not doors %}
 <div class="card empty">
-  {% if user.is_admin %}
-    {% if not sites %}
+  {% if user.is_admin and not sites %}
     <p><strong>Connect your UniFi Access console to get started.</strong></p>
     <p><a class="button primary" href="/sites/new">Connect a console</a></p>
-    {% else %}
+  {% elif user.is_admin %}
     <p>No doors loaded yet. <form method="post" action="/doors/sync" class="inline"><button class="link">Load doors from UniFi Access</button></form>
       or <a href="/sites">check your sites</a>.</p>
-    {% endif %}
   {% else %}
     <p>You don't have access to any doors yet. Ask an administrator to give you access.</p>
   {% endif %}
 </div>
 {% else %}
 
-<section class="grid2">
-  <div class="card">
-    <div class="head" style="margin-bottom:.25rem"><h2 style="margin:0">Doors</h2><a class="small" href="/doors">Schedule several doors →</a></div>
-    {% for site_id, group in doors|groupby('site_id') %}
-    {% if sites|length > 1 %}<div class="sitehead">{{ sites[site_id].name }}</div>{% endif %}
-    <ul class="doorlist">
-    {% for d in group %}
-      <li>
-        <span class="grow"><a class="strong" href="/doors/{{ d.id|urlencode }}">{{ d.name }}</a>
-          <small>{{ status_line(status.get(d.id, {})) }}</small>
-        </span>
-        <a class="small" href="/schedules/new?door={{ d.id|urlencode }}">Override</a>
-      </li>
+<section class="tiles">
+  <a class="tile {{ 'hot ok' if tiles.unlocked }}" href="#now"><span class="num">{{ tiles.unlocked }}</span><span class="lbl">🔓 Unlocked now</span></a>
+  <a class="tile {{ 'hot lock' if tiles.locked }}" href="#now"><span class="num">{{ tiles.locked }}</span><span class="lbl">🔒 Kept locked</span></a>
+  <a class="tile {{ 'hot bad' if tiles.problems }}" href="#now"><span class="num">{{ tiles.problems }}</span><span class="lbl">⚠️ Problems</span></a>
+  <a class="tile" href="#today"><span class="num">{{ tiles.events }}</span><span class="lbl">📅 Events left today</span></a>
+</section>
+
+<section class="card" id="now">
+  <h2>Right now</h2>
+  {% if right_now %}
+  <table class="list">
+    <thead><tr><th>Door</th>{% if sites|length > 1 and not current_site %}<th>Site</th>{% endif %}<th>Status</th><th>Because of</th><th></th></tr></thead>
+    <tbody>
+    {% for r in right_now %}{% set st = r.st %}
+      <tr class="{{ 'bad' if st.error }}">
+        <td><a class="strong" href="/doors/{{ r.door.id|urlencode }}">{{ r.door.name }}</a></td>
+        {% if sites|length > 1 and not current_site %}<td class="muted">{{ r.site.name if r.site }}</td>{% endif %}
+        <td>
+          {% if st.error %}<span class="pill bad">⚠️ Problem</span>
+          {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">until {{ st.until|time }}</small>
+          {% else %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ st.until|day }} {{ st.until|time }}</small>{% endif %}{% endif %}
+        </td>
+        <td>{% if st.error %}<small class="err">{{ st.error }}</small>{% else %}{{ st.label or '—' }}{% endif %}</td>
+        <td class="right">
+          {% if r.can_lock %}<form method="post" action="/doors/{{ r.door.id|urlencode }}/lock-now" onsubmit="return confirm('Lock {{ r.door.name|e }} now? It goes back to its normal schedule afterwards.')"><button class="small">Lock now</button></form>{% endif %}
+        </td>
+      </tr>
     {% endfor %}
-    </ul>
+    </tbody>
+  </table>
+  {% else %}
+  <p class="allgood">✓ All {{ doors|length }} door{{ '' if doors|length == 1 else 's' }} are locked and on their regular hours.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="today">
+  <h2>Today <small class="muted">{{ today_label }}</small></h2>
+  {% if agenda_today %}
+  <div class="agenda">
+    {% for r in agenda_today %}{% set s = r.o.schedule %}
+    <div class="arow {{ 'live' if r.live }} {{ 'past' if r.past }} {{ 'lockov' if s.action == 'lock' }}">
+      <div class="atime">{{ span(r.o.start, r.o.end) }}{% if r.live %}<span class="livedot">now</span>{% endif %}</div>
+      <div class="awhat">
+        <div><span class="evicon">{{ event_icon(s) }}</span> <strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
+        <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
+      </div>
+      {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}
+    </div>
     {% endfor %}
   </div>
+  {% else %}
+  <p class="muted">No events today. Doors follow their regular hours.</p>
+  {% endif %}
+</section>
 
-  <div class="card">
-    <h2>Unlock now</h2>
-    <form method="post" action="/quick-unlock">
-      {{ door_chips(doors, 'door_ids', [], sites, True) }}
-      <p class="muted small">Unlock for</p>
+<section class="card">
+  <h2>Next 7 days</h2>
+  {% if agenda_week %}
+  <div class="agenda">
+    {% for day, rows in agenda_week.items() %}
+    <div class="aday">{{ day|day }}</div>
+    {% for r in rows %}{% set s = r.o.schedule %}
+    <div class="arow {{ 'lockov' if s.action == 'lock' }}">
+      <div class="atime">{{ span(r.o.start, r.o.end) }}</div>
+      <div class="awhat">
+        <div><span class="evicon">{{ event_icon(s) }}</span> <strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
+        <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
+      </div>
+      {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}
+    </div>
+    {% endfor %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">Nothing else scheduled this week.</p>
+  {% endif %}
+</section>
+
+<dialog id="unlockdlg" class="dlg">
+  <form method="post" action="/quick-unlock" class="dlgform">
+    <div class="dlghead">
+      <h2>Unlock now</h2>
+      <button type="button" class="link" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
+    </div>
+    <input type="search" class="doorsearch" placeholder="Search {{ doors|length }} doors…" autocomplete="off" aria-label="Search doors">
+    <div class="doorpick">
+      {% for site_id, group in doors|groupby('site_id') %}
+        {% if sites|length > 1 and not current_site %}<div class="sitehead">{{ sites[site_id].name }}</div>{% endif %}
+        {% for d in group %}
+        <label class="pickrow"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if doors|length == 1 %}checked{% endif %}>
+          <span>{{ d.name }}</span><small class="muted">{{ d.full_name }}</small></label>
+        {% endfor %}
+      {% endfor %}
+      <p class="muted nomatch" hidden>No doors match.</p>
+    </div>
+    <div class="dlgfoot">
+      <span class="muted small picked">Pick one or more doors</span>
       <div class="btnrow">
         {% for m, lbl in [(15,'15 min'),(30,'30 min'),(60,'1 hour'),(120,'2 hours')] %}
-        <button name="minutes" value="{{ m }}">{{ lbl }}</button>
+        <button name="minutes" value="{{ m }}" class="{{ 'primary' if m == 30 }}">{{ lbl }}</button>
         {% endfor %}
       </div>
-    </form>
-  </div>
-</section>
-
-{% if happening %}
-<section>
-  <h2>Happening now</h2>
-  {% for e in happening %}{% set o = e.o %}{% include "_occ.html" %}{% endfor %}
-</section>
-{% endif %}
-
-<section>
-  <h2>Coming up <small class="muted">overrides and events, next 14 days · regular hours are on each door’s page</small></h2>
-  {% for day, entries in upcoming.items() %}
-    <h3 class="day">{{ day|day }}</h3>
-    {% for e in entries %}{% set o = e.o %}{% include "_occ.html" %}{% endfor %}
-  {% else %}
-    <div class="card empty"><p>No overrides or events coming up.</p></div>
-  {% endfor %}
-</section>
+    </div>
+  </form>
+</dialog>
+<script>
+(function () {
+  const dlg = document.getElementById('unlockdlg'); if (!dlg) return;
+  const q = dlg.querySelector('.doorsearch'), rows = [...dlg.querySelectorAll('.pickrow')];
+  const heads = [...dlg.querySelectorAll('.sitehead')], none = dlg.querySelector('.nomatch'), picked = dlg.querySelector('.picked');
+  function filter() {
+    const t = q.value.trim().toLowerCase(); let shown = 0;
+    rows.forEach(r => { const hit = !t || r.textContent.toLowerCase().includes(t); r.hidden = !hit; shown += hit; });
+    heads.forEach(h => { let n = h.nextElementSibling, any = false;
+      while (n && n.classList.contains('pickrow')) { any = any || !n.hidden; n = n.nextElementSibling; } h.hidden = !any; });
+    none.hidden = shown > 0;
+  }
+  function count() {
+    const n = rows.filter(r => r.querySelector('input').checked).length;
+    picked.textContent = n ? n + (n === 1 ? ' door picked' : ' doors picked') : 'Pick one or more doors';
+  }
+  q.addEventListener('input', filter);
+  dlg.addEventListener('change', count);
+  dlg.querySelector('form').addEventListener('submit', e => {
+    if (!rows.some(r => r.querySelector('input').checked)) { e.preventDefault(); picked.textContent = 'Pick at least one door first'; }
+  });
+  dlg.addEventListener('close', () => { q.value = ''; filter(); });
+})();
+</script>
 {% endif %}
 {% endblock %}

@@ -19,6 +19,7 @@ ACTIONS = {
     "schedule.update": ("schedule", "Changed a schedule"),
     "schedule.delete": ("schedule", "Deleted a schedule"),
     "schedule.quick": ("schedule", "Unlocked now"),
+    "schedule.locknow": ("schedule", "Locked now"),
     "door.unlock": ("door", "Door unlocked"),
     "door.lock": ("door", "Door kept locked"),
     "door.reset": ("door", "Door back to normal"),

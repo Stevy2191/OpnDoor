@@ -69,6 +69,8 @@ def render(request: Request, name: str, user: Optional[User], **ctx) -> HTMLResp
             sites = {k: v for k, v in sites.items() if k in mine}
     demo = config.DRY_RUN or any(x.is_demo for x in sites.values())
     ctx.setdefault("sites", sites)
+    ctx.setdefault("nav_sites", sites)
+    ctx.setdefault("current_site", request.session.get("site") if request.session.get("site") in sites else None)
     return templates.TemplateResponse(request, name, {"user": user, "flashes": msgs, "demo": demo, **ctx})
 
 
@@ -273,30 +275,116 @@ def account(request: Request, name: str = Form(""), current_password: str = Form
 
 # ---------- dashboard ----------
 
+def current_site_id(request: Request, session: Session, user: User) -> Optional[int]:
+    """The site picked in the sidebar switcher (None = all sites)."""
+    sid = request.session.get("site")
+    if not sid:
+        return None
+    if sid not in visible_site_ids(session, user):
+        request.session.pop("site", None)
+        return None
+    return sid
+
+
+@router.get("/site")
+def pick_site(request: Request, id: str = "", next: str = "/", user: User = Depends(require_user),
+              session: Session = Depends(get_session)):
+    if id.isdigit() and int(id) in visible_site_ids(session, user):
+        request.session["site"] = int(id)
+    else:
+        request.session.pop("site", None)
+    return redirect(safe_next(next))
+
+
+def _names(ids: list[str], names: dict[str, str], limit: int = 3) -> str:
+    shown = [names[d] for d in ids[:limit] if d in names]
+    more = len(ids) - limit
+    return ", ".join(shown) + (f" +{more} more" if more > 0 else "")
+
+
 @router.get("/")
 def dashboard(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
-    doors = doors_for(session, user)
-    door_names = {d.id: d.name for d in session.exec(select(Door)).all()}
-    allowed = {d.id for d in doors}
-    scheds = visible_schedules(session, user)
-    sd = schedule_doors(session, [s.id for s in scheds])
+    site_id = current_site_id(request, session, user)
+    doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
+    in_view = {d.id for d in doors}
+    names = {d.id: d.name for d in doors}
+    sites = {x.id: x for x in session.exec(select(Site)).all()}
+    door_site = {d.id: d.site_id for d in doors}
+    names_site = {d.id: f"{d.name} ({sites[d.site_id].name})" if d.site_id in sites else d.name for d in doors}
+    status = door_status(session, doors)
+
+    # Doors that aren't simply locked on their normal rule
+    right_now = []
+    for d in doors:
+        st = status.get(d.id, {})
+        if st.get("mode") or st.get("error"):
+            right_now.append({"door": d, "site": sites.get(d.site_id), "st": st,
+                              "can_lock": st.get("mode") == "unlock"})
+    right_now.sort(key=lambda r: (not r["st"].get("error"), r["st"].get("mode") != "unlock",
+                                  r["site"].name if r["site"] else "", r["door"].name))
+
+    # Events (overrides) today and in the next 7 days
     now = now_local()
-    occ = expand(scheds, now, now + timedelta(days=14))
+    today = now.date()
+    scheds = [x for x in visible_schedules(session, user) if x.kind == "override"]
+    sd = schedule_doors(session, [x.id for x in scheds])
+    agenda_today, agenda_week = [], {}
+    for o in expand(scheds, now.replace(hour=0, minute=0, second=0, microsecond=0), now + timedelta(days=7)):
+        ids = [d for d in sd[o.schedule.id] if d in in_view]
+        if not ids:
+            continue
+        spans = len({door_site[d] for d in ids}) > 1
+        row = {"o": o, "doors": _names(ids, names_site if spans else names), "count": len(ids),
+               "editable": can_edit(session, user, o.schedule, sd[o.schedule.id]),
+               "live": o.start <= now < o.end, "past": o.end <= now}
+        if o.start.date() <= today:
+            agenda_today.append(row)
+        else:
+            agenda_week.setdefault(o.start.date(), []).append(row)
 
-    def entry(o):
-        ids = [d for d in sd[o.schedule.id] if user.is_admin or d in allowed]
-        return {"o": o, "doors": [door_names.get(d, d) for d in ids],
-                "editable": can_edit(session, user, o.schedule, sd[o.schedule.id])}
+    tiles = {
+        "unlocked": sum(1 for r in right_now if r["st"].get("mode") == "unlock"),
+        "locked": sum(1 for r in right_now if r["st"].get("mode") == "lock"),
+        "problems": sum(1 for r in right_now if r["st"].get("error")),
+        "events": sum(1 for r in agenda_today if not r["past"]),
+    }
+    return render(request, "dashboard.html", user, doors=doors, right_now=right_now, tiles=tiles,
+                  agenda_today=agenda_today, agenda_week=agenda_week, site_id=site_id,
+                  today_label=now.strftime("%A, %B %-d"))
 
-    occ = [o for o in occ if o.schedule.kind == "override"]  # regular hours live on each door's page
-    happening = [entry(o) for o in occ if o.start <= now]
-    upcoming: dict[date, list] = {}
-    for o in occ:
-        if o.start > now:
-            upcoming.setdefault(o.start.date(), []).append(entry(o))
 
-    return render(request, "dashboard.html", user, doors=doors, happening=happening, upcoming=upcoming,
-                  status=door_status(session, doors))
+@router.post("/doors/{door_id}/lock-now")
+def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = Depends(require_user),
+             session: Session = Depends(get_session)):
+    """Lock a door that a schedule has unlocked, until that unlock would have ended.
+
+    Adds a short "keep locked" override (newest wins), so the schedule itself is untouched
+    and the door goes back to normal afterwards."""
+    from .schedules import current_plan
+    door = session.get(Door, door_id)
+    if not door or door_id not in allowed_door_ids(session, user):
+        flash(request, "That door isn't available to you.", "error")
+        return redirect("/")
+    now_utc = utcnow()
+    plan = current_plan(engine.door_timeline(session, door, now_utc, now_utc + engine.HORIZON))
+    if not plan or plan.state != "unlock":
+        flash(request, f"{door.name} is already locked.")
+        return redirect("/")
+    tz = engine.site_tz(session.get(Site, door.site_id))
+    minutes = max(1, int((plan.end - now_utc).total_seconds() // 60) + 1)
+    why = plan.schedule.label if plan.schedule else "its schedule"
+    sched = Schedule(label=f"Locked early by {user.display}", kind="override", action="lock", event_type="other",
+                     start_local=now_local(tz).replace(second=0, microsecond=0), duration_minutes=minutes,
+                     source="quick", created_by=user.id, notes=f"Locked during “{why}”")
+    session.add(sched)
+    session.flush()
+    calendars.set_schedule_doors(session, sched.id, [door.id])
+    audit.record(session, "schedule.locknow", f"{user.display} locked {door.name} early (it was unlocked for “{why}”)",
+                 user=user, door_ids=[door.id], schedule_id=sched.id)
+    session.commit()
+    kick_reconcile(bg)
+    flash(request, f"Locking {door.name}. It goes back to its normal schedule afterwards.")
+    return redirect("/")
 
 
 @router.post("/quick-unlock")
