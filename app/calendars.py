@@ -192,7 +192,9 @@ def set_schedule_doors(session: Session, schedule_id: int, door_ids: list[str]) 
 def delete_schedule(session: Session, sched: Schedule) -> None:
     for row in session.exec(select(ScheduleDoor).where(ScheduleDoor.schedule_id == sched.id)).all():
         session.delete(row)
+    session.flush()  # door links must go before the schedule (foreign key)
     session.delete(sched)
+    session.flush()
 
 
 def sync_feed(feed_id: int) -> str:

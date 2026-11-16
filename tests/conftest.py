@@ -14,6 +14,7 @@ from app import db, unifi  # noqa: E402
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/db.sqlite", connect_args={"check_same_thread": False})
+    db.apply_pragmas(engine)  # enforce foreign keys like production
     db.set_engine(engine)
     SQLModel.metadata.create_all(engine)
     fake = unifi.FakeUnifiClient()
