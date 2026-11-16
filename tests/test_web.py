@@ -169,3 +169,24 @@ def test_deleting_things_that_have_schedules(client):
     assert r.status_code == 200 and "Removed" in r.text  # calendar with a schedule
     for path in ["/", "/schedules", "/doors", "/history"]:
         assert client.get(path).status_code == 200
+
+
+def test_home_lock_now_and_site_switcher(client, fake):
+    setup_admin(client)
+    client.post("/sites", data={"name": "North", "host": "demo", "timezone": "America/Chicago"})
+    client.post("/quick-unlock", data={"door_ids": ["1:demo-side"], "minutes": "30"})
+    home = client.get("/").text
+    assert "Right now" in home and "Lock now" in home and "1:demo-side/lock-now" in home
+
+    r = client.post("/doors/1:demo-side/lock-now")
+    assert "Locking Side Door" in r.text
+    assert fake.calls[-1] == ("lock", "demo-side")
+    assert "locked Side Door early" in client.get("/history").text
+    assert "already locked" in client.post("/doors/1:demo-front/lock-now").text
+
+    # site switcher filters Home to one site
+    client.get("/site?id=2&next=/")
+    home = client.get("/").text
+    assert "4 doors" in home and "1:demo-side/lock-now" not in home
+    client.get("/site?id=&next=/")
+    assert "8 doors" in client.get("/").text
