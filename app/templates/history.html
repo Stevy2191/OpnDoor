@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}History · OpnDoor{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>History</h1>
+  <a class="button" href="/history.csv{% if query %}?{{ query }}{% endif %}">⬇ Download as spreadsheet</a>
+</div>
+<p class="muted">Who changed what, and when. The newest is at the top.</p>
+
+<form method="get" action="/history" class="card filters">
+  <label>Who
+    <select name="who">
+      <option value="">Everyone</option>
+      {% for p in people %}<option value="{{ p.id }}" {% if f.get('who') == p.id|string %}selected{% endif %}>{{ p.display }}</option>{% endfor %}
+      <option value="auto" {% if f.get('who') == 'auto' %}selected{% endif %}>OpnDoor / calendars (automatic)</option>
+    </select>
+  </label>
+  <label>What
+    <select name="what">
+      <option value="">All changes</option>
+      {% for key, name in categories %}<option value="{{ key }}" {% if f.get('what') == key %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if all_sites|length > 1 %}
+  <label>Site
+    <select name="site">
+      <option value="">All sites</option>
+      {% for x in all_sites.values() %}<option value="{{ x.id }}" {% if f.get('site') == x.id|string %}selected{% endif %}>{{ x.name }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <label>Door
+    <select name="door">
+      <option value="">All doors</option>
+      {% for d in doors %}<option value="{{ d.id }}" {% if f.get('door') == d.id %}selected{% endif %}>{{ d.name }}{% if all_sites|length > 1 %} ({{ all_sites[d.site_id].name }}){% endif %}</option>{% endfor %}
+    </select>
+  </label>
+  <label>From <input type="date" name="from" value="{{ f.get('from', '') }}"></label>
+  <label>To <input type="date" name="to" value="{{ f.get('to', '') }}"></label>
+  <label class="check"><input type="checkbox" name="auto" value="1" {% if f.get('auto') == '1' %}checked{% endif %}> Include automatic door unlocks and locks</label>
+  <div class="btnrow"><button class="primary">Show</button>{% if query %}<a class="button" href="/history">Clear</a>{% endif %}</div>
+</form>
+
+{% for it in entries %}{% set e = it.e %}
+  {% if loop.first or it.at.date() != entries[loop.index0 - 1].at.date() %}<h3 class="day">{{ it.at|day }}</h3>{% endif %}
+  <div class="card hentry {{ e.category }} {{ 'bad' if e.action.endswith('error') or e.action == 'signin.fail' }}">
+    <div class="htime">{{ it.at|time }}</div>
+    <div class="hbody">
+      <div><strong>{{ e.actor }}</strong> <span class="tag">{{ it.label }}</span></div>
+      <div>{{ e.detail }}</div>
+      {% if it.changes %}
+      <details>
+        <summary class="small">Show details</summary>
+        <table class="changes-table">
+          <thead><tr><th></th>{% if e.action != 'schedule.create' and e.action != 'user.create' and e.action != 'schedule.delete' %}<th>Before</th>{% endif %}<th>{{ 'Was' if e.action == 'schedule.delete' else 'After' if e.action.endswith('update') else '' }}</th></tr></thead>
+          <tbody>{% for k, b, a in it.changes %}
+            <tr><th>{{ k }}</th>
+              {% if e.action == 'schedule.delete' %}<td>{{ b }}</td>
+              {% elif e.action.endswith('create') %}<td>{{ a }}</td>
+              {% else %}<td><del>{{ b or '—' }}</del></td><td><ins>{{ a or '—' }}</ins></td>{% endif %}
+            </tr>{% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="card empty"><p>Nothing matches.</p></div>
+{% endfor %}
+
+<div class="btnrow">
+  {% if page > 0 %}<a class="button" href="/history?{{ query }}&page={{ page - 1 }}">← Newer</a>{% endif %}
+  {% if more %}<a class="button" href="/history?{{ query }}&page={{ page + 1 }}">Older →</a>{% endif %}
+</div>
+{% endblock %}

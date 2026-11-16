@@ -8,8 +8,9 @@ from zoneinfo import ZoneInfo
 from sqlmodel import Session, select
 
 from . import config, unifi
+from .audit import record as audit
 from .db import session_scope
-from .models import AuditLog, Door, DoorState, Schedule, ScheduleDoor, Site, User, utcnow
+from .models import Door, DoorState, Schedule, ScheduleDoor, Site, User, utcnow
 from .schedules import Segment, current_plan, timeline, to_local
 
 log = logging.getLogger(__name__)
@@ -18,17 +19,6 @@ _lock = threading.Lock()
 # Re-send an unlock when the desired end moves by more than this.
 TOLERANCE = timedelta(seconds=90)
 HORIZON = timedelta(days=14)
-
-
-def audit(session: Session, action: str, detail: str = "", user: Optional[User] = None, actor: str = "") -> None:
-    session.add(
-        AuditLog(
-            user_id=user.id if user else None,
-            actor=actor or (user.name or user.email if user else "system"),
-            action=action,
-            detail=detail,
-        )
-    )
 
 
 def site_tz(site: Optional[Site]):
@@ -78,7 +68,7 @@ def sync_site(site_id: int) -> str:
                     s.add(door)
             status = f"OK: {len(remote)} doors"
         if status != site.last_sync_status and status.startswith("Error"):
-            audit(s, "site.error", f"{site.name}: {status}", actor="system")
+            audit(s, "site.error", f"{site.name}: {status}", site_ids=[site.id])
         site.last_sync_at, site.last_sync_status = utcnow(), status[:500]
         s.add(site)
         s.commit()
@@ -151,7 +141,7 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
                         if not active or st.mode != "unlock" or abs(want.end - st.until) > TOLERANCE:
                             client.unlock_for(door.remote_id, (want.end - now).total_seconds())
                             audit(s, "door.unlock", f"{door.name} unlocked until "
-                                  f"{to_local(want.end, tz):%a %b %-d %-I:%M %p} ({label})", actor="scheduler")
+                                  f"{to_local(want.end, tz):%a %b %-d %-I:%M %p} ({label})", door_ids=[door.id])
                             st.mode, st.applied_at = "unlock", now
                         elif st.schedule_id == (want.schedule.id if want.schedule else None):
                             continue
@@ -160,12 +150,12 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
                         if st.mode != "lock":
                             client.keep_lock(door.remote_id)
                             audit(s, "door.lock", f"{door.name} kept locked until "
-                                  f"{to_local(want.end, tz):%a %b %-d %-I:%M %p} ({label})", actor="scheduler")
+                                  f"{to_local(want.end, tz):%a %b %-d %-I:%M %p} ({label})", door_ids=[door.id])
                             st.mode, st.applied_at = "lock", now
                         st.until, st.schedule_id, st.last_error = want.end, want.schedule.id, ""
                     elif active:
                         client.reset(door.remote_id)
-                        audit(s, "door.reset", f"{door.name} back to normal (locked)", actor="scheduler")
+                        audit(s, "door.reset", f"{door.name} back to normal (locked)", door_ids=[door.id])
                         st.mode, st.until, st.schedule_id, st.applied_at, st.last_error = "", None, None, now, ""
                     elif st.mode or st.until:
                         st.mode, st.until, st.schedule_id = "", None, None  # countdown ran out on the console
@@ -173,7 +163,7 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
                         continue
                 except unifi.UnifiError as e:
                     if st.last_error != str(e):
-                        audit(s, "door.error", f"{door.name}: {e}", actor="scheduler")
+                        audit(s, "door.error", f"{door.name}: {e}", door_ids=[door.id])
                     st.last_error = str(e)
                     log.warning("Door %s: %s", door_id, e)
                 s.add(st)

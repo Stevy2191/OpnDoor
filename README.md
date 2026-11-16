@@ -16,8 +16,15 @@ Runs as a single Docker container (FastAPI + SQLite). Images are built by GitHub
 - **Multiple sites / consoles.** Add each UniFi Access console as a site with its own address,
   API token and timezone. Doors are grouped by site everywhere, and schedule times are local to
   each door's site.
-- **Sign-in and per-door permissions.** Admins see and manage everything. Other users can only
-  schedule the doors an admin grants them.
+- **Two roles.** **Admins** can do everything. **Door operators** only see and schedule the doors
+  they're given: either *all doors at a site* (including doors added later) or individual doors.
+  Operators never see other sites.
+- **Sign in with Microsoft** (work accounts), or with a password.
+- **History.** Every change is recorded: who, when, and what changed (before → after), in plain
+  English. Filter by person, site, door, type of change or date, and download it as a spreadsheet.
+  Each door's page also shows its recent changes.
+- **Events at a glance.** Each override says what it's for (🎉 Event, 👥 Meeting, 🔑 Rental, 📚 Class,
+  🔧 Maintenance, 🚫 Closure), with an optional contact person.
 - **Easy scheduling.** On the Doors page, tick the doors, then **Set regular hours** or **Add override**.
   Weekly repeats (any weekdays, optional end date) and overnight windows are supported.
 - **Unlock now** for 15 min to 2 hours, straight from the home page.
@@ -78,6 +85,31 @@ If the package is private, log in first:
 Leave `UNIFI_ACCESS_TOKEN=changeme`. OpnDoor creates a **Demo site** with four pretend doors
 and logs what it would have sent. Add more demo sites by entering `demo` as a site's address.
 Remove the demo site once your real consoles are added.
+
+## Sign in with Microsoft
+
+Do this once, as someone who can register apps in your Microsoft 365 tenant.
+
+1. Go to <https://entra.microsoft.com> → **Applications** → **App registrations** → **New registration**.
+2. **Name:** `OpnDoor`. **Supported account types:** *Accounts in this organizational directory only*.
+   **Redirect URI:** platform *Web*, address `https://<your OpnDoor address>/auth/microsoft/callback`.
+   (OpnDoor shows this exact address on its **People** page. Microsoft requires `https://`, so put
+   OpnDoor behind a reverse proxy with a certificate first.)
+3. On the app's **Overview** page, copy the **Application (client) ID** and **Directory (tenant) ID**.
+4. **Certificates & secrets** → **New client secret** → copy the secret's **Value** (not its ID).
+   Note when it expires and make a new one before then.
+5. Add these to OpnDoor's `.env` and restart it (`docker compose up -d`):
+   ```
+   MS_TENANT_ID=<Directory (tenant) ID>
+   MS_CLIENT_ID=<Application (client) ID>
+   MS_CLIENT_SECRET=<secret Value>
+   PUBLIC_URL=https://<your OpnDoor address>
+   SECURE_COOKIES=true
+   ```
+6. In OpnDoor, add each person under **People** with the email they use for Microsoft, and choose
+   *Microsoft account*. Only people added there can sign in. Accounts outside your tenant can't.
+
+Keep at least one admin with a password, so you can still get in if the Microsoft settings change.
 
 ## Local development
 

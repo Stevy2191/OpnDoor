@@ -16,13 +16,25 @@ def utcnow() -> datetime:
 
 
 class User(SQLModel, table=True):
+    """A person. Role: admin (is_admin) or door operator."""
+
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
     name: str = ""
-    password_hash: str
+    password_hash: str = ""  # "" = no password; signs in with Microsoft only
     is_admin: bool = False
     active: bool = True
+    ms_oid: Optional[str] = Field(default=None, index=True)  # Microsoft account id, bound on first sign-in
+    last_login_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utcnow)
+
+    @property
+    def role_name(self) -> str:
+        return "Admin" if self.is_admin else "Door operator"
+
+    @property
+    def display(self) -> str:
+        return self.name or self.email
 
 
 class Site(SQLModel, table=True):
@@ -57,8 +69,17 @@ class Door(SQLModel, table=True):
 
 
 class UserDoor(SQLModel, table=True):
+    """Access to one door."""
+
     user_id: int = Field(foreign_key="user.id", primary_key=True)
     door_id: str = Field(foreign_key="door.id", primary_key=True)
+
+
+class UserSite(SQLModel, table=True):
+    """Access to every door at a site, including doors added later."""
+
+    user_id: int = Field(foreign_key="user.id", primary_key=True)
+    site_id: int = Field(foreign_key="site.id", primary_key=True)
 
 
 class Schedule(SQLModel, table=True):
@@ -80,11 +101,15 @@ class Schedule(SQLModel, table=True):
     repeat_weekdays: str = ""
     repeat_until: Optional[date] = None
     notes: str = ""
+    event_type: str = "event"  # see schedules.EVENT_TYPES
+    contact: str = ""  # who to call about it
     source: str = "manual"  # manual | quick | calendar
     feed_id: Optional[int] = Field(default=None, foreign_key="calendarfeed.id", index=True)
     source_uid: Optional[str] = Field(default=None, index=True)
     created_by: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
+    updated_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    updated_at: Optional[datetime] = None
 
 
 class ScheduleDoor(SQLModel, table=True):
@@ -128,9 +153,16 @@ class CalendarRule(SQLModel, table=True):
 
 
 class AuditLog(SQLModel, table=True):
+    """History: who did what, when. Written by app/audit.py."""
+
     id: Optional[int] = Field(default=None, primary_key=True)
     at: datetime = Field(default_factory=utcnow, index=True)
-    user_id: Optional[int] = None
-    actor: str = ""  # display name or "system"/"calendar"
-    action: str
-    detail: str = ""
+    user_id: Optional[int] = Field(default=None, index=True)  # None = automatic
+    actor: str = ""  # name at the time, or "OpnDoor (automatic)" / "Calendar sync"
+    action: str  # e.g. schedule.update; see audit.ACTIONS
+    category: str = Field(default="", index=True)  # schedule | door | access | site | calendar | signin
+    detail: str = ""  # one plain-English sentence
+    changes: str = ""  # JSON [[field, before, after], ...]
+    site_ids: str = ""  # ",1,2," for filtering
+    door_ids: str = ""  # ",1:abc,2:def,"
+    schedule_id: Optional[int] = None

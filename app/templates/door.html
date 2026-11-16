@@ -27,7 +27,7 @@
           <span class="when">{{ span(it.start, it.end) }}</span>
           <span class="what">
             {% if seg.state == 'unlock' %}<strong>Unlocked</strong>{% elif seg.state == 'lock' %}<strong>Kept locked</strong>{% else %}Locked{% endif %}
-            {% if seg.schedule %}<small class="muted">· {{ 'Regular hours' if seg.schedule.kind == 'default' else seg.schedule.label }}</small>{% endif %}
+            {% if seg.schedule %}<small>· {{ event_icon(seg.schedule) }} {{ 'Regular hours' if seg.schedule.kind == 'default' else seg.schedule.label }}</small>{% endif %}
           </span>
         </li>
       {% endfor %}
@@ -43,7 +43,9 @@
           <span class="tag {{ 'def' if s.kind == 'default' else ('lock' if s.action == 'lock' else 'rep') }}">{{ describe_kind(s) }}</span>
           {% if s.source == 'calendar' %}<span class="tag cal">📅 calendar</span>{% endif %}
         </div>
-        <strong>{{ s.label }}</strong>
+        <strong>{{ event_icon(s) }} {{ s.label }}</strong>
+        {% if s.kind == 'override' %}<small class="muted"> · {{ event_name(s) }}</small>{% endif %}
+        {% if s.contact %}<div class="small muted">Contact: {{ s.contact }}</div>{% endif %}
         <div class="small">
           {% if s.repeat_weekdays %}{{ describe_repeat(s) }}{% else %}{{ s.start_local|day }}{% endif %},
           {{ span(s.start_local, s.start_local + minutes(s.duration_minutes)) }}
@@ -53,6 +55,17 @@
     {% else %}
       <div class="card empty"><p>No schedules yet. The door stays on its normal UniFi rule.</p></div>
     {% endfor %}
+
+    <h2>Recent changes</h2>
+    {% for e in history %}
+      <div class="hist small">
+        <div class="muted">{{ (e.at|local)|day }} {{ (e.at|local)|time }} · <strong>{{ e.actor }}</strong></div>
+        <div>{{ e.detail }}</div>
+        {% set ch = audit_mod.changes_of(e) %}
+        {% if ch and e.action == 'schedule.update' %}<ul class="changes">{% for k, b, a in ch %}<li>{{ k }}: <del>{{ b or '—' }}</del> → <ins>{{ a or '—' }}</ins></li>{% endfor %}</ul>{% endif %}
+      </div>
+    {% else %}<p class="muted small">No changes recorded yet.</p>{% endfor %}
+    {% if user.is_admin %}<p class="small"><a href="/history?door={{ door.id|urlencode }}">Full history for this door →</a></p>{% endif %}
   </section>
 </div>
 {% endblock %}

@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
+from . import history, sso
 from .web import render, router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -51,6 +52,8 @@ app.add_middleware(SessionMiddleware, secret_key=config.secret_key(), session_co
                    max_age=14 * 24 * 3600, same_site="lax", https_only=config.SECURE_COOKIES)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 app.include_router(router)
+app.include_router(sso.router)
+app.include_router(history.router)
 
 
 @app.exception_handler(LoginRequired)

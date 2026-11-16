@@ -207,3 +207,45 @@ a.strong { font-weight: 600; color: var(--text); }
 #schedform:has(input[name=kind][value=override]:checked) .only-default,
 #schedform:has(input[name=kind][value=override]:checked) .only-default-inline { display: none; }
 #schedform:has(input[name=kind][value=default]:checked) .repeat-opts { display: block; }
+
+/* people, roles, sign-in */
+.role { font-size: .72rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 .45rem; margin-left: .25rem; }
+.choices { display: grid; gap: .5rem; }
+.choice { font-weight: 400; cursor: pointer; }
+.choice input { position: absolute; opacity: 0; }
+.choice > span { display: flex; flex-direction: column; border: 1.5px solid var(--line); border-radius: 10px; padding: .7rem .9rem; }
+.choice small { color: var(--muted); }
+.choice input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+.choice input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+#userform:has(input[name=role][value=admin]:checked) .only-operator { display: none; }
+#userform:has(input[name=signin][value=microsoft]:checked) .pwfield { display: none; }
+.access-site { border: 1px solid var(--line); border-radius: 10px; padding: .75rem; margin-bottom: .6rem; }
+.access-site .sitewide { margin-bottom: .5rem; }
+.access-site:has(.sitewide input:checked) .persite { display: none; }
+.access-site:has(.sitewide input:checked) { border-color: var(--ok); background: var(--ok-soft); }
+.button.ms { display: flex; align-items: center; justify-content: center; gap: .6rem; padding: .75rem; font-weight: 600; }
+.pwlogin { margin-top: 1.25rem; }
+.pwlogin summary { cursor: pointer; color: var(--muted); font-size: .9rem; text-align: center; }
+details.card.help summary { font-weight: 600; color: var(--text); }
+
+/* history */
+.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .75rem; align-items: end; }
+.filters .check, .filters .btnrow { grid-column: 1 / -1; }
+.hentry { display: flex; gap: 1rem; padding: .75rem 1rem; margin-bottom: .5rem; border-left: 4px solid var(--line); }
+.hentry.schedule { border-left-color: var(--accent); }
+.hentry.access, .hentry.signin { border-left-color: var(--cal); }
+.hentry.site, .hentry.calendar { border-left-color: var(--ok); }
+.hentry.bad { border-left-color: var(--err); background: var(--err-soft); }
+.htime { min-width: 5.5rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hbody { flex: 1; min-width: 0; }
+.hbody details { margin-top: .4rem; }
+.hbody summary { cursor: pointer; color: var(--accent); }
+.changes-table { margin-top: .4rem; font-size: .88rem; }
+.changes-table th, .changes-table td { padding: .3rem .6rem; }
+.changes-table tbody th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+del { color: var(--err); text-decoration: line-through; }
+ins { color: var(--ok); text-decoration: none; font-weight: 500; }
+.hist { border-top: 1px solid var(--line); padding: .5rem 0; }
+.changes { margin: .25rem 0 0; padding-left: 1.1rem; }
+.evicon { font-weight: 400; }
+@media (max-width: 560px) { .hentry { flex-direction: column; gap: .2rem; } }

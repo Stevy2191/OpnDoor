@@ -4,6 +4,9 @@
 {% block mainclass %}narrow{% endblock %}
 {% block content %}
 <h1>{% if sched %}Edit schedule{% elif kind == 'default' %}Set regular hours{% else %}Add an override{% endif %}</h1>
+{% if sched %}
+<p class="muted small">Added by {{ people.get(sched.created_by, 'OpnDoor') }} on {{ (sched.created_at|local)|day }}{% if sched.updated_at %} · last changed by {{ people.get(sched.updated_by, 'someone') }} on {{ (sched.updated_at|local)|day }} at {{ (sched.updated_at|local)|time }}{% endif %}</p>
+{% endif %}
 {% if not doors %}
 <div class="card empty"><p>You don't have access to any doors yet.</p></div>
 {% else %}
@@ -26,8 +29,21 @@
     </div>
   </fieldset>
 
-  <label>Name
+  <label><span class="only-override-inline">Event: what is it for?</span><span class="only-default-inline">Name</span>
     <input name="label" value="{{ sched.label if sched else ('Regular hours' if kind == 'default' else '') }}" placeholder="e.g. Smith wedding, Thanksgiving closure" required>
+  </label>
+
+  <fieldset class="only-override">
+    <legend>Type of event</legend>
+    <div class="chips types">
+    {% for key, (icon, name) in EVENT_TYPES.items() %}
+      <label class="chip"><input type="radio" name="event_type" value="{{ key }}" {% if key == event_type %}checked{% endif %}><span>{{ icon }} {{ name }}</span></label>
+    {% endfor %}
+    </div>
+  </fieldset>
+
+  <label class="only-override">Contact person (optional)
+    <input name="contact" value="{{ sched.contact if sched else '' }}" placeholder="e.g. Jane Smith, 555-0123">
   </label>
 
   <fieldset>

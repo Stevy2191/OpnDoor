@@ -7,7 +7,9 @@
   <tbody>
   {% for r in rows %}{% set s = r.s %}
     <tr>
-      <td><strong>{{ s.label }}</strong>
+      <td><strong>{{ event_icon(s) }} {{ s.label }}</strong>
+        {% if s.kind == 'override' %}<small class="muted"> · {{ event_name(s) }}</small>{% endif %}
+        {% if s.contact %}<br><small class="muted">Contact: {{ s.contact }}</small>{% endif %}
         {% if s.kind == 'override' %}<br><span class="tag {{ 'lock' if s.action == 'lock' else 'rep' }}">{{ '🔒 Keep locked' if s.action == 'lock' else '🔓 Unlocked' }}</span>{% endif %}
         {% if s.notes and s.source != 'calendar' %}<br><small class="muted">{{ s.notes }}</small>{% endif %}</td>
       <td>

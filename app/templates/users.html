@@ -1,23 +1,36 @@
 {% extends "base.html" %}
-{% block title %}Users · OpnDoor{% endblock %}
+{% block title %}People · OpnDoor{% endblock %}
 {% block content %}
 <div class="head">
-  <h1>Users</h1>
-  <a class="button primary" href="/users/new">+ Add user</a>
+  <h1>People</h1>
+  <a class="button primary" href="/users/new">+ Add a person</a>
 </div>
+<p class="muted"><strong>Admins</strong> can do everything. <strong>Door operators</strong> can only see and schedule the doors you give them.</p>
 <div class="table card">
 <table>
-  <thead><tr><th>Name</th><th>Role</th><th>Can schedule</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Role</th><th>Can schedule</th><th>Signs in with</th><th></th></tr></thead>
   <tbody>
   {% for u in users %}
     <tr class="{{ '' if u.active else 'gone' }}">
       <td><strong>{{ u.name or '—' }}</strong><br><small class="muted">{{ u.email }}</small></td>
-      <td>{% if not u.active %}<span class="tag">Deactivated</span>{% elif u.is_admin %}<span class="tag rep">Admin</span>{% else %}User{% endif %}</td>
-      <td>{% if u.is_admin %}All doors{% else %}{% for n in access.get(u.id, []) %}<span class="tag">{{ n }}</span> {% else %}<span class="muted">No doors</span>{% endfor %}{% endif %}</td>
+      <td>{% if not u.active %}<span class="tag">Turned off</span>{% elif u.is_admin %}<span class="tag rep">Admin</span>{% else %}<span class="tag">Door operator</span>{% endif %}</td>
+      <td>{% if u.is_admin %}Everything{% else %}{% for n in access.get(u.id, []) %}<span class="tag {{ 'def' if n.startswith('All doors') else '' }}">{{ n }}</span> {% else %}<span class="muted">Nothing yet</span>{% endfor %}{% endif %}</td>
+      <td>{{ 'Password' if u.password_hash else 'Microsoft' }}{% if u.last_login_at %}<br><small class="muted">last {{ (u.last_login_at|local)|day }}</small>{% endif %}</td>
       <td class="right"><a class="small" href="/users/{{ u.id }}">Edit</a></td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
+
+<details class="card help">
+  <summary>Sign in with Microsoft: {{ 'on' if config.SSO_ENABLED else 'not set up yet' }}</summary>
+  {% if config.SSO_ENABLED %}
+    <p>People sign in with their work Microsoft account. Their email in OpnDoor must match their Microsoft email.</p>
+  {% else %}
+    <p>To turn it on, register OpnDoor in Microsoft Entra and add three settings to OpnDoor's <code>.env</code> file
+    (<code>MS_TENANT_ID</code>, <code>MS_CLIENT_ID</code>, <code>MS_CLIENT_SECRET</code>). Step-by-step instructions are in the README.</p>
+  {% endif %}
+  <p class="small">Redirect URL to give Microsoft: <code>{{ redirect_url }}</code>{% if not config.PUBLIC_URL %}<br><span class="muted">Set <code>PUBLIC_URL</code> if people reach OpnDoor through a different address.</span>{% endif %}</p>
+</details>
 {% endblock %}

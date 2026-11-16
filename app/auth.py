@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import Request
 from sqlmodel import Session, select
 
-from .models import Door, User, UserDoor
+from .models import Door, User, UserDoor, UserSite
 
 _N, _R, _P = 2**14, 8, 1
 
@@ -46,10 +46,29 @@ def current_user(request: Request, session: Session) -> Optional[User]:
 
 
 def allowed_door_ids(session: Session, user: User) -> set[str]:
-    """Doors this user may schedule. Admins get every door."""
+    """Doors this user may see and schedule.
+
+    Admins: every door. Door operators: every door at their sites (including doors
+    added later) plus any single doors they were given.
+    """
     if user.is_admin:
         return set(session.exec(select(Door.id)).all())
-    return set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == user.id)).all())
+    site_ids = set(session.exec(select(UserSite.site_id).where(UserSite.user_id == user.id)).all())
+    doors = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == user.id)).all())
+    if site_ids:
+        doors |= set(session.exec(select(Door.id).where(Door.site_id.in_(site_ids))).all())
+    return doors
+
+
+def visible_site_ids(session: Session, user: User) -> set[int]:
+    """Sites a user may see: admins all, operators only sites where they have doors."""
+    if user.is_admin:
+        from .models import Site
+        return set(session.exec(select(Site.id)).all())
+    ids = allowed_door_ids(session, user)
+    if not ids:
+        return set()
+    return set(session.exec(select(Door.site_id).where(Door.id.in_(ids))).all())
 
 
 class LoginRequired(Exception):
@@ -58,3 +77,22 @@ class LoginRequired(Exception):
 
 class AdminRequired(Exception):
     pass
+
+
+def login_user(request: Request, session: Session, user: User, method: str) -> None:
+    """Start a session for user and note it in History."""
+    from .audit import record
+    from .models import utcnow
+    request.session.clear()
+    request.session["uid"] = user.id
+    user.last_login_at = utcnow()
+    session.add(user)
+    record(session, "signin.ok", f"{user.display} signed in with {method}", user=user)
+    session.commit()
+
+
+def safe_next(nxt: Optional[str]) -> str:
+    """Only allow redirects to paths on this site."""
+    if not nxt or not nxt.startswith("/") or nxt.startswith("//") or nxt.startswith("/\\"):
+        return "/"
+    return nxt

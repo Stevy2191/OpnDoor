@@ -147,7 +147,7 @@ def apply_feed(session: Session, feed: CalendarFeed, bookings: list[Booking]) ->
             label = b.title + (f" · {b.location}" if b.location else "")
             sched = existing.get(uid)
             if sched is None:
-                sched = Schedule(label=label, kind="override", action="unlock", start_local=start,
+                sched = Schedule(label=label, kind="override", action="unlock", event_type="event", start_local=start,
                                  duration_minutes=duration, source="calendar", feed_id=feed.id, source_uid=uid,
                                  notes=f"From calendar “{feed.name}”")
                 session.add(sched)
@@ -208,12 +208,13 @@ def sync_feed(feed_id: int) -> str:
                       f"{result['updated']} changed, {result['removed']} removed"
                       + (f", {skipped} matched no door" if skipped else ""))
             if result["created"] or result["updated"] or result["removed"]:
-                audit(s, "calendar.sync", f"{feed.name}: {status}", actor="calendar")
+                audit(s, "calendar.sync", f"{feed.name}: {status}", actor="Calendar sync",
+                      door_ids=sorted({d for b in bookings for d in b.door_ids}))
         except Exception as e:  # network, HTTP, or parse errors
             log.warning("Calendar %s sync failed: %s", feed.name, e)
             status = f"Error: {e}"
             if feed.last_sync_status != status:
-                audit(s, "calendar.error", f"{feed.name}: {e}", actor="calendar")
+                audit(s, "calendar.error", f"{feed.name}: {e}", actor="Calendar sync")
         feed.last_sync_at = utcnow()
         feed.last_sync_status = status[:500]
         s.add(feed)

@@ -9,14 +9,14 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from sqlmodel import Session, func, select
 
-from . import calendars, config, engine
-from .auth import (AdminRequired, LoginRequired, allowed_door_ids, current_user,
-                   hash_password, verify_password)
+from . import audit, calendars, config, engine
+from .auth import (AdminRequired, LoginRequired, allowed_door_ids, current_user, hash_password,
+                   login_user, safe_next, verify_password, visible_site_ids)
 from .db import get_session, session_scope
 from .models import (AuditLog, CalendarFeed, CalendarRule, Door, DoorState, Schedule,
-                     ScheduleDoor, Site, User, UserDoor, utcnow)
-from .schedules import (WEEKDAYS, describe_kind, describe_repeat, expand, now_local,
-                        series_last_date, to_local, weekdays_of)
+                     ScheduleDoor, Site, User, UserDoor, UserSite, utcnow)
+from .schedules import (EVENT_TYPES, WEEKDAYS, describe_kind, describe_repeat, event_icon, event_name,
+                        expand, now_local, series_last_date, to_local, weekdays_of)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -45,7 +45,8 @@ def _span(start: datetime, end: datetime) -> str:
 
 templates.env.filters.update(time=_time, day=_day, local=to_local)
 templates.env.globals.update(span=_span, minutes=lambda m: timedelta(minutes=m), WEEKDAYS=WEEKDAYS,
-                             describe_repeat=describe_repeat, describe_kind=describe_kind, config=config)
+                             describe_repeat=describe_repeat, describe_kind=describe_kind, config=config,
+                             EVENT_TYPES=EVENT_TYPES, event_icon=event_icon, event_name=event_name)
 
 
 # ---------- helpers ----------
@@ -62,6 +63,9 @@ def render(request: Request, name: str, user: Optional[User], **ctx) -> HTMLResp
     msgs = request.session.pop("flash", [])
     with session_scope() as s:
         sites = {x.id: x for x in s.exec(select(Site).order_by(Site.name)).all()}
+        if user and not user.is_admin:  # door operators only ever see their own sites
+            mine = visible_site_ids(s, user)
+            sites = {k: v for k, v in sites.items() if k in mine}
     demo = config.DRY_RUN or any(x.is_demo for x in sites.values())
     ctx.setdefault("sites", sites)
     return templates.TemplateResponse(request, name, {"user": user, "flashes": msgs, "demo": demo, **ctx})
@@ -173,9 +177,8 @@ def setup(request: Request, name: str = Form(...), email: str = Form(...), passw
     user = User(name=name.strip(), email=email.strip().lower(), password_hash=hash_password(password), is_admin=True)
     session.add(user)
     session.commit()
-    engine.audit(session, "user.setup", f"Created first admin {user.email}", user=user)
-    session.commit()
-    request.session["uid"] = user.id
+    audit.record(session, "user.setup", f"{user.display} set up OpnDoor and became the first admin", user=user)
+    login_user(request, session, user, "a password")
     engine.ensure_sites()
     engine.sync_doors()
     flash(request, "Welcome! Add your UniFi Access consoles under Sites." if demo_only(session)
@@ -200,16 +203,20 @@ def login_page(request: Request, session: Session = Depends(get_session)):
 @router.post("/login")
 def login(request: Request, email: str = Form(...), password: str = Form(...),
           session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == email.strip().lower())).first()
-    if not user or not user.active or not verify_password(password, user.password_hash):
-        flash(request, "That email and password didn't match.", "error")
+    email = email.strip().lower()
+    user = session.exec(select(User).where(User.email == email)).first()
+    if not user or not user.active or not user.password_hash or not verify_password(password, user.password_hash):
+        reason = ("their account is turned off" if user and not user.active
+                  else "their account signs in with Microsoft" if user and not user.password_hash
+                  else "the password was wrong" if user else "there's no such person")
+        audit.record(session, "signin.fail", f"Password sign-in for {email} refused: {reason}", actor=email)
+        session.commit()
+        flash(request, "This account signs in with Microsoft. Use the Microsoft button."
+              if user and user.active and not user.password_hash and config.SSO_ENABLED
+              else "That email and password didn't match.", "error")
         return redirect("/login")
-    request.session.clear()
-    request.session["uid"] = user.id
-    nxt = request.query_params.get("next") or "/"
-    if not nxt.startswith("/") or nxt.startswith("//"):
-        nxt = "/"
-    return redirect(nxt)
+    login_user(request, session, user, "a password")
+    return redirect(safe_next(request.query_params.get("next")))
 
 
 @router.post("/logout")
@@ -227,7 +234,11 @@ def account_page(request: Request, user: User = Depends(require_user)):
 def account(request: Request, name: str = Form(""), current_password: str = Form(""),
             new_password: str = Form(""), user: User = Depends(require_user),
             session: Session = Depends(get_session)):
+    old_name = user.name
     user.name = name.strip()
+    if old_name != user.name:
+        audit.record(session, "account.update", f"{user.display} changed their name",
+                     changes=[["Name", old_name, user.name]], user=user)
     if new_password:
         if not verify_password(current_password, user.password_hash):
             flash(request, "Current password is wrong.", "error")
@@ -236,6 +247,7 @@ def account(request: Request, name: str = Form(""), current_password: str = Form
             flash(request, "New password must be at least 8 characters.", "error")
             return redirect("/account")
         user.password_hash = hash_password(new_password)
+        audit.record(session, "account.update", f"{user.display} changed their password", user=user)
     session.add(user)
     session.commit()
     flash(request, "Account updated.")
@@ -282,13 +294,15 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
     minutes = max(1, min(minutes, 12 * 60))
     for site_id, ids in group_by_site(session, door_ids).items():
         start = now_local(engine.site_tz(session.get(Site, site_id))).replace(second=0, microsecond=0)
-        sched = Schedule(label=f"Unlock now by {user.name or user.email}", kind="override", action="unlock",
-                         start_local=start, duration_minutes=minutes + 1, source="quick", created_by=user.id)
+        sched = Schedule(label=f"Unlock now by {user.display}", kind="override", action="unlock",
+                         event_type="other", start_local=start, duration_minutes=minutes + 1, source="quick",
+                         created_by=user.id)
         session.add(sched)
         session.flush()
         calendars.set_schedule_doors(session, sched.id, ids)
     names = ", ".join(session.get(Door, d).name for d in door_ids)
-    engine.audit(session, "schedule.quick", f"{names} for {minutes} min", user=user)
+    audit.record(session, "schedule.quick", f"{user.display} unlocked {names} for {minutes} minutes",
+                 user=user, door_ids=door_ids)
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Unlocking {names} for {minutes} minutes.")
@@ -305,7 +319,8 @@ def schedules_list(request: Request, user: User = Depends(require_user), session
     sd = schedule_doors(session, [s.id for s in scheds])
     names = {d.id: d.name for d in session.exec(select(Door)).all()}
     feeds = {f.id: f.name for f in session.exec(select(CalendarFeed)).all()}
-    rows = [{"s": s, "doors": [names.get(d, d) for d in sd[s.id]],
+    allowed = allowed_door_ids(session, user)
+    rows = [{"s": s, "doors": [names.get(d, d) for d in sd[s.id] if user.is_admin or d in allowed],
              "editable": can_edit(session, user, s, sd[s.id]), "feed": feeds.get(s.feed_id)} for s in scheds]
     return render(request, "schedules.html", user,
                   defaults=[r for r in rows if r["s"].kind == "default"],
@@ -327,8 +342,14 @@ def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kin
         start = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
         end = start + timedelta(hours=2)
         days = []
+    people = {}
+    if sched:
+        for uid in {sched.created_by, sched.updated_by} - {None}:
+            u = session.get(User, uid)
+            people[uid] = u.display if u else "someone"
     return dict(sched=sched, doors=doors_for(session, user), selected=set(selected), kind=kind,
-                action=sched.action if sched else "unlock",
+                action=sched.action if sched else "unlock", people=people,
+                event_type=sched.event_type if sched else "event",
                 date_val=start.date().isoformat(), start_val=start.strftime("%H:%M"),
                 end_val=end.strftime("%H:%M"), days=days)
 
@@ -356,7 +377,7 @@ def schedule_edit(request: Request, sid: int, user: User = Depends(require_user)
 
 
 def _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays, until, allowed,
-                    kind="override", action="unlock"):
+                    kind="override", action="unlock", event_type="event", contact=""):
     errors = []
     kind = "default" if kind == "default" else "override"
     action = "lock" if kind == "override" and action == "lock" else "unlock"
@@ -392,7 +413,10 @@ def _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays,
                 errors.append("Repeat-until date is before the start date.")
     if not days and end_dt < now_local():
         errors.append("That time has already passed.")
-    return dict(label=label, kind=kind, action=action, door_ids=door_ids, start_local=start_dt,
+    if event_type not in EVENT_TYPES:
+        event_type = "other"
+    return dict(label=label, kind=kind, action=action, event_type=event_type, contact=contact.strip(),
+                door_ids=door_ids, start_local=start_dt,
                 duration_minutes=int((end_dt - start_dt).total_seconds() // 60),
                 repeat_weekdays=",".join(map(str, days)), repeat_until=until_d), errors
 
@@ -403,38 +427,50 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
                   label: str = Form(""), door_ids: list[str] = Form([]), day: str = Form(...),
                   start: str = Form(...), end: str = Form(...), repeat: str = Form("none"),
                   weekdays: list[str] = Form([]), until: str = Form(""), notes: str = Form(""),
-                  kind: str = Form("override"), action: str = Form("unlock"),
-                  user: User = Depends(require_user), session: Session = Depends(get_session)):
+                  kind: str = Form("override"), action: str = Form("unlock"), event_type: str = Form("event"),
+                  contact: str = Form(""), user: User = Depends(require_user),
+                  session: Session = Depends(get_session)):
     allowed = allowed_door_ids(session, user)
-    sched = None
+    sched, old_doors = None, []
     if sid is not None:
         sched = session.get(Schedule, sid)
+        old_doors = schedule_doors(session, [sid]).get(sid, []) if sched else []
         if not sched or not can_edit(session, user, sched, schedule_doors(session, [sid])[sid]):
             flash(request, "You can't edit that schedule.", "error")
             return redirect("/schedules")
     data, errors = _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays, until, allowed,
-                                   kind, action)
+                                   kind, action, event_type, contact)
     if errors:
         for e in errors:
             flash(request, e, "error")
         return redirect(f"/schedules/{sid}" if sid else "/schedules/new")
     ids = data.pop("door_ids")
+    before = audit.schedule_snapshot(session, sched) if sched else {}
     if sched is None:
         sched = Schedule(**data, notes=notes.strip(), created_by=user.id)
         session.add(sched)
         session.flush()
-        action = "schedule.create"
+        verb = "schedule.create"
     else:
         for k, v in data.items():
             setattr(sched, k, v)
         sched.notes = notes.strip()
+        sched.updated_by, sched.updated_at = user.id, utcnow()
         session.add(sched)
-        action = "schedule.update"
+        verb = "schedule.update"
     calendars.set_schedule_doors(session, sched.id, ids)
-    names = ", ".join(session.get(Door, d).name for d in ids)
-    end_dt = sched.start_local + timedelta(minutes=sched.duration_minutes)
-    engine.audit(session, action, f"{describe_kind(sched)} “{sched.label}” {_day(sched.start_local)} {_span(sched.start_local, end_dt)} · {names}"
-                 + (f" · {describe_repeat(sched)}" if sched.repeat_weekdays else ""), user=user)
+    session.flush()
+    after = audit.schedule_snapshot(session, sched)
+    if verb == "schedule.create":
+        audit.record(session, verb, f"{user.display} added {describe_kind(sched).lower()} “{sched.label}”: "
+                     f"{after['Doors']}, {after['When']}, {after['Time']}", user=user,
+                     changes=audit.diff({}, after), door_ids=ids, schedule_id=sched.id)
+    else:
+        changed = audit.diff(before, after)
+        if changed:
+            audit.record(session, verb, f"{user.display} changed “{sched.label}”: "
+                         + ", ".join(c[0].lower() for c in changed), user=user, changes=changed,
+                         door_ids=sorted(set(ids) | set(old_doors)), schedule_id=sched.id)
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Saved “{sched.label}”.")
@@ -445,8 +481,12 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
 def schedule_delete(request: Request, sid: int, bg: BackgroundTasks, user: User = Depends(require_user),
                     session: Session = Depends(get_session)):
     sched = session.get(Schedule, sid)
-    if sched and can_edit(session, user, sched, schedule_doors(session, [sid])[sid]):
-        engine.audit(session, "schedule.delete", f"“{sched.label}”", user=user)
+    door_ids = schedule_doors(session, [sid])[sid] if sched else []
+    if sched and can_edit(session, user, sched, door_ids):
+        snap = audit.schedule_snapshot(session, sched)
+        audit.record(session, "schedule.delete", f"{user.display} deleted “{sched.label}” ({snap['Doors']})",
+                     user=user, changes=[[k, v, ""] for k, v in snap.items() if v], door_ids=door_ids,
+                     schedule_id=sched.id)
         calendars.delete_schedule(session, sched)
         session.commit()
         kick_reconcile(bg)
@@ -499,6 +539,7 @@ def door_page(request: Request, door_id: str, user: User = Depends(require_user)
                     key=lambda x: (x.kind != "default", x.start_local))
     rows = [{"s": x, "editable": can_edit(session, user, x, sd[x.id])} for x in listed]
     return render(request, "door.html", user, door=door, site=site, days=days, rows=rows,
+                  history=audit.for_door(session, door.id), audit_mod=audit,
                   status=door_status(session, [door]).get(door.id, {}))
 
 
@@ -541,6 +582,7 @@ def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = No
     if host and host != "demo" and not host.startswith(("http://", "https://")):
         host = "https://" + host
     site = session.get(Site, site_id) if site_id else Site(name=name)
+    before = audit.site_snapshot(site) if site_id else {}
     if not site_id and not token.strip() and host != "demo":
         flash(request, "Enter the console's API token.", "error")
         return redirect(back)
@@ -549,7 +591,14 @@ def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = No
     if token.strip():
         site.token = token.strip()
     session.add(site)
-    engine.audit(session, "site.update" if site_id else "site.create", f"{site.name} ({site.host})", user=user)
+    session.flush()
+    changed = audit.diff(before, audit.site_snapshot(site))
+    if token.strip() and site_id:
+        changed.append(["API token", "(hidden)", "(new token)"])
+    if changed or not site_id:
+        audit.record(session, "site.update" if site_id else "site.create",
+                     f"{user.display} {'changed' if site_id else 'added'} site “{site.name}”",
+                     user=user, changes=changed, site_ids=[site.id] if site.id else None)
     session.commit()
     status = engine.sync_site(site.id) if site.enabled else "Saved (disabled)."
     kick_reconcile(bg)
@@ -584,23 +633,32 @@ def site_delete(request: Request, site_id: int, user: User = Depends(require_adm
             session.delete(session.get(Schedule, sid))
     for d in door_ids:
         session.delete(session.get(Door, d))
-    engine.audit(session, "site.delete", site.name, user=user)
+    audit.record(session, "site.delete", f"{user.display} removed site “{site.name}” and its {len(door_ids)} doors",
+                 user=user, site_ids=[site.id])
     session.delete(site)
     session.commit()
     flash(request, f"Removed {site.name} and its doors. Doors were left on their normal UniFi rules.")
     return redirect("/sites")
 
 
-# ---------- users (admin) ----------
+# ---------- people (admin) ----------
 
 @router.get("/users")
 def users_page(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
-    users = session.exec(select(User).order_by(User.active.desc(), User.name)).all()
+    users = session.exec(select(User).order_by(User.active.desc(), User.is_admin.desc(), User.name)).all()
     names = {d.id: d.name for d in session.exec(select(Door)).all()}
+    site_names = {x.id: x.name for x in session.exec(select(Site)).all()}
     access: dict[int, list[str]] = {}
+    for us in session.exec(select(UserSite)).all():
+        access.setdefault(us.user_id, []).append(f"All doors at {site_names.get(us.site_id, '?')}")
     for ud in session.exec(select(UserDoor)).all():
         access.setdefault(ud.user_id, []).append(names.get(ud.door_id, ud.door_id))
-    return render(request, "users.html", user, users=users, access=access)
+    return render(request, "users.html", user, users=users, access=access, redirect_url=sso_redirect(request))
+
+
+def sso_redirect(request: Request) -> str:
+    from .sso import redirect_uri
+    return redirect_uri(request)
 
 
 @router.get("/users/{uid}")
@@ -608,52 +666,78 @@ def users_page(request: Request, user: User = Depends(require_admin), session: S
 def user_form(request: Request, uid: Optional[int] = None, user: User = Depends(require_admin),
               session: Session = Depends(get_session)):
     target = session.get(User, uid) if uid else None
-    selected = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == uid)).all()) if uid else set()
-    doors = all_doors(session)
-    return render(request, "user_form.html", user, target=target, doors=doors, selected=selected)
+    sel_doors = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == uid)).all()) if uid else set()
+    sel_sites = set(session.exec(select(UserSite.site_id).where(UserSite.user_id == uid)).all()) if uid else set()
+    return render(request, "user_form.html", user, target=target, doors=all_doors(session),
+                  selected=sel_doors, selected_sites=sel_sites)
 
 
 @router.post("/users")
 @router.post("/users/{uid}")
 def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""), email: str = Form(...),
-              password: str = Form(""), is_admin: bool = Form(False), active: bool = Form(False),
-              door_ids: list[str] = Form([]), user: User = Depends(require_admin),
-              session: Session = Depends(get_session)):
+              role: str = Form("operator"), signin: str = Form("microsoft"), password: str = Form(""),
+              active: bool = Form(False), door_ids: list[str] = Form([]), site_ids: list[int] = Form([]),
+              user: User = Depends(require_admin), session: Session = Depends(get_session)):
     email = email.strip().lower()
+    back = f"/users/{uid}" if uid else "/users/new"
+    is_admin = role == "admin"
+    use_password = signin == "password" or not config.SSO_ENABLED
     clash = session.exec(select(User).where(User.email == email)).first()
     if clash and clash.id != uid:
-        flash(request, "Another user already has that email.", "error")
-        return redirect(f"/users/{uid}" if uid else "/users/new")
-    if uid:
-        target = session.get(User, uid)
-        if target.id == user.id and (not is_admin or not active):
-            flash(request, "You can't remove your own admin access or deactivate yourself.", "error")
-            return redirect(f"/users/{uid}")
-    else:
-        if len(password) < 8:
-            flash(request, "Set a password of at least 8 characters.", "error")
-            return redirect("/users/new")
-        target = User(email=email, password_hash="", active=True)
+        flash(request, "Another person already has that email.", "error")
+        return redirect(back)
+    target = session.get(User, uid) if uid else None
+    if uid and not target:
+        return redirect("/users")
+    if target and target.id == user.id and (not is_admin or not active):
+        flash(request, "You can't remove your own admin role or turn off your own account.", "error")
+        return redirect(back)
+    if use_password and password and len(password) < 8:
+        flash(request, "Passwords need at least 8 characters.", "error")
+        return redirect(back)
+    if use_password and not password and not (target and target.password_hash):
+        flash(request, "Set a password (at least 8 characters), or choose Microsoft sign-in.", "error")
+        return redirect(back)
+
+    before = audit.user_snapshot(session, target) if target else {}
+    if target is None:
+        target = User(email=email)
         active = True
     target.name, target.email, target.is_admin, target.active = name.strip(), email, is_admin, active
-    if password:
-        if len(password) < 8:
-            flash(request, "Password must be at least 8 characters.", "error")
-            return redirect(f"/users/{uid}")
+    if not use_password:
+        target.password_hash = ""
+    elif password:
         target.password_hash = hash_password(password)
     session.add(target)
     session.flush()
-    for ud in session.exec(select(UserDoor).where(UserDoor.user_id == target.id)).all():
-        session.delete(ud)
+
+    # access: admins see everything, so stored grants only matter for operators
+    for row in session.exec(select(UserDoor).where(UserDoor.user_id == target.id)).all():
+        session.delete(row)
+    for row in session.exec(select(UserSite).where(UserSite.user_id == target.id)).all():
+        session.delete(row)
     session.flush()
-    valid = set(session.exec(select(Door.id)).all())
-    for d in set(door_ids) & valid:
-        session.add(UserDoor(user_id=target.id, door_id=d))
-    engine.audit(session, "user.update" if uid else "user.create",
-                 f"{target.email} ({'admin' if is_admin else f'{len(set(door_ids) & valid)} doors'})"
-                 + ("" if active else ", deactivated"), user=user)
+    if not is_admin:
+        valid_sites = set(session.exec(select(Site.id)).all())
+        whole = set(site_ids) & valid_sites
+        for sid in whole:
+            session.add(UserSite(user_id=target.id, site_id=sid))
+        for d in set(door_ids):
+            door = session.get(Door, d)
+            if door and door.site_id not in whole:  # already covered by the whole site
+                session.add(UserDoor(user_id=target.id, door_id=d))
+    session.flush()
+
+    after = audit.user_snapshot(session, target)
+    changed = audit.diff(before, after)
+    if password and before and use_password:
+        changed.append(["Password", "", "(reset by admin)"])
+    if changed:
+        audit.record(session, "user.update" if uid else "user.create",
+                     f"{user.display} {'changed' if uid else 'added'} {target.display} ({target.role_name})",
+                     user=user, changes=changed)
     session.commit()
-    flash(request, f"Saved {target.name or target.email}.")
+    flash(request, f"Saved {target.display}.")
     return redirect("/users")
 
 
@@ -728,7 +812,10 @@ async def calendar_save(request: Request, fid: Optional[int] = None, user: User 
         session.delete(r)
     for r in await _rules_from_form(request):
         session.add(CalendarRule(feed_id=feed.id, **r))
-    engine.audit(session, "calendar.update" if fid else "calendar.create", feed.name, user=user)
+    audit.record(session, "calendar.update" if fid else "calendar.create",
+                 f"{user.display} {'changed' if fid else 'connected'} calendar “{feed.name}”", user=user,
+                 door_ids=sorted(set(calendars.split_ids(feed.default_door_ids))
+                                 | {d for r in await _rules_from_form(request) for d in r["door_ids"].split(",")}))
     session.commit()
     status = (await run_in_threadpool(calendars.sync_feed, feed.id) if feed.enabled
               else "Saved (disabled, not synced).")
@@ -774,16 +861,8 @@ def calendar_delete(request: Request, fid: int, bg: BackgroundTasks, user: User 
         for r in session.exec(select(CalendarRule).where(CalendarRule.feed_id == fid)).all():
             session.delete(r)
         session.delete(feed)
-        engine.audit(session, "calendar.delete", feed.name, user=user)
+        audit.record(session, "calendar.delete", f"{user.display} disconnected calendar “{feed.name}”", user=user)
         session.commit()
         kick_reconcile(bg)
         flash(request, f"Removed “{feed.name}” and its schedules.")
     return redirect("/calendars")
-
-
-# ---------- activity (admin) ----------
-
-@router.get("/activity")
-def activity(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
-    rows = session.exec(select(AuditLog).order_by(AuditLog.at.desc()).limit(300)).all()
-    return render(request, "activity.html", user, rows=rows)

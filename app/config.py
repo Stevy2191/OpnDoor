@@ -28,6 +28,15 @@ UNIFI_SITE_NAME = os.getenv("UNIFI_SITE_NAME", "Main site")
 # Force every site to use fake consoles (no controller calls). Used by tests.
 DRY_RUN = _bool("DRY_RUN", False)
 
+# Sign in with Microsoft (Entra ID). See README "Sign in with Microsoft".
+MS_CLIENT_ID = os.getenv("MS_CLIENT_ID", "")
+MS_CLIENT_SECRET = os.getenv("MS_CLIENT_SECRET", "")
+MS_TENANT_ID = os.getenv("MS_TENANT_ID", "")  # your directory (tenant) ID
+SSO_ENABLED = bool(MS_CLIENT_ID and MS_CLIENT_SECRET and MS_TENANT_ID)
+# The address people use to reach OpnDoor, e.g. https://doors.example.org (used for the
+# Microsoft redirect URL). If unset, it's taken from the incoming request.
+PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
+
 RECONCILE_SECONDS = int(os.getenv("RECONCILE_SECONDS", "30"))
 DOOR_SYNC_MINUTES = int(os.getenv("DOOR_SYNC_MINUTES", "10"))
 CALENDAR_SYNC_MINUTES = int(os.getenv("CALENDAR_SYNC_MINUTES", "5"))

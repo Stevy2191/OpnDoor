@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect
 from sqlmodel import Session, SQLModel, create_engine
 
 from . import config
@@ -36,7 +36,42 @@ def set_engine(engine) -> None:
 
 
 def init_db() -> None:
-    SQLModel.metadata.create_all(get_engine())
+    engine = get_engine()
+    SQLModel.metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+def _sql_literal(v) -> str:
+    if isinstance(v, bool):
+        return "1" if v else "0"
+    if isinstance(v, (int, float)):
+        return str(v)
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def _add_missing_columns(engine) -> None:
+    """Simple upgrade: add columns that newer versions of a table have.
+
+    Only handles added columns (that's all OpnDoor's upgrades do so far). Existing
+    rows get the field's default value.
+    """
+    models = {m.__tablename__: m for m in SQLModel.__subclasses__() if hasattr(m, "__tablename__")}
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in SQLModel.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                sql = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(dialect=engine.dialect)}'
+                model = models.get(table.name)
+                field = model.model_fields.get(col.name) if model else None
+                default = getattr(field, "default", None) if field else None
+                if default is not None and isinstance(default, (str, int, float, bool)):
+                    sql += f" DEFAULT {_sql_literal(default)}"
+                conn.exec_driver_sql(sql)
 
 
 @contextmanager

@@ -15,6 +15,29 @@ from .models import Schedule
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+# What a schedule is for: key -> (icon, name). Shown everywhere a schedule appears.
+EVENT_TYPES = {
+    "event": ("🎉", "Event"),
+    "meeting": ("👥", "Meeting"),
+    "rental": ("🔑", "Rental"),
+    "class": ("📚", "Class"),
+    "maintenance": ("🔧", "Maintenance"),
+    "closure": ("🚫", "Closure"),
+    "other": ("📌", "Other"),
+}
+
+
+def event_icon(s: Schedule) -> str:
+    if s.kind == "default":
+        return "🕘"
+    return EVENT_TYPES.get(s.event_type, EVENT_TYPES["other"])[0]
+
+
+def event_name(s: Schedule) -> str:
+    if s.kind == "default":
+        return "Regular hours"
+    return EVENT_TYPES.get(s.event_type, EVENT_TYPES["other"])[1]
+
 
 def to_utc(local_naive: datetime, tz: Optional[tzinfo] = None) -> datetime:
     """Naive wall-clock in tz -> naive UTC."""
