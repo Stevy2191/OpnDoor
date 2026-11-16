@@ -94,11 +94,27 @@ DEMO_DOORS = [
 ]
 
 
+DEMO_AREAS = ["Main Entrance", "North Entrance", "South Entrance", "Gym", "Kitchen", "Library", "Office",
+              "Classroom", "Music Room", "Nursery", "Storage", "Boiler Room", "Chapel", "Youth Room",
+              "Conference Room", "Loading Dock", "Stairwell", "Workroom", "Lab", "Lobby"]
+
+
 class FakeUnifiClient:
-    """Demo/dry-run console: records calls, never touches a controller."""
+    """Demo/dry-run console: records calls, never touches a controller.
+
+    DEMO_DOOR_COUNT (env) makes it report that many doors, to try OpnDoor at scale.
+    """
 
     def __init__(self, site_name: str = "Demo"):
+        import os
         self.doors = [RemoteDoor(i, n, f"{site_name} - {f} - {n}", "lock", "close") for i, n, f in DEMO_DOORS]
+        extra = int(os.getenv("DEMO_DOOR_COUNT", "0") or 0) - len(self.doors)
+        for k in range(max(0, extra)):
+            area = DEMO_AREAS[k % len(DEMO_AREAS)]
+            num = k // len(DEMO_AREAS) + 1
+            name = f"{area} {num}" if k >= len(DEMO_AREAS) or area in {"Classroom", "Lab"} else area
+            floor = f"{(k % 3) + 1}F"
+            self.doors.append(RemoteDoor(f"demo-{k}", name, f"{site_name} - {floor} - {name}", "lock", "close"))
         self.calls: list[tuple] = []
 
     def list_doors(self) -> list[RemoteDoor]:

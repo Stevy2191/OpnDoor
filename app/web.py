@@ -14,7 +14,7 @@ from .auth import (AdminRequired, LoginRequired, allowed_door_ids, can_manage_pe
                    fully_managed, hash_password, login_user, managed_site_ids, person_site_ids, safe_next,
                    verify_password, visible_site_ids)
 from .db import get_session, session_scope
-from .models import (AuditLog, CalendarFeed, CalendarRule, Door, DoorState, Schedule,
+from .models import (AuditLog, Building, CalendarFeed, CalendarRule, Door, DoorState, Schedule,
                      ScheduleDoor, Site, User, UserDoor, UserSite, utcnow)
 from .schedules import (EVENT_TYPES, WEEKDAYS, describe_kind, describe_repeat, event_icon, event_name,
                         expand, now_local, series_last_date, to_local, weekdays_of)
@@ -52,6 +52,31 @@ templates.env.globals.update(span=_span, minutes=lambda m: timedelta(minutes=m),
 
 # ---------- helpers ----------
 
+def door_tree(doors) -> list:
+    """Group doors for display: [(site_id, [(Building or None, [doors...]), ...]), ...].
+
+    Buildings in name order, doors not in a building last ("Other doors")."""
+    doors = list(doors)
+    with session_scope() as s:
+        blds = {b.id: b for b in s.exec(select(Building)).all()}
+        for b in blds.values():
+            s.expunge(b)
+    tree: dict[int, dict] = {}
+    for d in doors:
+        tree.setdefault(d.site_id, {}).setdefault(d.building_id if d.building_id in blds else None, []).append(d)
+    out = []
+    for site_id in sorted(tree):
+        groups = tree[site_id]
+        keys = sorted((k for k in groups if k is not None), key=lambda k: blds[k].name.lower())
+        rows = [(blds[k], sorted(groups[k], key=lambda d: d.name.lower())) for k in keys]
+        if None in groups:
+            rows.append((None, sorted(groups[None], key=lambda d: d.name.lower())))
+        out.append((site_id, rows))
+    return out
+
+
+templates.env.globals["door_tree"] = door_tree
+
 def flash(request: Request, msg: str, kind: str = "ok") -> None:
     request.session.setdefault("flash", []).append([kind, msg])
 
@@ -69,6 +94,8 @@ def render(request: Request, name: str, user: Optional[User], **ctx) -> HTMLResp
             sites = {k: v for k, v in sites.items() if k in mine}
     demo = config.DRY_RUN or any(x.is_demo for x in sites.values())
     ctx.setdefault("sites", sites)
+    ctx.setdefault("nav_sites", sites)
+    ctx.setdefault("current_site", request.session.get("site") if request.session.get("site") in sites else None)
     return templates.TemplateResponse(request, name, {"user": user, "flashes": msgs, "demo": demo, **ctx})
 
 
@@ -98,7 +125,7 @@ def doors_for(session: Session, user: User) -> list[Door]:
 
 
 def all_doors(session: Session) -> list[Door]:
-    """Present doors, ordered by site then name."""
+    """Present doors, ordered by site then name (pickers group them by building with door_tree)."""
     return list(session.exec(select(Door).where(Door.present == True)  # noqa: E712
                              .order_by(Door.site_id, Door.name)).all())
 
@@ -273,78 +300,303 @@ def account(request: Request, name: str = Form(""), current_password: str = Form
 
 # ---------- dashboard ----------
 
+def current_site_id(request: Request, session: Session, user: User) -> Optional[int]:
+    """The site picked in the sidebar switcher (None = all sites)."""
+    sid = request.session.get("site")
+    if not sid:
+        return None
+    if sid not in visible_site_ids(session, user):
+        request.session.pop("site", None)
+        return None
+    return sid
+
+
+@router.get("/site")
+def pick_site(request: Request, id: str = "", next: str = "/", user: User = Depends(require_user),
+              session: Session = Depends(get_session)):
+    if id.isdigit() and int(id) in visible_site_ids(session, user):
+        request.session["site"] = int(id)
+    else:
+        request.session.pop("site", None)
+    return redirect(safe_next(next))
+
+
+class DoorNamer:
+    """Short, readable door lists: whole buildings collapse to "Event Center (all 4)"."""
+
+    def __init__(self, session: Session, doors: list[Door]):
+        self.doors = {d.id: d for d in doors}
+        self.sites = {x.id: x.name for x in session.exec(select(Site)).all()}
+        self.buildings = {b.id: b.name for b in session.exec(select(Building)).all()}
+        self.totals: dict[int, int] = {}
+        for bid, n in session.exec(select(Door.building_id, func.count()).where(
+                Door.building_id != None, Door.present == True).group_by(Door.building_id)).all():  # noqa: E711,E712
+            self.totals[bid] = n
+
+    def __call__(self, ids, limit: int = 4) -> str:
+        doors = [self.doors[d] for d in ids if d in self.doors]
+        multi_site = len({d.site_id for d in doors}) > 1
+        groups: dict = {}
+        for d in doors:
+            groups.setdefault(d.building_id if d.building_id in self.buildings else None, []).append(d)
+        parts = []
+        for bid in sorted((k for k in groups if k is not None), key=lambda k: self.buildings[k].lower()):
+            ds = groups[bid]
+            tag = f", {self.sites.get(ds[0].site_id, '')}" if multi_site else ""
+            if len(ds) > 1 and len(ds) == self.totals.get(bid):
+                parts.append(f"{self.buildings[bid]} (all {len(ds)}{tag})")
+            else:
+                parts.extend(f"{d.name}" + (f" ({self.sites.get(d.site_id, '')})" if multi_site else "")
+                             for d in sorted(ds, key=lambda d: d.name.lower()))
+        parts.extend(f"{d.name}" + (f" ({self.sites.get(d.site_id, '')})" if multi_site else "")
+                     for d in sorted(groups.get(None, []), key=lambda d: d.name.lower()))
+        more = len(parts) - limit
+        return ", ".join(parts[:limit]) + (f" +{more} more" if more > 0 else "")
+
+
 @router.get("/")
 def dashboard(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
-    doors = doors_for(session, user)
-    door_names = {d.id: d.name for d in session.exec(select(Door)).all()}
-    allowed = {d.id for d in doors}
-    scheds = visible_schedules(session, user)
-    sd = schedule_doors(session, [s.id for s in scheds])
+    site_id = current_site_id(request, session, user)
+    doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
+    in_view = {d.id for d in doors}
+    names = {d.id: d.name for d in doors}
+    sites = {x.id: x for x in session.exec(select(Site)).all()}
+    status = door_status(session, doors)
+
+    # Doors that aren't simply locked on their normal rule
+    right_now = []
+    for d in doors:
+        st = status.get(d.id, {})
+        if st.get("mode") or st.get("error"):
+            right_now.append({"door": d, "site": sites.get(d.site_id), "st": st,
+                              "can_lock": st.get("mode") == "unlock"})
+    right_now.sort(key=lambda r: (not r["st"].get("error"), r["st"].get("mode") != "unlock",
+                                  r["site"].name if r["site"] else "", r["door"].name))
+
+    # Events (overrides) today and in the next 7 days
     now = now_local()
-    occ = expand(scheds, now, now + timedelta(days=14))
+    today = now.date()
+    scheds = [x for x in visible_schedules(session, user) if x.kind == "override"]
+    sd = schedule_doors(session, [x.id for x in scheds])
+    namer = DoorNamer(session, doors)
+    agenda_today, agenda_week = [], {}
+    for o in expand(scheds, now.replace(hour=0, minute=0, second=0, microsecond=0), now + timedelta(days=7)):
+        ids = [d for d in sd[o.schedule.id] if d in in_view]
+        if not ids:
+            continue
+        row = {"o": o, "doors": namer(ids), "count": len(ids),
+               "editable": can_edit(session, user, o.schedule, sd[o.schedule.id]),
+               "live": o.start <= now < o.end, "past": o.end <= now}
+        if o.start.date() <= today:
+            agenda_today.append(row)
+        else:
+            agenda_week.setdefault(o.start.date(), []).append(row)
 
-    def entry(o):
-        ids = [d for d in sd[o.schedule.id] if user.is_admin or d in allowed]
-        return {"o": o, "doors": [door_names.get(d, d) for d in ids],
-                "editable": can_edit(session, user, o.schedule, sd[o.schedule.id])}
+    tiles = {
+        "unlocked": sum(1 for r in right_now if r["st"].get("mode") == "unlock"),
+        "locked": sum(1 for r in right_now if r["st"].get("mode") == "lock"),
+        "problems": sum(1 for r in right_now if r["st"].get("error")),
+        "events": sum(1 for r in agenda_today if not r["past"]),
+    }
+    return render(request, "dashboard.html", user, doors=doors, right_now=right_now, tiles=tiles,
+                  agenda_today=agenda_today, agenda_week=agenda_week, site_id=site_id,
+                  today_label=now.strftime("%A, %B %-d"),
+                  default_until=(now + timedelta(minutes=75)).replace(minute=((now.minute + 75) % 60) // 15 * 15)
+                  .strftime("%H:%M"))
 
-    occ = [o for o in occ if o.schedule.kind == "override"]  # regular hours live on each door's page
-    happening = [entry(o) for o in occ if o.start <= now]
-    upcoming: dict[date, list] = {}
-    for o in occ:
-        if o.start > now:
-            upcoming.setdefault(o.start.date(), []).append(entry(o))
 
-    return render(request, "dashboard.html", user, doors=doors, happening=happening, upcoming=upcoming,
-                  status=door_status(session, doors))
+@router.post("/doors/{door_id}/lock-now")
+def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = Depends(require_user),
+             session: Session = Depends(get_session)):
+    """Lock a door that a schedule has unlocked, until that unlock would have ended.
+
+    Adds a short "keep locked" override (newest wins), so the schedule itself is untouched
+    and the door goes back to normal afterwards."""
+    from .schedules import current_plan
+    door = session.get(Door, door_id)
+    if not door or door_id not in allowed_door_ids(session, user):
+        flash(request, "That door isn't available to you.", "error")
+        return redirect("/")
+    now_utc = utcnow()
+    plan = current_plan(engine.door_timeline(session, door, now_utc, now_utc + engine.HORIZON))
+    if not plan or plan.state != "unlock":
+        flash(request, f"{door.name} is already locked.")
+        return redirect("/")
+    tz = engine.site_tz(session.get(Site, door.site_id))
+    minutes = max(1, int((plan.end - now_utc).total_seconds() // 60) + 1)
+    why = plan.schedule.label if plan.schedule else "its schedule"
+    sched = Schedule(label=f"Locked early by {user.display}", kind="override", action="lock", event_type="other",
+                     start_local=now_local(tz).replace(second=0, microsecond=0), duration_minutes=minutes,
+                     source="quick", created_by=user.id, notes=f"Locked during “{why}”")
+    session.add(sched)
+    session.flush()
+    calendars.set_schedule_doors(session, sched.id, [door.id])
+    audit.record(session, "schedule.locknow", f"{user.display} locked {door.name} early (it was unlocked for “{why}”)",
+                 user=user, door_ids=[door.id], schedule_id=sched.id)
+    session.commit()
+    kick_reconcile(bg)
+    flash(request, f"Locking {door.name}. It goes back to its normal schedule afterwards.")
+    return redirect("/")
+
+
+def _until_minutes(until: str, tz) -> Optional[int]:
+    """Minutes from now until HH:MM at a site (today, or tomorrow if that time has passed)."""
+    try:
+        t = datetime.strptime(until.strip(), "%H:%M").time()
+    except ValueError:
+        return None
+    now = now_local(tz).replace(second=0, microsecond=0)
+    end = datetime.combine(now.date(), t)
+    if end <= now:
+        end += timedelta(days=1)
+    return int((end - now).total_seconds() // 60)
+
+
+def _duration_text(minutes: int) -> str:
+    h, m = divmod(minutes, 60)
+    if h and m:
+        return f"{h} hour{'s' if h > 1 else ''} {m} min"
+    return f"{h} hour{'s' if h > 1 else ''}" if h else f"{m} minutes"
 
 
 @router.post("/quick-unlock")
 def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Form([]),
-                 minutes: int = Form(...), user: User = Depends(require_user),
+                 minutes: Optional[int] = Form(None), until: str = Form(""), user: User = Depends(require_user),
                  session: Session = Depends(get_session)):
+    """Unlock doors now, for a number of minutes (preset buttons) or until a time (custom)."""
     allowed = allowed_door_ids(session, user)
     door_ids = [d for d in door_ids if d in allowed]
     if not door_ids:
         flash(request, "Pick at least one door.", "error")
         return redirect("/")
-    minutes = max(1, min(minutes, 12 * 60))
-    for site_id, ids in group_by_site(session, door_ids).items():
-        start = now_local(engine.site_tz(session.get(Site, site_id))).replace(second=0, microsecond=0)
+    if minutes is None and not until.strip():
+        flash(request, "Choose how long, or pick a time to unlock until.", "error")
+        return redirect("/")
+    groups = group_by_site(session, door_ids)
+    plans = []
+    for site_id, ids in groups.items():
+        tz = engine.site_tz(session.get(Site, site_id))
+        mins = minutes if minutes is not None else _until_minutes(until, tz)
+        if mins is None:
+            flash(request, "That time doesn't look right.", "error")
+            return redirect("/")
+        plans.append((tz, ids, max(1, min(mins, 24 * 60))))
+    for tz, ids, mins in plans:
+        start = now_local(tz).replace(second=0, microsecond=0)
         sched = Schedule(label=f"Unlock now by {user.display}", kind="override", action="unlock",
-                         event_type="other", start_local=start, duration_minutes=minutes + 1, source="quick",
-                         created_by=user.id)
+                         event_type="other", start_local=start, duration_minutes=mins + (1 if minutes is not None else 0),
+                         source="quick", created_by=user.id)
         session.add(sched)
         session.flush()
         calendars.set_schedule_doors(session, sched.id, ids)
-    names = ", ".join(session.get(Door, d).name for d in door_ids)
-    audit.record(session, "schedule.quick", f"{user.display} unlocked {names} for {minutes} minutes",
-                 user=user, door_ids=door_ids)
+    names = DoorNamer(session, [session.get(Door, d) for d in door_ids])(door_ids, limit=6)
+    if minutes is not None:
+        how = f"for {_duration_text(plans[0][2])}"
+    else:
+        end = datetime.strptime(until.strip(), "%H:%M")
+        how = f"until {end.strftime('%-I:%M %p').replace(':00 ', ' ')}"
+    audit.record(session, "schedule.quick", f"{user.display} unlocked {names} {how}", user=user, door_ids=door_ids)
     session.commit()
     kick_reconcile(bg)
-    flash(request, f"Unlocking {names} for {minutes} minutes.")
+    flash(request, f"Unlocking {names} {how}.")
     return redirect("/")
 
 
 # ---------- schedules ----------
 
+SCHEDULE_TYPES = [("", "All schedules"), ("default", "Regular hours"), ("unlock", "Events (unlocked)"),
+                  ("lock", "Kept locked"), ("calendar", "From calendars")]
+
+
+def _sched_type_ok(s: Schedule, t: str) -> bool:
+    return (not t or (t == "default" and s.kind == "default")
+            or (t == "unlock" and s.kind == "override" and s.action == "unlock")
+            or (t == "lock" and s.kind == "override" and s.action == "lock")
+            or (t == "calendar" and s.source == "calendar"))
+
+
 @router.get("/schedules")
-def schedules_list(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
-    today = now_local().date()
-    scheds = [s for s in visible_schedules(session, user) if series_last_date(s) >= today - timedelta(days=1)]
-    scheds.sort(key=lambda s: s.start_local)
-    sd = schedule_doors(session, [s.id for s in scheds])
-    names = {d.id: d.name for d in session.exec(select(Door)).all()}
+def schedules_list(request: Request, view: str = "", week: str = "", q: str = "", type: str = "",
+                   building: str = "", past: str = "", user: User = Depends(require_user),
+                   session: Session = Depends(get_session)):
+    if view in ("week", "list"):
+        request.session["sched_view"] = view
+    view = request.session.get("sched_view", "week")
+    site_id = current_site_id(request, session, user)
+    doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
+    in_view = {d.id for d in doors}
+    namer = DoorNamer(session, doors)
+    buildings = sorted({d.building_id for d in doors if d.building_id} & set(namer.buildings),
+                       key=lambda b: namer.buildings[b].lower())
+    bdoors = {d.id for d in doors if building.isdigit() and d.building_id == int(building)}
+
+    scheds = visible_schedules(session, user)
+    sd = schedule_doors(session, [x.id for x in scheds])
     feeds = {f.id: f.name for f in session.exec(select(CalendarFeed)).all()}
-    allowed = allowed_door_ids(session, user)
-    rows = [{"s": s, "doors": [names.get(d, d) for d in sd[s.id] if user.is_admin or d in allowed],
-             "editable": can_edit(session, user, s, sd[s.id]), "feed": feeds.get(s.feed_id)} for s in scheds]
-    return render(request, "schedules.html", user,
-                  defaults=[r for r in rows if r["s"].kind == "default"],
-                  overrides=[r for r in rows if r["s"].kind != "default"])
+    door_text = {d.id: d.name.lower() for d in doors}
+    needle = q.strip().lower()
+    today = now_local().date()
+
+    def keep(x: Schedule) -> bool:
+        ids = [d for d in sd[x.id] if d in in_view]
+        if not ids or not _sched_type_ok(x, type):
+            return False
+        if building.isdigit() and not (set(ids) & bdoors):
+            return False
+        if needle:
+            hay = " ".join([x.label, x.contact, x.notes] + [door_text[d] for d in ids]).lower()
+            if needle not in hay:
+                return False
+        return True
+
+    scheds = [x for x in scheds if keep(x)]
+
+    def card(x: Schedule, o=None) -> dict:
+        ids = [d for d in sd[x.id] if d in in_view]
+        return {"s": x, "o": o, "doors": namer(ids), "ndoors": len(ids), "feed": feeds.get(x.feed_id),
+                "editable": can_edit(session, user, x, sd[x.id])}
+
+    ctx = dict(view=view, q=q, type=type, building=building, past=past, types=SCHEDULE_TYPES,
+               building_opts=[(b, namer.buildings[b]) for b in buildings], total=len(scheds))
+    if view == "week":
+        try:
+            ref = date.fromisoformat(week) if week else today
+        except ValueError:
+            ref = today
+        start = ref - timedelta(days=ref.weekday())
+        days = [start + timedelta(days=k) for k in range(7)]
+        lo = datetime.combine(start, datetime.min.time())
+        by_day: dict[date, list] = {d: [] for d in days}
+        for o in expand(scheds, lo, lo + timedelta(days=7)):
+            day = max(o.start.date(), start)
+            if day in by_day:
+                by_day[day].append(card(o.schedule, o))
+        for d in days:
+            by_day[d].sort(key=lambda c: (c["s"].kind != "default", c["o"].start))
+        ctx.update(days=days, by_day=by_day, week_start=start, today=today,
+                   prev_week=(start - timedelta(days=7)).isoformat(), next_week=(start + timedelta(days=7)).isoformat(),
+                   is_this_week=start <= today < start + timedelta(days=7))
+    else:
+        now = now_local()
+        rows = []
+        for x in scheds:
+            nxt = expand([x], now, now + timedelta(days=400))
+            ended = not nxt and series_last_date(x) < today
+            if ended and not past:
+                continue
+            c = card(x)
+            c["next"] = nxt[0] if nxt else None
+            c["ended"] = ended
+            rows.append(c)
+        far = datetime.max
+        rows.sort(key=lambda c: (c["next"].start if c["next"] else far, c["s"].label.lower()))
+        ctx.update(defaults=[r for r in rows if r["s"].kind == "default"],
+                   overrides=[r for r in rows if r["s"].kind != "default"])
+    return render(request, "schedules.html", user, **ctx)
 
 
-def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kind: str = "override"):
+def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kind: str = "override",
+              site_id: Optional[int] = None):
     now = now_local()
     if sched:
         kind = sched.kind
@@ -364,7 +616,10 @@ def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kin
         for uid in {sched.created_by, sched.updated_by} - {None}:
             u = session.get(User, uid)
             people[uid] = u.display if u else "someone"
-    return dict(sched=sched, doors=doors_for(session, user), selected=set(selected), kind=kind,
+    doors = doors_for(session, user)
+    if site_id is not None:  # follow the sidebar site switcher, but never hide doors already picked
+        doors = [d for d in doors if d.site_id == site_id or d.id in set(selected)]
+    return dict(sched=sched, doors=doors, selected=set(selected), kind=kind,
                 action=sched.action if sched else "unlock", people=people,
                 event_type=sched.event_type if sched else "event",
                 date_val=start.date().isoformat(), start_val=start.strftime("%H:%M"),
@@ -376,7 +631,8 @@ def schedule_new(request: Request, door: list[str] = Query([]), kind: str = "ove
                  user: User = Depends(require_user), session: Session = Depends(get_session)):
     """`?door=a&door=b` preselects doors; `?kind=default` starts a regular-hours schedule."""
     kind = "default" if kind == "default" else "override"
-    return render(request, "schedule_form.html", user, **_form_ctx(session, user, None, door, kind))
+    return render(request, "schedule_form.html", user,
+                  **_form_ctx(session, user, None, door, kind, current_site_id(request, session, user)))
 
 
 @router.get("/schedules/{sid}")
@@ -653,12 +909,127 @@ def site_delete(request: Request, site_id: int, user: User = Depends(require_adm
     for d in door_ids:
         session.delete(session.get(Door, d))
     session.flush()  # doors must go before their site (foreign key)
+    for b in session.exec(select(Building).where(Building.site_id == site_id)).all():
+        session.delete(b)
+    session.flush()
     audit.record(session, "site.delete", f"{user.display} removed site “{site.name}” and its {len(door_ids)} doors",
                  user=user, site_ids=[site.id])
     session.delete(site)
     session.commit()
     flash(request, f"Removed {site.name} and its doors. Doors were left on their normal UniFi rules.")
     return redirect("/sites")
+
+
+# ---------- buildings (admins and site admins) ----------
+
+def _building_site(request: Request, session: Session, user: User, site: str = "") -> Optional[Site]:
+    managed = managed_site_ids(session, user)
+    sid = int(site) if site.isdigit() else (current_site_id(request, session, user) or (min(managed) if managed else None))
+    return session.get(Site, sid) if sid in managed else None
+
+
+@router.get("/buildings")
+def buildings_page(request: Request, site: str = "", user: User = Depends(require_manager),
+                   session: Session = Depends(get_session)):
+    st = _building_site(request, session, user, site)
+    if not st:
+        flash(request, "Add a site first.", "error")
+        return redirect("/")
+    managed = managed_site_ids(session, user)
+    buildings = list(session.exec(select(Building).where(Building.site_id == st.id).order_by(Building.name)).all())
+    doors = list(session.exec(select(Door).where(Door.site_id == st.id, Door.present == True)  # noqa: E712
+                              .order_by(Door.name)).all())
+    counts = {b.id: sum(1 for d in doors if d.building_id == b.id) for b in buildings}
+    sites_m = {k: v for k, v in session.exec(select(Site.id, Site)).all() if k in managed}
+    return render(request, "buildings.html", user, site=st, buildings=buildings, doors=doors, counts=counts,
+                  managed_sites=sites_m)
+
+
+@router.post("/buildings")
+async def buildings_save(request: Request, user: User = Depends(require_manager),
+                         session: Session = Depends(get_session)):
+    form = await request.form()
+    st = _building_site(request, session, user, str(form.get("site", "")))
+    if not st:
+        return redirect("/buildings")
+    back = f"/buildings?site={st.id}"
+    buildings = {b.id: b for b in session.exec(select(Building).where(Building.site_id == st.id)).all()}
+    changes = []
+    # renames and deletes
+    for bid, b in list(buildings.items()):
+        if form.get(f"delete_{bid}") == "on":
+            for d in session.exec(select(Door).where(Door.building_id == bid)).all():
+                d.building_id = None
+                session.add(d)
+            session.flush()
+            session.delete(b)
+            changes.append([f"Building “{b.name}”", "existed", "removed"])
+            del buildings[bid]
+            continue
+        new = str(form.get(f"name_{bid}", b.name)).strip()
+        if new and new != b.name:
+            changes.append(["Building name", b.name, new])
+            b.name = new
+            session.add(b)
+    # new buildings
+    for raw in str(form.get("new_buildings", "")).replace(",", "\n").splitlines():
+        name = raw.strip()
+        if name and name.lower() not in {b.name.lower() for b in buildings.values()}:
+            b = Building(site_id=st.id, name=name)
+            session.add(b)
+            session.flush()
+            buildings[b.id] = b
+            changes.append(["New building", "", name])
+    # door assignments: door_<door id> = building id or ""
+    for d in session.exec(select(Door).where(Door.site_id == st.id)).all():
+        key = f"door_{d.id}"
+        if key not in form:
+            continue
+        val = str(form.get(key, ""))
+        target = int(val) if val.isdigit() and int(val) in buildings else None
+        if target != d.building_id:
+            old = buildings[d.building_id].name if d.building_id in buildings else "—"
+            changes.append([d.name, old, buildings[target].name if target else "—"])
+            d.building_id = target
+            session.add(d)
+    if changes:
+        audit.record(session, "building.update", f"{user.display} changed buildings at {st.name}", user=user,
+                     changes=changes[:60], site_ids=[st.id])
+    session.commit()
+    flash(request, "Buildings saved." if changes else "Nothing changed.")
+    return redirect(back)
+
+
+@router.post("/buildings/auto")
+def buildings_auto(request: Request, site: str = Form(""), part: int = Form(0), user: User = Depends(require_manager),
+                   session: Session = Depends(get_session)):
+    """Create buildings from UniFi's names ("Building - Floor - Door") and put unassigned doors in them."""
+    st = _building_site(request, session, user, site)
+    if not st:
+        return redirect("/buildings")
+    buildings = {b.name.lower(): b for b in session.exec(select(Building).where(Building.site_id == st.id)).all()}
+    moved = 0
+    for d in session.exec(select(Door).where(Door.site_id == st.id, Door.building_id == None)).all():  # noqa: E711
+        parts = [p.strip() for p in (d.full_name or "").split(" - ")]
+        if len(parts) < 3 or not parts[part]:
+            continue
+        name = parts[part]
+        b = buildings.get(name.lower())
+        if not b:
+            b = Building(site_id=st.id, name=name)
+            session.add(b)
+            session.flush()
+            buildings[name.lower()] = b
+        d.building_id = b.id
+        session.add(d)
+        moved += 1
+    if moved:
+        audit.record(session, "building.update", f"{user.display} grouped {moved} doors into buildings at {st.name} "
+                     f"using UniFi's {'building' if part == 0 else 'floor'} names", user=user, site_ids=[st.id])
+    session.commit()
+    flash(request, f"Put {moved} doors into buildings. Check them below and adjust if needed." if moved
+          else "No doors to group: they're already in buildings, or UniFi's names don't include that part.")
+    return redirect(f"/buildings?site={st.id}")
 
 
 # ---------- people (admins and site admins) ----------

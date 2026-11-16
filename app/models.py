@@ -75,9 +75,19 @@ class Site(SQLModel, table=True):
         return self.host.strip().lower() in {"", "demo"}
 
 
+class Building(SQLModel, table=True):
+    """A group of doors within a site (e.g. "Event Center"), set up in OpnDoor."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    site_id: int = Field(foreign_key="site.id", index=True)
+    name: str
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class Door(SQLModel, table=True):
     id: str = Field(primary_key=True)  # "<site_id>:<unifi door id>"
     site_id: int = Field(foreign_key="site.id", index=True)
+    building_id: Optional[int] = Field(default=None, foreign_key="building.id", index=True)
     remote_id: str  # UniFi Access door id on that console
     name: str
     full_name: str = ""
