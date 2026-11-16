@@ -1,23 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Sites · OpnDoor{% endblock %}
 {% block content %}
-<div class="head">
-  <h1>Sites</h1>
-  <a class="button primary" href="/sites/new">+ Add a site</a>
-</div>
-<p class="muted">Each site is one UniFi Access console. OpnDoor loads its doors and controls them with that console's API token. Schedule times are local to each site's timezone.</p>
-{% for site in sites.values() %}
-<a class="card feed" href="/sites/{{ site.id }}">
+<div class="pagehead">
   <div>
-    <strong>{{ site.name }}</strong>
-    {% if site.is_demo %}<span class="tag">Demo</span>{% endif %}
-    {% if not site.enabled %}<span class="tag">Paused</span>{% endif %}
-    <div class="small muted">{{ 'Demo console' if site.is_demo else site.host }} · {{ site.timezone }} · {{ counts.get(site.id, 0) }} doors</div>
-    {% if site.last_sync_status %}<div class="small {{ 'err' if site.last_sync_status.startswith('Error') else 'muted' }}">{{ site.last_sync_status }}{% if site.last_sync_at %} · checked {{ (site.last_sync_at|local)|time }}{% endif %}</div>{% endif %}
+    <h1>Sites</h1>
+    <p class="muted">Each site is one UniFi Access console, with its buildings and doors. Open a site to organize its buildings{% if user.is_admin %} or change its console connection{% endif %}.</p>
   </div>
-  <span>›</span>
-</a>
+  {% if user.is_admin %}<a class="button primary" href="/sites/new">+ Add a site</a>{% endif %}
+</div>
+<div class="sitegrid">
+{% for x in summaries %}{% set site = x.site %}
+  <a class="card sitecard" href="/sites/{{ site.id }}">
+    <div class="sctop">
+      <h2>{{ site.name }}</h2>
+      {% if site.is_demo %}<span class="pill">Demo</span>{% endif %}
+      {% if not site.enabled %}<span class="pill">Paused</span>{% endif %}
+      {% if site.last_sync_status.startswith('Error') %}<span class="pill bad">⚠️ Can't reach console</span>{% endif %}
+    </div>
+    <div class="muted small">{{ x.doors }} door{{ '' if x.doors == 1 else 's' }} · {{ x.buildings|length }} building{{ '' if x.buildings|length == 1 else 's' }} · {{ site.timezone }}</div>
+    {% if x.buildings %}
+    <div class="tags">{% for b in x.buildings %}<span class="tag">{{ b.name }} <span class="muted">{{ x.bcount[b.id] }}</span></span>{% endfor %}</div>
+    {% else %}<div class="muted small">No buildings yet</div>{% endif %}
+    <div class="scfoot">
+      {% if x.unlocked %}<span class="pill ok">{{ x.unlocked }} unlocked</span>{% endif %}
+      {% if x.locked %}<span class="pill lock">{{ x.locked }} kept locked</span>{% endif %}
+      {% if x.problems %}<span class="pill bad">{{ x.problems }} problem{{ '' if x.problems == 1 else 's' }}</span>{% endif %}
+      <span class="open">Open →</span>
+    </div>
+  </a>
 {% else %}
-<div class="card empty"><p>No sites yet.</p></div>
+  <div class="card empty"><p>No sites yet.{% if user.is_admin %} <a href="/sites/new">Connect your UniFi Access console</a>.{% endif %}</p></div>
 {% endfor %}
+</div>
 {% endblock %}

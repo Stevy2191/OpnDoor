@@ -54,7 +54,8 @@ def test_admin_gets_everything_and_role_change(client):
                                 "signin": "password", "password": "password123", "door_ids": ["1:demo-front"]})
     login(client, "bea@example.com")
     assert client.get("/history").status_code == 200
-    assert "2:demo-hall" in client.get("/doors").text
+    assert "North Campus" in client.get("/doors").text  # several sites: pick one first
+    assert "2:demo-hall" in client.get("/site?id=2&next=/doors").text
 
 
 def test_cant_demote_yourself(client):

@@ -1,20 +1,3 @@
-{% extends "base.html" %}
-{% block title %}Buildings · OpnDoor{% endblock %}
-{% block content %}
-<div class="pagehead">
-  <div>
-    <h1>Buildings</h1>
-    <p class="muted">Group {{ site.name }}'s doors by building, so people can pick a whole building or just some of its doors.</p>
-  </div>
-  {% if managed_sites|length > 1 %}
-  <form method="get" action="/buildings">
-    <select name="site" onchange="this.form.submit()" aria-label="Site">
-      {% for x in managed_sites.values() %}<option value="{{ x.id }}" {% if x.id == site.id %}selected{% endif %}>{{ x.name }}</option>{% endfor %}
-    </select>
-  </form>
-  {% endif %}
-</div>
-
 {% if not buildings and doors %}
 <section class="card">
   <h2>Quick start</h2>
@@ -34,7 +17,8 @@
   <input type="hidden" name="site" value="{{ site.id }}">
 
   <section class="card">
-    <h2>Buildings at {{ site.name }}</h2>
+    <h2>Buildings</h2>
+    <p class="muted small">Group this site's doors by building, so people can pick a whole building or just some of its doors.</p>
     {% if buildings %}
     <table class="list bl">
       <thead><tr><th>Name</th><th>Doors</th><th>Remove</th></tr></thead>
@@ -112,4 +96,3 @@
   });
 })();
 </script>
-{% endblock %}

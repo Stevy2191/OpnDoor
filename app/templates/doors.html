@@ -3,14 +3,17 @@
 {% block title %}Doors · OpnDoor{% endblock %}
 {% block content %}
 {% set usable = doors|selectattr('present')|list %}
+{% set cur = sites.get(current_site) if current_site else none %}
+{% if multi_site %}<p class="crumbs small"><a href="/site?id=&next=/doors">All sites</a> › {{ cur.name if cur else '' }}</p>{% endif %}
 <div class="pagehead">
   <div>
-    <h1>Doors</h1>
-    <p class="muted">{% if current_site and sites.get(current_site) %}{{ sites[current_site].name }} · {% endif %}{{ usable|length }} door{{ '' if usable|length == 1 else 's' }} · tick doors, then set regular hours or add an override</p>
+    <h1>{{ cur.name if cur else 'Doors' }}</h1>
+    <p class="muted">{{ usable|length }} door{{ '' if usable|length == 1 else 's' }} · tick doors, then set regular hours or add an override</p>
   </div>
   <div class="btnrow">
-    {% if user.is_manager %}<a class="button" href="/buildings">🏢 Organize buildings</a>{% endif %}
+    {% if user.is_manager and (cur or sites|length == 1) %}<a class="button" href="/sites/{{ (cur or (sites.values()|first)).id }}#buildings">🏢 Organize buildings</a>{% endif %}
     {% if user.is_admin %}<form method="post" action="/doors/sync"><button>↻ Reload from UniFi</button></form>{% endif %}
+    <a class="button primary" href="/schedules/new">+ New schedule</a>
   </div>
 </div>
 
@@ -30,7 +33,6 @@
   <input type="hidden" name="kind" id="pickkind" value="override">
   {% for site_id, groups in door_tree(usable) %}
   <section class="card dlist">
-    {% if sites|length > 1 %}<h2 class="dsite">{{ sites[site_id].name }} <small class="muted">{{ sites[site_id].timezone }}</small></h2>{% endif %}
     {% set has_b = groups|length > 1 or groups[0][0] %}
     {% for b, group in groups %}
     <details class="dgroup" open data-group>
@@ -41,7 +43,7 @@
         <span class="chev" aria-hidden="true">▾</span>
       </summary>
       <div class="drows">
-        <div class="drow dhdr" aria-hidden="true"><span></span><span>Door</span><span>Right now</span><span>Regular hours</span><span></span></div>
+        <div class="drow dhdr" aria-hidden="true"><span></span><span>Door</span><span>Right now</span><span>Regular hours</span><span>Next event</span><span></span></div>
         {% for d in group %}{% set st = status.get(d.id, {}) %}
         <label class="drow" data-state="{{ state[d.id] }}" data-noreg="{{ '0' if d.id in regular else '1' }}"
                data-find="{{ (d.name ~ ' ' ~ (b.name if b else '') ~ ' ' ~ d.full_name)|lower }}">
@@ -50,10 +52,11 @@
           <span class="dstate">
             {% if st.error %}<span class="pill bad">⚠️ Problem</span>
             {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">until {{ st.until|time }}</small>
-            {% elif st.mode == 'lock' %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ st.until|day }} {{ st.until|time }}</small>{% endif %}
+            {% elif st.mode == 'lock' %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ '' if (st.until|day) == 'Today' else (st.until|day) ~ ' ' }}{{ st.until|time }}</small>{% endif %}
             {% else %}<span class="muted">Locked</span>{% endif %}
           </span>
           <span class="dreg">{% if d.id in regular %}{{ regular[d.id][0] }}{% if regular[d.id]|length > 1 %} <small class="muted">+{{ regular[d.id]|length - 1 }} more</small>{% endif %}{% else %}<span class="muted">None</span>{% endif %}</span>
+          <span class="dnext">{% set ev = nextev.get(d.id) %}{% if ev %}{{ event_icon(ev.schedule) }} {{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
           <a class="small dview" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View →</a>
         </label>
         {% endfor %}

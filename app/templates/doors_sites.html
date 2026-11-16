@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Doors · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Doors</h1>
+    <p class="muted">Pick a site to see its buildings, doors and schedules.</p>
+  </div>
+  <a class="button primary" href="/schedules/new">+ New schedule</a>
+</div>
+<div class="sitegrid">
+{% for x in summaries %}{% set site = x.site %}
+  <a class="card sitecard" href="/site?id={{ site.id }}&next=/doors">
+    <div class="sctop"><h2>{{ site.name }}</h2>
+      {% if site.last_sync_status.startswith('Error') %}<span class="pill bad">⚠️ Can't reach console</span>{% endif %}</div>
+    <div class="muted small">{{ x.doors }} door{{ '' if x.doors == 1 else 's' }}{% if x.buildings %} · {{ x.buildings|length }} building{{ '' if x.buildings|length == 1 else 's' }}{% endif %}</div>
+    {% if x.buildings %}<div class="tags">{% for b in x.buildings %}<span class="tag">{{ b.name }} <span class="muted">{{ x.bcount[b.id] }}</span></span>{% endfor %}</div>{% endif %}
+    <div class="scfoot">
+      {% if x.unlocked %}<span class="pill ok">{{ x.unlocked }} unlocked</span>{% endif %}
+      {% if x.locked %}<span class="pill lock">{{ x.locked }} kept locked</span>{% endif %}
+      {% if x.problems %}<span class="pill bad">{{ x.problems }} problem{{ '' if x.problems == 1 else 's' }}</span>{% endif %}
+      {% if not (x.unlocked or x.locked or x.problems) %}<span class="muted small">All locked, on regular hours</span>{% endif %}
+      <span class="open">Open →</span>
+    </div>
+  </a>
+{% endfor %}
+</div>
+{% endblock %}

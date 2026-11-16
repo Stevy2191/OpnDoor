@@ -40,9 +40,14 @@ def test_site_admin_sees_only_their_site(world):
     assert "2:demo-front" in c.get("/doors").text and "1:demo-front" not in c.get("/doors").text
     for path in ["/users", "/calendars", "/history"]:
         assert c.get(path).status_code == 200, path
-    assert c.get("/sites").status_code == 403
+    sites = c.get("/sites").text  # site admins see their own sites (buildings), nothing else
+    assert "North Campus" in sites and "Demo site" not in sites and "+ Add a site" not in sites
+    assert "isn" in c.get("/sites/1", follow_redirects=True).text  # another site: not available
+    page = c.get("/sites/2").text
+    assert "Buildings" in page and "Console connection" not in page
+    assert c.post("/sites/2", data={"name": "x", "host": "demo", "timezone": "UTC"}).status_code == 403
     nav = c.get("/").text
-    assert 'href="/users"' in nav and 'href="/sites"' not in nav and "Site admin" in nav
+    assert 'href="/users"' in nav and 'href="/sites"' in nav and "Site admin" in nav
 
 
 def test_site_admin_people_list_and_limits(world):

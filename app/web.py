@@ -781,6 +781,9 @@ def schedule_delete(request: Request, sid: int, bg: BackgroundTasks, user: User 
 @router.get("/doors")
 def doors_page(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
     site_id = current_site_id(request, session, user)
+    visible = visible_site_ids(session, user)
+    if site_id is None and len(visible) > 1:
+        return render(request, "doors_sites.html", user, summaries=site_summaries(session, user, visible))
     if user.is_admin:
         doors = list(session.exec(select(Door).order_by(Door.site_id, Door.name)).all())
     else:
@@ -794,6 +797,13 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
             if x.kind == "default":
                 end = x.start_local + timedelta(minutes=x.duration_minutes)
                 regular.setdefault(door_id, []).append(f"{describe_repeat(x).split(' until')[0]}, {_span(x.start_local, end)}")
+    # each door's next event (override) in the coming 30 days
+    nextev: dict[str, object] = {}
+    now = now_local()
+    for door_id, scheds in engine.door_schedules(session, [d.id for d in doors]).items():
+        occ = expand([x for x in scheds if x.kind == "override"], now, now + timedelta(days=30))
+        if occ:
+            nextev[door_id] = occ[0]
     state = {}
     for d in doors:
         st = status.get(d.id, {})
@@ -806,7 +816,8 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
         "error": sum(1 for d in usable if state[d.id] == "error"),
     }
     return render(request, "doors.html", user, doors=doors, status=status, regular=regular, state=state,
-                  counts=counts)
+                  counts=counts, nextev=nextev, now=now, site_id=site_id,
+                  multi_site=len(visible) > 1)
 
 
 @router.post("/doors/sync")
@@ -846,24 +857,54 @@ def door_page(request: Request, door_id: str, user: User = Depends(require_user)
 
 # ---------- sites (admin) ----------
 
+def site_summaries(session: Session, user: User, site_ids) -> list[dict]:
+    """Per site: doors, buildings and what's happening, for site cards."""
+    out = []
+    allowed = allowed_door_ids(session, user)
+    for site in session.exec(select(Site).where(Site.id.in_(list(site_ids))).order_by(Site.name)).all():
+        doors = [d for d in session.exec(select(Door).where(Door.site_id == site.id, Door.present == True)).all()  # noqa: E712
+                 if d.id in allowed]
+        st = door_status(session, doors)
+        blds = session.exec(select(Building).where(Building.site_id == site.id).order_by(Building.name)).all()
+        out.append({
+            "site": site, "doors": len(doors), "buildings": blds,
+            "bcount": {b.id: sum(1 for d in doors if d.building_id == b.id) for b in blds},
+            "unlocked": sum(1 for v in st.values() if v.get("mode") == "unlock"),
+            "locked": sum(1 for v in st.values() if v.get("mode") == "lock"),
+            "problems": sum(1 for v in st.values() if v.get("error")),
+        })
+    return out
+
+
 COMMON_TZ = ["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles",
              "America/Anchorage", "Pacific/Honolulu", "America/Toronto", "Europe/London", "Europe/Berlin",
              "Australia/Sydney", "UTC"]
 
 
 @router.get("/sites")
-def sites_page(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
-    counts = dict(session.exec(select(Door.site_id, func.count()).where(Door.present == True)  # noqa: E712
-                               .group_by(Door.site_id)).all())
-    return render(request, "sites.html", user, counts=counts)
+def sites_page(request: Request, user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    return render(request, "sites.html", user, summaries=site_summaries(session, user, managed_site_ids(session, user)))
+
+
+@router.get("/sites/new")
+def site_new(request: Request, user: User = Depends(require_admin)):
+    return render(request, "site_form.html", user, site=None, timezones=COMMON_TZ)
 
 
 @router.get("/sites/{site_id}")
-@router.get("/sites/new")
-def site_form(request: Request, site_id: Optional[int] = None, user: User = Depends(require_admin),
+def site_page(request: Request, site_id: int, user: User = Depends(require_manager),
               session: Session = Depends(get_session)):
-    site = session.get(Site, site_id) if site_id else None
-    return render(request, "site_form.html", user, site=site, timezones=COMMON_TZ)
+    """A site: its buildings and doors (admins and its site admins), and its console connection (admins)."""
+    site = session.get(Site, site_id)
+    if not site or site_id not in managed_site_ids(session, user):
+        flash(request, "That site isn't available to you.", "error")
+        return redirect("/sites")
+    buildings = list(session.exec(select(Building).where(Building.site_id == site.id).order_by(Building.name)).all())
+    doors = list(session.exec(select(Door).where(Door.site_id == site.id, Door.present == True)  # noqa: E712
+                              .order_by(Door.name)).all())
+    counts = {b.id: sum(1 for d in doors if d.building_id == b.id) for b in buildings}
+    return render(request, "site.html", user, site=site, buildings=buildings, doors=doors, counts=counts,
+                  timezones=COMMON_TZ)
 
 
 @router.post("/sites")
@@ -958,18 +999,9 @@ def _building_site(request: Request, session: Session, user: User, site: str = "
 @router.get("/buildings")
 def buildings_page(request: Request, site: str = "", user: User = Depends(require_manager),
                    session: Session = Depends(get_session)):
+    """Buildings are managed on each site's page now."""
     st = _building_site(request, session, user, site)
-    if not st:
-        flash(request, "Add a site first.", "error")
-        return redirect("/")
-    managed = managed_site_ids(session, user)
-    buildings = list(session.exec(select(Building).where(Building.site_id == st.id).order_by(Building.name)).all())
-    doors = list(session.exec(select(Door).where(Door.site_id == st.id, Door.present == True)  # noqa: E712
-                              .order_by(Door.name)).all())
-    counts = {b.id: sum(1 for d in doors if d.building_id == b.id) for b in buildings}
-    sites_m = {k: v for k, v in session.exec(select(Site.id, Site)).all() if k in managed}
-    return render(request, "buildings.html", user, site=st, buildings=buildings, doors=doors, counts=counts,
-                  managed_sites=sites_m)
+    return redirect(f"/sites/{st.id}#buildings" if st else "/sites")
 
 
 @router.post("/buildings")
@@ -978,8 +1010,8 @@ async def buildings_save(request: Request, user: User = Depends(require_manager)
     form = await request.form()
     st = _building_site(request, session, user, str(form.get("site", "")))
     if not st:
-        return redirect("/buildings")
-    back = f"/buildings?site={st.id}"
+        return redirect("/sites")
+    back = f"/sites/{st.id}#buildings"
     buildings = {b.id: b for b in session.exec(select(Building).where(Building.site_id == st.id)).all()}
     changes = []
     # renames and deletes
@@ -1033,7 +1065,7 @@ def buildings_auto(request: Request, site: str = Form(""), part: int = Form(0), 
     """Create buildings from UniFi's names ("Building - Floor - Door") and put unassigned doors in them."""
     st = _building_site(request, session, user, site)
     if not st:
-        return redirect("/buildings")
+        return redirect("/sites")
     buildings = {b.name.lower(): b for b in session.exec(select(Building).where(Building.site_id == st.id)).all()}
     moved = 0
     for d in session.exec(select(Door).where(Door.site_id == st.id, Door.building_id == None)).all():  # noqa: E711
@@ -1056,7 +1088,7 @@ def buildings_auto(request: Request, site: str = Form(""), part: int = Form(0), 
     session.commit()
     flash(request, f"Put {moved} doors into buildings. Check them below and adjust if needed." if moved
           else "No doors to group: they're already in buildings, or UniFi's names don't include that part.")
-    return redirect(f"/buildings?site={st.id}")
+    return redirect(f"/sites/{st.id}#buildings")
 
 
 # ---------- people (admins and site admins) ----------

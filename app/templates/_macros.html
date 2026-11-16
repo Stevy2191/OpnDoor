@@ -1,26 +1,40 @@
 {# Door checkboxes as chips, grouped under site headings when there is more than one site. #}
 {% macro door_chips(doors, name, selected, sites, single_autoselect=False) %}
 {% set multi = sites|length > 1 %}
-{% for site_id, groups in door_tree(doors) %}
-  {% if multi %}<div class="sitehead">{{ sites[site_id].name if site_id in sites else 'Site' }}</div>{% endif %}
-  {% set has_b = groups|length > 1 or groups[0][0] %}
-  {% for b, group in groups %}
-  <div class="bgroup" data-group>
-    {% if has_b %}
-    <div class="bhead">
-      <span class="bname">{{ b.name if b else 'Other doors' }}</span>
-      {% if group|length > 1 %}<label class="ball"><input type="checkbox" class="groupall"> All {{ group|length }}</label>{% endif %}
-    </div>
-    {% endif %}
-    <div class="chips">
-    {% for d in group %}
-      <label class="chip"><input type="checkbox" name="{{ name }}" value="{{ d.id }}"
-        {% if d.id in selected or (single_autoselect and doors|length == 1) %}checked{% endif %}><span>{{ d.name }}</span></label>
-    {% endfor %}
-    </div>
+{% set tree = door_tree(doors) %}
+<div class="dpick">
+  {% if doors|length > 8 %}
+  <div class="dptools">
+    <input type="search" class="dpsearch" placeholder="Search {{ doors|length }} doors or buildings…" aria-label="Search doors">
+    <span class="dpcount muted small"></span>
   </div>
+  {% else %}<div class="dptools"><span class="dpcount muted small"></span></div>{% endif %}
+  {% for site_id, groups in tree %}
+  {% set site_sel = doors|selectattr('site_id', 'equalto', site_id)|selectattr('id', 'in', selected)|list %}
+  <details class="dpsite" {% if not multi or site_sel or tree|length == 1 %}open{% endif %}>
+    {% if multi %}<summary class="dpsitehead"><span class="dpsname">{{ sites[site_id].name if site_id in sites else 'Site' }}</span>
+      <span class="muted small dpsitecount"></span><span class="chev" aria-hidden="true">▾</span></summary>{% else %}<summary hidden></summary>{% endif %}
+    {% set has_b = groups|length > 1 or groups[0][0] %}
+    {% for b, group in groups %}
+    <div class="bgroup" data-group>
+      {% if has_b %}
+      <div class="bhead">
+        <span class="bname">{{ b.name if b else 'Other doors' }}</span>
+        {% if group|length > 1 %}<label class="ball"><input type="checkbox" class="groupall"> All {{ group|length }}</label>{% endif %}
+      </div>
+      {% endif %}
+      <div class="chips">
+      {% for d in group %}
+        <label class="chip" data-find="{{ (d.name ~ ' ' ~ (b.name if b else ''))|lower }}"><input type="checkbox" name="{{ name }}" value="{{ d.id }}"
+          {% if d.id in selected or (single_autoselect and doors|length == 1) %}checked{% endif %}><span>{{ d.name }}</span></label>
+      {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </details>
   {% endfor %}
-{% endfor %}
+  <p class="muted small dpnone" hidden>No doors match.</p>
+</div>
 {% endmacro %}
 
 {# One-line status for a door from door_status(). #}
