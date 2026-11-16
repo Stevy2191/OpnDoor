@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if target else 'Add' }} user · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<h1>{{ 'Edit ' ~ (target.name or target.email) if target else 'Add a user' }}</h1>
+<form method="post" action="/users{% if target %}/{{ target.id }}{% endif %}" class="card stack">
+  <label>Name <input name="name" value="{{ target.name if target else '' }}"></label>
+  <label>Email <input type="email" name="email" value="{{ target.email if target else '' }}" required></label>
+  <label>{{ 'New password (leave blank to keep)' if target else 'Password' }}
+    <input type="password" name="password" minlength="8" autocomplete="new-password" {% if not target %}required{% endif %}>
+  </label>
+
+  <fieldset>
+    <legend>Doors they can schedule</legend>
+    {% if doors %}
+    <div class="chips">
+    {% for d in doors %}
+      <label class="chip"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if d.id in selected %}checked{% endif %}><span>{{ d.name }}</span></label>
+    {% endfor %}
+    </div>
+    {% else %}<p class="muted">No doors loaded yet.</p>{% endif %}
+  </fieldset>
+
+  <label class="check"><input type="checkbox" name="is_admin" value="true" {% if target and target.is_admin %}checked{% endif %}>
+    Administrator <small class="muted">(all doors, plus users, calendars and activity)</small></label>
+  {% if target %}
+  <label class="check"><input type="checkbox" name="active" value="true" {% if target.active %}checked{% endif %}> Account active</label>
+  {% else %}<input type="hidden" name="active" value="true">{% endif %}
+
+  <div class="btnrow">
+    <button class="primary">Save</button>
+    <a class="button" href="/users">Cancel</a>
+  </div>
+</form>
+{% endblock %}

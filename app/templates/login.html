@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Sign in · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<div class="card auth">
+  <div class="brand big"><span class="logo"></span>OpnDoor</div>
+  <form method="post" action="/login{% if request.query_params.get('next') %}?next={{ request.query_params.get('next')|urlencode }}{% endif %}">
+    <label>Email <input type="email" name="email" required autofocus autocomplete="username"></label>
+    <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+    <button class="primary wide">Sign in</button>
+  </form>
+</div>
+{% endblock %}

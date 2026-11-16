@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Activity · OpnDoor{% endblock %}
+{% block content %}
+<h1>Activity</h1>
+<div class="table card">
+<table>
+  <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
+  <tbody>
+  {% for r in rows %}{% set t = r.at|local %}
+    <tr class="act {{ r.action.split('.')[0] }} {{ 'bad' if r.action.endswith('error') else '' }}">
+      <td class="nowrap">{{ t|day }}<br><small class="muted">{{ t|time }}</small></td>
+      <td>{{ r.actor }}</td>
+      <td><code>{{ r.action }}</code> {{ r.detail }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="3" class="muted">Nothing yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

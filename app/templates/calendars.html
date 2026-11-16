@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Calendars · OpnDoor{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Calendar automation</h1>
+  <a class="button primary" href="/calendars/new">+ Connect a calendar</a>
+</div>
+<p class="muted">Point OpnDoor at a calendar's iCal (.ics) link and every booking on it automatically unlocks the right doors. Calendars are checked every few minutes.</p>
+{% for f in feeds %}
+<a class="card feed" href="/calendars/{{ f.id }}">
+  <div>
+    <strong>{{ f.name }}</strong> {% if not f.enabled %}<span class="tag">Paused</span>{% endif %}
+    <div class="small muted">{{ counts.get(f.id, 0) }} schedules · last checked {{ (f.last_sync_at|local)|day ~ ' ' ~ (f.last_sync_at|local)|time if f.last_sync_at else 'never' }}</div>
+    {% if f.last_sync_status %}<div class="small {{ 'err' if f.last_sync_status.startswith('Error') else 'muted' }}">{{ f.last_sync_status }}</div>{% endif %}
+  </div>
+  <span>›</span>
+</a>
+{% else %}
+<div class="card empty">
+  <p>No calendars connected yet.</p>
+  {% include "_ics_help.html" %}
+</div>
+{% endfor %}
+{% endblock %}

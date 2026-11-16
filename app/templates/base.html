@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}OpnDoor{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='5' y='2' width='14' height='20' rx='2' fill='%232563eb'/><circle cx='15' cy='12' r='1.6' fill='white'/></svg>">
+</head>
+<body>
+{% if user %}
+<header class="topbar">
+  <a class="brand" href="/"><span class="logo"></span>OpnDoor</a>
+  <nav>
+    <a href="/" {% if request.url.path == '/' %}class="on"{% endif %}>Home</a>
+    <a href="/schedules" {% if request.url.path.startswith('/schedules') %}class="on"{% endif %}>Schedules</a>
+    <a href="/doors" {% if request.url.path.startswith('/doors') %}class="on"{% endif %}>Doors</a>
+    {% if user.is_admin %}
+    <a href="/calendars" {% if request.url.path.startswith('/calendars') %}class="on"{% endif %}>Calendars</a>
+    <a href="/users" {% if request.url.path.startswith('/users') %}class="on"{% endif %}>Users</a>
+    <a href="/activity" {% if request.url.path.startswith('/activity') %}class="on"{% endif %}>Activity</a>
+    {% endif %}
+  </nav>
+  <div class="me">
+    <a href="/account">{{ user.name or user.email }}</a>
+    <form method="post" action="/logout"><button class="link">Sign out</button></form>
+  </div>
+</header>
+{% endif %}
+{% if config.DRY_RUN and user %}
+<div class="banner">Demo mode: no UniFi Access controller is configured, so doors are examples and nothing is really unlocked.</div>
+{% endif %}
+<main class="{% block mainclass %}{% endblock %}">
+  {% for kind, msg in flashes %}<div class="flash {{ kind }}">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="head">
+  <h1>Hi{% if user.name %}, {{ user.name.split(' ')[0] }}{% endif %}</h1>
+  <a class="button primary" href="/schedules/new">+ Schedule a door</a>
+</div>
+
+{% if not doors %}
+<div class="card empty">
+  {% if user.is_admin %}
+    <p>No doors yet. <form method="post" action="/doors/sync" class="inline"><button class="link">Load doors from UniFi Access</button></form></p>
+  {% else %}
+    <p>You don't have access to any doors yet. Ask an administrator to give you access.</p>
+  {% endif %}
+</div>
+{% else %}
+
+<section class="grid2">
+  <div class="card">
+    <h2>Doors</h2>
+    <ul class="doorlist">
+    {% for d in doors %}
+      <li>
+        <span class="dot {{ 'open' if d.id in open_now else 'closed' }}"></span>
+        <span class="grow"><strong>{{ d.name }}</strong>
+          <small class="muted">{% if d.id in open_now %}Unlocked until {{ open_now[d.id]|time }}{% else %}Locked{% endif %}</small>
+          {% if d.id in errors %}<small class="err">⚠ {{ errors[d.id] }}</small>{% endif %}
+        </span>
+        <a class="small" href="/schedules/new?door={{ d.id }}">Schedule</a>
+      </li>
+    {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Unlock now</h2>
+    <form method="post" action="/quick-unlock">
+      <div class="chips">
+      {% for d in doors %}
+        <label class="chip"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if doors|length == 1 %}checked{% endif %}><span>{{ d.name }}</span></label>
+      {% endfor %}
+      </div>
+      <p class="muted small">Unlock for</p>
+      <div class="btnrow">
+        {% for m, lbl in [(15,'15 min'),(30,'30 min'),(60,'1 hour'),(120,'2 hours')] %}
+        <button name="minutes" value="{{ m }}">{{ lbl }}</button>
+        {% endfor %}
+      </div>
+    </form>
+  </div>
+</section>
+
+{% if happening %}
+<section>
+  <h2>Happening now</h2>
+  {% for e in happening %}{% set o = e.o %}{% include "_occ.html" %}{% endfor %}
+</section>
+{% endif %}
+
+<section>
+  <h2>Coming up <small class="muted">next 14 days</small></h2>
+  {% for day, entries in upcoming.items() %}
+    <h3 class="day">{{ day|day }}</h3>
+    {% for e in entries %}{% set o = e.o %}{% include "_occ.html" %}{% endfor %}
+  {% else %}
+    <div class="card empty"><p>Nothing scheduled. <a href="/schedules/new">Schedule a door</a>.</p></div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

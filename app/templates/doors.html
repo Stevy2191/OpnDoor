@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Doors · OpnDoor{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Doors</h1>
+  {% if user.is_admin %}
+  <form method="post" action="/doors/sync"><button>↻ Reload from UniFi Access</button></form>
+  {% endif %}
+</div>
+{% if doors %}
+<div class="table card">
+<table>
+  <thead><tr><th>Door</th><th>Status</th>{% if user.is_admin %}<th>People with access</th>{% endif %}<th></th></tr></thead>
+  <tbody>
+  {% for d in doors %}
+    <tr class="{{ '' if d.present else 'gone' }}">
+      <td><strong>{{ d.name }}</strong><br><small class="muted">{{ d.full_name }}</small></td>
+      <td>
+        {% if not d.present %}<span class="tag">No longer on controller</span>
+        {% elif d.id in open_now %}<span class="dot open"></span> Unlocked by schedule until {{ open_now[d.id]|time }}
+        {% else %}<span class="dot closed"></span> Normal{% endif %}
+        {% if d.id in errors %}<br><small class="err">⚠ {{ errors[d.id] }}</small>{% endif %}
+      </td>
+      {% if user.is_admin %}<td>{{ counts.get(d.id, 0) }} {% if counts.get(d.id, 0) == 1 %}person{% else %}people{% endif %} <small class="muted">+ admins</small></td>{% endif %}
+      <td class="right">{% if d.present %}<a class="small" href="/schedules/new?door={{ d.id }}">Schedule</a>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="card empty"><p>{% if user.is_admin %}No doors loaded yet. Check the UniFi Access host and token, then reload.{% else %}You don't have access to any doors yet.{% endif %}</p></div>
+{% endif %}
+{% endblock %}

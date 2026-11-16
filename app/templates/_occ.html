@@ -1,0 +1,12 @@
+<div class="occ card {{ o.schedule.source }}">
+  <div class="when">{{ span(o.start, o.end) }}</div>
+  <div class="what">
+    <strong>{{ o.schedule.label }}</strong>
+    <div class="tags">
+      {% for n in e.doors %}<span class="tag">{{ n }}</span>{% endfor %}
+      {% if o.schedule.source == 'calendar' %}<span class="tag cal">📅 calendar</span>{% endif %}
+      {% if o.schedule.repeat_weekdays %}<span class="tag rep">↻ {{ describe_repeat(o.schedule) }}</span>{% endif %}
+    </div>
+  </div>
+  {% if e.editable %}<a class="small" href="/schedules/{{ o.schedule.id }}">Edit</a>{% endif %}
+</div>

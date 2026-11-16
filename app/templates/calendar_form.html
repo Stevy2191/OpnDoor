@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ feed.name if feed else 'Connect a calendar' }} · OpnDoor{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>{{ feed.name if feed else 'Connect a calendar' }}</h1>
+  {% if feed %}
+  <div class="btnrow">
+    <form method="post" action="/calendars/{{ feed.id }}/preview"><button>Preview bookings</button></form>
+    <form method="post" action="/calendars/{{ feed.id }}/sync"><button>↻ Sync now</button></form>
+  </div>
+  {% endif %}
+</div>
+{% if feed and feed.last_sync_status %}
+<p class="small {{ 'err' if feed.last_sync_status.startswith('Error') else 'muted' }}">Last checked {{ (feed.last_sync_at|local)|day }} {{ (feed.last_sync_at|local)|time }}: {{ feed.last_sync_status }}</p>
+{% endif %}
+
+{% if preview is not none %}
+<div class="card">
+  <h2>Preview <small class="muted">nothing saved: this is what the next sync will do</small></h2>
+  {% if preview %}
+  <table>
+    <thead><tr><th>Booking</th><th>When</th><th>Doors</th></tr></thead>
+    <tbody>
+    {% for p in preview %}
+      <tr class="{{ '' if p.doors else 'gone' }}">
+        <td><strong>{{ p.b.title }}</strong>{% if p.b.location %}<br><small class="muted">{{ p.b.location }}</small>{% endif %}</td>
+        <td>{{ p.b.start|day }}<br><small>{{ span(p.b.start, p.b.end) }}</small></td>
+        <td>{% for n in p.doors %}<span class="tag">{{ n }}</span> {% else %}<span class="muted">No matching door, skipped</span>{% endfor %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No upcoming bookings found in this calendar.</p>{% endif %}
+</div>
+{% endif %}
+
+<form method="post" action="/calendars{% if feed %}/{{ feed.id }}{% endif %}" class="card stack" id="feedform">
+  <label>Name <input name="name" value="{{ feed.name if feed else '' }}" placeholder="e.g. Facility bookings" required></label>
+  <label>iCal (.ics) link
+    <input name="url" value="{{ feed.url if feed else '' }}" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" required>
+  </label>
+  {% if not feed %}{% include "_ics_help.html" %}{% endif %}
+
+  <div class="row3">
+    <label>Unlock this many minutes before <input type="number" name="lead_minutes" min="0" max="240" value="{{ feed.lead_minutes if feed else 15 }}"></label>
+    <label>Lock this many minutes after <input type="number" name="lag_minutes" min="0" max="240" value="{{ feed.lag_minutes if feed else 15 }}"></label>
+  </div>
+
+  <fieldset>
+    <legend>Rules: which doors does a booking unlock?</legend>
+    <p class="muted small">If a booking's text contains the words you enter, those doors unlock. A booking can match several rules. For example: location contains "Fellowship Hall" → Fellowship Hall + Side Door.</p>
+    <div id="rules">
+    {% set blank = 2 if rules else 3 %}
+    {% for i in range(rules|length + blank) %}
+      {% set r = rules[i] if i < rules|length else none %}
+      <div class="rule">
+        <div class="rulehead">
+          <select name="rule_{{ i }}_field">
+            {% for v, lbl in [('any','Title, location or description'),('title','Title'),('location','Location'),('description','Description')] %}
+            <option value="{{ v }}" {% if r and r.field == v %}selected{% endif %}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+          <span>contains</span>
+          <input name="rule_{{ i }}_contains" value="{{ r.contains if r else '' }}" placeholder="e.g. Gym">
+        </div>
+        <div class="chips">
+        {% set rd = r.door_ids.split(',') if r else [] %}
+        {% for d in doors %}
+          <label class="chip"><input type="checkbox" name="rule_{{ i }}_doors" value="{{ d.id }}" {% if d.id in rd %}checked{% endif %}><span>{{ d.name }}</span></label>
+        {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+    <p class="muted small">Leave a rule's text empty to ignore it. Save to get more blank rules.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Bookings that match no rule</legend>
+    <p class="muted small">Unlock these doors for any booking no rule matches. Leave all unticked to skip those bookings.</p>
+    <div class="chips">
+    {% for d in doors %}
+      <label class="chip"><input type="checkbox" name="default_doors" value="{{ d.id }}" {% if d.id in defaults %}checked{% endif %}><span>{{ d.name }}</span></label>
+    {% endfor %}
+    </div>
+  </fieldset>
+
+  <label class="check"><input type="checkbox" name="include_all_day" {% if feed and feed.include_all_day %}checked{% endif %}> Include all-day events <small class="muted">(unlocks the whole day)</small></label>
+  <label class="check"><input type="checkbox" name="enabled" {% if not feed or feed.enabled %}checked{% endif %}> Active</label>
+
+  <div class="btnrow">
+    <button class="primary">{{ 'Save and sync' if feed else 'Connect calendar' }}</button>
+    <a class="button" href="/calendars">Cancel</a>
+  </div>
+</form>
+
+{% if feed %}
+{% if upcoming %}
+<section>
+  <h2>Upcoming from this calendar</h2>
+  {% for e in upcoming %}{% set o = e.o %}{% set e = {'doors': e.doors, 'editable': False} %}{% include "_occ.html" %}{% endfor %}
+</section>
+{% endif %}
+<form method="post" action="/calendars/{{ feed.id }}/delete" onsubmit="return confirm('Disconnect this calendar and delete the schedules it created?')">
+  <button class="danger">Disconnect calendar</button>
+</form>
+{% endif %}
+{% endblock %}

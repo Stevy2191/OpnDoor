@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if sched else 'New' }} schedule · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<h1>{{ 'Edit schedule' if sched else 'Schedule a door' }}</h1>
+{% if not doors %}
+<div class="card empty"><p>You don't have access to any doors yet.</p></div>
+{% else %}
+<form method="post" action="/schedules{% if sched %}/{{ sched.id }}{% endif %}" class="card stack">
+  <label>What's it for?
+    <input name="label" value="{{ sched.label if sched else '' }}" placeholder="e.g. Smith wedding rehearsal" required autofocus>
+  </label>
+
+  <fieldset>
+    <legend>Which doors?</legend>
+    <div class="chips">
+    {% for d in doors %}
+      <label class="chip"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if d.id in selected or doors|length == 1 %}checked{% endif %}><span>{{ d.name }}</span></label>
+    {% endfor %}
+    </div>
+  </fieldset>
+
+  <div class="row3">
+    <label>Date <input type="date" name="day" value="{{ date_val }}" required></label>
+    <label>Unlock at <input type="time" name="start" value="{{ start_val }}" required></label>
+    <label>Lock at <input type="time" name="end" value="{{ end_val }}" required></label>
+  </div>
+  <p class="muted small">If the lock time is earlier than the unlock time, it runs overnight into the next day.</p>
+
+  <fieldset>
+    <legend>Repeat</legend>
+    <div class="seg">
+      <label><input type="radio" name="repeat" value="none" {% if not days %}checked{% endif %}><span>Just once</span></label>
+      <label><input type="radio" name="repeat" value="weekly" {% if days %}checked{% endif %}><span>Every week</span></label>
+    </div>
+    <div class="repeat-opts">
+      <div class="chips days">
+      {% for i in range(7) %}
+        <label class="chip"><input type="checkbox" name="weekdays" value="{{ i }}" {% if i in days %}checked{% endif %}><span>{{ WEEKDAYS[i] }}</span></label>
+      {% endfor %}
+      </div>
+      <label>Until (optional) <input type="date" name="until" value="{{ sched.repeat_until.isoformat() if sched and sched.repeat_until else '' }}"></label>
+    </div>
+  </fieldset>
+
+  <label>Notes (optional) <textarea name="notes" rows="2">{{ sched.notes if sched else '' }}</textarea></label>
+
+  <div class="btnrow">
+    <button class="primary">{{ 'Save changes' if sched else 'Create schedule' }}</button>
+    <a class="button" href="/">Cancel</a>
+  </div>
+</form>
+{% if sched %}
+<form method="post" action="/schedules/{{ sched.id }}/delete" onsubmit="return confirm('Delete this schedule? If the door is unlocked by it right now, it will lock.')">
+  <button class="danger">Delete schedule</button>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

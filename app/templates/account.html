@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Account · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<h1>Your account</h1>
+<form method="post" action="/account" class="card">
+  <label>Name <input name="name" value="{{ user.name }}"></label>
+  <label>Email <input value="{{ user.email }}" disabled></label>
+  <h3>Change password</h3>
+  <label>Current password <input type="password" name="current_password" autocomplete="current-password"></label>
+  <label>New password <input type="password" name="new_password" minlength="8" autocomplete="new-password"></label>
+  <button class="primary">Save</button>
+</form>
+{% endblock %}
