@@ -176,7 +176,7 @@ def test_home_lock_now_and_site_switcher(client, fake):
     client.post("/sites", data={"name": "North", "host": "demo", "timezone": "America/Chicago"})
     client.post("/quick-unlock", data={"door_ids": ["1:demo-side"], "minutes": "30"})
     home = client.get("/").text
-    assert "Right now" in home and "Lock now" in home and "1:demo-side/lock-now" in home
+    assert "Right now" in home and "Lock now" in home and "1%3Ademo-side/lock-now" in home
 
     r = client.post("/doors/1:demo-side/lock-now")
     assert "Locking Side Door" in r.text
@@ -187,6 +187,6 @@ def test_home_lock_now_and_site_switcher(client, fake):
     # site switcher filters Home to one site
     client.get("/site?id=2&next=/")
     home = client.get("/").text
-    assert "4 doors" in home and "1:demo-side/lock-now" not in home
+    assert "4 doors" in home and "1%3Ademo-side/lock-now" not in home
     client.get("/site?id=&next=/")
     assert "8 doors" in client.get("/").text
