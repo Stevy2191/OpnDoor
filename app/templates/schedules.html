@@ -22,7 +22,7 @@
       <a href="?view=week&q={{ q|urlencode }}&type={{ type }}&building={{ building }}" class="{{ 'on' if view == 'week' }}">📅 Week</a>
       <a href="?view=list&q={{ q|urlencode }}&type={{ type }}&building={{ building }}" class="{{ 'on' if view == 'list' }}">☰ List</a>
     </div>
-    <a class="button primary" href="/doors">+ New schedule</a>
+    <a class="button primary" href="/schedules/new">+ New schedule</a>
   </div>
 </div>
 
@@ -45,10 +45,11 @@
 </form>
 
 <div class="legend small muted">
-  <span><i class="sw def"></i>Regular hours</span><span><i class="sw unl"></i>Unlocked event</span>
+  {% if type in ('default', 'all') %}<span><i class="sw def"></i>Regular hours</span>{% endif %}<span><i class="sw unl"></i>Unlocked event</span>
   <span><i class="sw lock"></i>Kept locked</span><span><i class="sw cal"></i>From a calendar</span>
 </div>
 
+{% if type not in ('default', 'all') %}<p class="muted small hintline">Regular hours are on each door's page. To see them here, choose <a href="?view={{ view }}&type=default">Regular hours</a> in the filter.</p>{% endif %}
 {% if view == 'week' %}
 <div class="weeknav">
   <a class="button small" href="?view=week&week={{ prev_week }}&q={{ q|urlencode }}&type={{ type }}&building={{ building }}" aria-label="Previous week">←</a>
@@ -96,13 +97,17 @@
 </div>
 {% endmacro %}
 
+{% if type != 'default' %}
 <section>
   <h2>Events and overrides <small class="muted">{{ overrides|length }}</small></h2>
   {% if overrides %}{{ rows(overrides) }}{% else %}<div class="card empty"><p>No upcoming events{% if q or type or building %} match{% endif %}.</p></div>{% endif %}
 </section>
+{% endif %}
+{% if type in ('default', 'all') %}
 <section>
   <h2>Regular hours <small class="muted">{{ defaults|length }}</small></h2>
   {% if defaults %}{{ rows(defaults) }}{% else %}<div class="card empty"><p>No regular hours{% if q or type or building %} match{% else %} set. Doors stay locked unless an event unlocks them{% endif %}.</p></div>{% endif %}
 </section>
+{% endif %}
 {% endif %}
 {% endblock %}

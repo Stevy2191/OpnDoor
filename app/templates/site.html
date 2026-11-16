@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ site.name }} · OpnDoor{% endblock %}
+{% block content %}
+<p class="crumbs small"><a href="/sites">Sites</a> › {{ site.name }}</p>
+<div class="pagehead">
+  <div>
+    <h1>{{ site.name }}</h1>
+    <p class="muted">{{ doors|length }} door{{ '' if doors|length == 1 else 's' }} · {{ buildings|length }} building{{ '' if buildings|length == 1 else 's' }} · times in {{ site.timezone }}
+      {% if site.last_sync_status %}· <span class="{{ 'err' if site.last_sync_status.startswith('Error') else '' }}" style="display:inline">{{ site.last_sync_status }}</span>{% endif %}</p>
+  </div>
+  <div class="btnrow">
+    <a class="button" href="/site?id={{ site.id }}&next=/doors">🚪 View doors</a>
+    <a class="button primary" href="/site?id={{ site.id }}&next=/schedules/new">+ New schedule here</a>
+  </div>
+</div>
+
+<nav class="subtabs">
+  <a href="#buildings">Buildings and doors</a>
+  {% if user.is_admin %}<a href="#console">Console connection</a>{% endif %}
+</nav>
+
+<div id="buildings">
+{% include "_buildings.html" %}
+</div>
+
+{% if user.is_admin %}
+<section class="card" id="console">
+  <h2>Console connection</h2>
+  {% include "_site_connection.html" %}
+</section>
+<form method="post" action="/sites/{{ site.id }}/delete" onsubmit="return confirm('Remove {{ site.name|e }}? Its doors, buildings, their schedules and user access are removed from OpnDoor. Doors go back to their normal UniFi rules.')">
+  <button class="danger">Remove this site</button>
+</form>
+{% endif %}
+{% endblock %}

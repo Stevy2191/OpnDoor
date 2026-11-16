@@ -6,6 +6,8 @@
 <form method="post" action="/account" class="card stack">
   <label>Name <input name="name" value="{{ user.name }}"></label>
   <label>Email <input value="{{ user.email }}" disabled></label>
+  <p class="small">Appearance: <strong>{{ {'light': 'Light', 'dark': 'Dark'}.get(user.theme, 'Auto (matches your computer)') }}</strong>
+    <span class="muted">· change it with ☀️ 🌙 Auto at the bottom of the menu</span></p>
   <p class="small">Role: <strong>{{ user.role_name }}</strong> · Signs in with <strong>{{ 'a password' if user.password_hash else 'Microsoft' }}</strong></p>
   {% if user.password_hash %}
   <h3>Change password</h3>

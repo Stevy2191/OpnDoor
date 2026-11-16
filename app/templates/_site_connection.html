@@ -1,0 +1,26 @@
+<form method="post" action="/sites{% if site %}/{{ site.id }}{% endif %}" class="stack">
+  <label>Site name <input name="name" value="{{ site.name if site else '' }}" placeholder="e.g. Main Campus" required></label>
+  <label>Console address
+    <input name="host" value="{{ site.host if site else '' }}" placeholder="https://192.168.1.1:12445" {% if not site %}required{% endif %}>
+    <small class="muted">The UniFi Access API, usually port 12445 on the console. Enter <code>demo</code> for a pretend console.</small>
+  </label>
+  <label>API token
+    <input type="text" name="token" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
+      placeholder="{{ 'Saved: leave blank to keep' if site and site.token else 'Paste the token' }}">
+    <small class="muted">Create it in the <strong>UniFi Access</strong> app: Settings → General → Advanced → API Token, with permission to view and operate doors.
+      UniFi shows it only once, so copy it right away. (A UniFi OS / Control Plane API key won't work.)</small>
+  </label>
+  <label>Timezone
+    <input name="timezone" list="tzs" value="{{ site.timezone if site else config.TZ_NAME }}" required>
+    <datalist id="tzs">{% for tz in timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
+  </label>
+  <label class="check"><input type="checkbox" name="verify_tls" value="true" {% if site and site.verify_tls %}checked{% endif %}>
+    Verify the console's HTTPS certificate <small class="muted">(leave off for the console's built-in self-signed certificate)</small></label>
+  {% if site %}
+  <label class="check"><input type="checkbox" name="enabled" value="true" {% if site.enabled %}checked{% endif %}> Active</label>
+  {% endif %}
+  <div class="btnrow">
+    <button class="primary">{{ 'Save and test' if site else 'Add and load doors' }}</button>
+    {% if not site %}<a class="button" href="/sites">Cancel</a>{% endif %}
+  </div>
+</form>

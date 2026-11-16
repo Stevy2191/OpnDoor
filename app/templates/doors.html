@@ -2,46 +2,68 @@
 {% from "_macros.html" import status_line %}
 {% block title %}Doors · OpnDoor{% endblock %}
 {% block content %}
-<div class="head">
-  <h1>Doors</h1>
+{% set usable = doors|selectattr('present')|list %}
+{% set cur = sites.get(current_site) if current_site else none %}
+{% if multi_site %}<p class="crumbs small"><a href="/site?id=&next=/doors">All sites</a> › {{ cur.name if cur else '' }}</p>{% endif %}
+<div class="pagehead">
+  <div>
+    <h1>{{ cur.name if cur else 'Doors' }}</h1>
+    <p class="muted">{{ usable|length }} door{{ '' if usable|length == 1 else 's' }} · tick doors, then set regular hours or add an override</p>
+  </div>
   <div class="btnrow">
-  {% if user.is_manager %}<a class="button" href="/buildings">🏢 Organize buildings</a>{% endif %}
-  {% if user.is_admin %}<form method="post" action="/doors/sync"><button>↻ Reload doors from UniFi Access</button></form>{% endif %}
+    {% if user.is_manager and (cur or sites|length == 1) %}<a class="button" href="/sites/{{ (cur or (sites.values()|first)).id }}#buildings">🏢 Organize buildings</a>{% endif %}
+    {% if user.is_admin %}<form method="post" action="/doors/sync"><button>↻ Reload from UniFi</button></form>{% endif %}
+    <a class="button primary" href="/schedules/new">+ New schedule</a>
   </div>
 </div>
-{% set usable = doors|selectattr('present')|list %}
+
 {% if usable %}
-<p class="muted">Select doors, then set their <strong>regular hours</strong> or add an <strong>override</strong> (an event, or keep them locked). Overrides replace the regular hours while they last.</p>
+<div class="filterbar card doorfilter">
+  <input type="search" class="dsearch" placeholder="Search doors or buildings…" aria-label="Search doors">
+  <div class="fchips" role="group" aria-label="Show">
+    <button type="button" data-f="" class="on">All <span>{{ usable|length }}</span></button>
+    <button type="button" data-f="unlock">Unlocked <span>{{ counts.unlock }}</span></button>
+    <button type="button" data-f="lock">Kept locked <span>{{ counts.lock }}</span></button>
+    {% if counts.error %}<button type="button" data-f="error" class="bad">Problems <span>{{ counts.error }}</span></button>{% endif %}
+  </div>
+</div>
+
 <form id="pick" method="get" action="/schedules/new">
   <input type="hidden" name="kind" id="pickkind" value="override">
   {% for site_id, groups in door_tree(usable) %}
-  {% if sites|length > 1 %}<h2 class="sitetitle">{{ sites[site_id].name }} <small class="muted">{{ sites[site_id].timezone }}</small></h2>{% endif %}
-  {% set has_b = groups|length > 1 or groups[0][0] %}
-  {% for b, group in groups %}
-  <div class="bsection" data-group>
-    <div class="pickbar-top">
-      {% if has_b %}<h3 class="bname">{{ b.name if b else 'Other doors' }} <small class="muted">{{ group|length }} door{{ '' if group|length == 1 else 's' }}</small></h3>{% else %}<span></span>{% endif %}
-      <label class="ball"><input type="checkbox" class="groupall"> Select all</label>
-    </div>
-    <div class="doorgrid">
-    {% for d in group %}
-      <label class="doorcard">
-        <input type="checkbox" name="door" value="{{ d.id }}">
-        <span class="box">
-          <span class="tick"></span>
-          <span class="info">
-            <strong>{{ d.name }}</strong>
-            <small>{{ status_line(status.get(d.id, {})) }}</small>
-            <small class="muted">{% if d.id in has_default %}Regular hours set{% else %}No regular hours (locked unless overridden){% endif %}</small>
-            <a class="small" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View schedule →</a>
+  <section class="card dlist">
+    {% set has_b = groups|length > 1 or groups[0][0] %}
+    {% for b, group in groups %}
+    <details class="dgroup" open data-group>
+      <summary class="dghead">
+        <label class="ball" onclick="event.stopPropagation()"><input type="checkbox" class="groupall" aria-label="Select all in {{ b.name if b else 'this list' }}"></label>
+        <span class="dgname">{{ (b.name if b else 'Other doors') if has_b else 'All doors' }}</span>
+        <span class="muted small">{{ group|length }} door{{ '' if group|length == 1 else 's' }}</span>
+        <span class="chev" aria-hidden="true">▾</span>
+      </summary>
+      <div class="drows">
+        <div class="drow dhdr" aria-hidden="true"><span></span><span>Door</span><span>Right now</span><span>Next event</span><span></span></div>
+        {% for d in group %}{% set st = status.get(d.id, {}) %}
+        <label class="drow" data-state="{{ state[d.id] }}"
+               data-find="{{ (d.name ~ ' ' ~ (b.name if b else '') ~ ' ' ~ d.full_name)|lower }}">
+          <input type="checkbox" name="door" value="{{ d.id }}" aria-label="Select {{ d.name }}">
+          <span class="dname">{{ d.name }}</span>
+          <span class="dstate">
+            {% if st.error %}<span class="pill bad">⚠️ Problem</span>
+            {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">until {{ st.until|time }}</small>
+            {% elif st.mode == 'lock' %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ '' if (st.until|day) == 'Today' else (st.until|day) ~ ' ' }}{{ st.until|time }}</small>{% endif %}
+            {% else %}<span class="muted">Locked</span>{% endif %}
           </span>
-        </span>
-      </label>
+          <span class="dnext">{% set ev = nextev.get(d.id) %}{% if ev %}{{ event_icon(ev.schedule) }} {{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
+          <a class="small dview" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View →</a>
+        </label>
+        {% endfor %}
+      </div>
+    </details>
     {% endfor %}
-    </div>
-  </div>
+  </section>
   {% endfor %}
-  {% endfor %}
+  <p class="muted nomatch" hidden>No doors match.</p>
   <div class="pickbar" id="pickbar" hidden>
     <span id="pickcount"></span>
     <button class="ghost" onclick="document.getElementById('pickkind').value='default'">Set regular hours</button>
@@ -52,9 +74,11 @@
 
 {% set gone = doors|rejectattr('present')|list %}
 {% if gone %}
-<h2>No longer on the console</h2>
-<p class="muted small">These doors were removed from UniFi Access. Their schedules are kept but do nothing.</p>
-<ul>{% for d in gone %}<li>{{ d.name }}{% if sites|length > 1 %} <span class="muted">({{ sites[d.site_id].name }})</span>{% endif %}</li>{% endfor %}</ul>
+<details class="card">
+  <summary><strong>No longer on the console</strong> <span class="muted small">{{ gone|length }}</span></summary>
+  <p class="muted small">These doors were removed from UniFi Access. Their schedules are kept but do nothing.</p>
+  <ul>{% for d in gone %}<li>{{ d.name }}{% if sites|length > 1 %} <span class="muted">({{ sites[d.site_id].name }})</span>{% endif %}</li>{% endfor %}</ul>
+</details>
 {% endif %}
 
 {% if not doors %}
@@ -64,13 +88,29 @@
 <script>
 (function () {
   const form = document.getElementById('pick'); if (!form) return;
-  const boxes = [...form.querySelectorAll('input[name=door]')];
+  const rows = [...form.querySelectorAll('.drow:not(.dhdr)')];
+  const boxes = rows.map(r => r.querySelector('input'));
   const bar = document.getElementById('pickbar'), count = document.getElementById('pickcount');
+  const q = document.querySelector('.dsearch'), chips = [...document.querySelectorAll('.fchips button')], none = form.querySelector('.nomatch');
+  let f = '';
   function update() {
     const n = boxes.filter(b => b.checked).length;
     bar.hidden = n === 0;
     count.textContent = n + (n === 1 ? ' door selected' : ' doors selected');
   }
+  function filter() {
+    const t = q.value.trim().toLowerCase(); let shown = 0;
+    rows.forEach(r => {
+      const okF = !f || r.dataset.state === f;
+      const hit = okF && (!t || r.dataset.find.includes(t));
+      r.hidden = !hit; shown += hit;
+    });
+    form.querySelectorAll('.dgroup').forEach(g => g.hidden = !g.querySelector('.drow:not(.dhdr):not([hidden])'));
+    form.querySelectorAll('.dlist').forEach(s => s.hidden = !s.querySelector('.dgroup:not([hidden])'));
+    none.hidden = shown > 0;
+  }
+  chips.forEach(c => c.addEventListener('click', () => { chips.forEach(x => x.classList.remove('on')); c.classList.add('on'); f = c.dataset.f; filter(); }));
+  q.addEventListener('input', filter);
   form.addEventListener('change', () => setTimeout(update));
   update();
 })();

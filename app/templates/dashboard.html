@@ -10,7 +10,7 @@
   {% if doors %}
   <div class="btnrow">
     <button type="button" class="button" onclick="document.getElementById('unlockdlg').showModal()">🔓 Unlock a door now</button>
-    <a class="button primary" href="/doors">+ Schedule doors</a>
+    <a class="button primary" href="/schedules/new">+ New schedule</a>
   </div>
   {% endif %}
 </div>
@@ -49,7 +49,7 @@
         <td>
           {% if st.error %}<span class="pill bad">⚠️ Problem</span>
           {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">until {{ st.until|time }}</small>
-          {% else %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ st.until|day }} {{ st.until|time }}</small>{% endif %}{% endif %}
+          {% else %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ '' if (st.until|day) == 'Today' else (st.until|day) ~ ' ' }}{{ st.until|time }}</small>{% endif %}{% endif %}
         </td>
         <td>{% if st.error %}<small class="err">{{ st.error }}</small>{% else %}{{ st.label or '—' }}{% endif %}</td>
         <td class="right">

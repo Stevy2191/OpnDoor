@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if user and user.theme in ("light", "dark") %} data-theme="{{ user.theme }}"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -53,13 +53,19 @@
   <div class="navlabel">Manage</div>
   <nav class="navgroup">
     <a href="/users" class="{{ 'on' if p.startswith('/users') }}">{{ icon('people') }}People</a>
-    {% if user.is_admin %}<a href="/sites" class="{{ 'on' if p.startswith('/sites') }}">{{ icon('site') }}Sites</a>{% endif %}
+    <a href="/sites" class="{{ 'on' if p.startswith('/sites') }}">{{ icon('site') }}Sites</a>
     <a href="/history" class="{{ 'on' if p.startswith('/history') }}">{{ icon('history') }}History</a>
   </nav>
   {% endif %}
 
   <div class="navme">
     <a href="/account" class="{{ 'on' if p.startswith('/account') }}">{{ icon('user') }}<span><strong>{{ user.display }}</strong><small>{{ user.role_name }}</small></span></a>
+    <form method="post" action="/theme" class="themepick" aria-label="Appearance">
+      <input type="hidden" name="next" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query }}">
+      {% for v, lbl, tip in [('light', '☀️', 'Light'), ('dark', '🌙', 'Dark'), ('auto', 'Auto', 'Match my computer')] %}
+      <button name="theme" value="{{ v }}" class="{{ 'on' if (user.theme or 'auto') == v }}" title="{{ tip }}" aria-pressed="{{ 'true' if (user.theme or 'auto') == v else 'false' }}">{{ lbl }}</button>
+      {% endfor %}
+    </form>
     <form method="post" action="/logout"><button class="link">Sign out</button></form>
   </div>
 </aside>
@@ -93,6 +99,31 @@
     sync(g);
   });
 })();
+</script>
+<script>
+// Door pickers in forms: search, picked counts, site sections.
+document.querySelectorAll('.dpick').forEach(function (dp) {
+  const q = dp.querySelector('.dpsearch'), count = dp.querySelector('.dpcount'), none = dp.querySelector('.dpnone');
+  const chips = [...dp.querySelectorAll('.chip')];
+  function counts() {
+    const n = chips.filter(c => c.querySelector('input').checked).length;
+    if (count) count.textContent = n ? n + (n === 1 ? ' door picked' : ' doors picked') : 'No doors picked yet';
+    dp.querySelectorAll('.dpsite').forEach(s => {
+      const k = s.querySelectorAll('.chip input:checked').length, total = s.querySelectorAll('.chip').length;
+      const el = s.querySelector('.dpsitecount'); if (el) el.textContent = total + ' doors' + (k ? ' · ' + k + ' picked' : '');
+    });
+  }
+  function filter() {
+    const t = q.value.trim().toLowerCase(); let shown = 0;
+    chips.forEach(c => { const hit = !t || c.dataset.find.includes(t); c.hidden = !hit; shown += hit; });
+    dp.querySelectorAll('.bgroup').forEach(g => g.hidden = !g.querySelector('.chip:not([hidden])'));
+    dp.querySelectorAll('.dpsite').forEach(s => { const any = !!s.querySelector('.chip:not([hidden])'); s.hidden = !any; if (t && any) s.open = true; });
+    none.hidden = shown > 0;
+  }
+  if (q) q.addEventListener('input', filter);
+  dp.addEventListener('change', () => setTimeout(counts));
+  counts();
+});
 </script>
 </body>
 </html>
