@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if user and user.theme in ("light", "dark") %} data-theme="{{ user.theme }}"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -60,6 +60,12 @@
 
   <div class="navme">
     <a href="/account" class="{{ 'on' if p.startswith('/account') }}">{{ icon('user') }}<span><strong>{{ user.display }}</strong><small>{{ user.role_name }}</small></span></a>
+    <form method="post" action="/theme" class="themepick" aria-label="Appearance">
+      <input type="hidden" name="next" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query }}">
+      {% for v, lbl, tip in [('light', '☀️', 'Light'), ('dark', '🌙', 'Dark'), ('auto', 'Auto', 'Match my computer')] %}
+      <button name="theme" value="{{ v }}" class="{{ 'on' if (user.theme or 'auto') == v }}" title="{{ tip }}" aria-pressed="{{ 'true' if (user.theme or 'auto') == v else 'false' }}">{{ lbl }}</button>
+      {% endfor %}
+    </form>
     <form method="post" action="/logout"><button class="link">Sign out</button></form>
   </div>
 </aside>

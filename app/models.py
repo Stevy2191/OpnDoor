@@ -34,6 +34,7 @@ class User(SQLModel, table=True):
     created_by: Optional[int] = None
     ms_oid: Optional[str] = Field(default=None, index=True)  # Microsoft account id, bound on first sign-in
     last_login_at: Optional[datetime] = None
+    theme: str = "auto"  # auto | light | dark
     created_at: datetime = Field(default_factory=utcnow)
 
     @property

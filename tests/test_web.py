@@ -102,7 +102,7 @@ def test_multi_door_preselect(client):
     client.post("/login", data={"email": "bob@example.com", "password": "password123"})
     r = client.get("/schedules/new?door=1:demo-front&door=1:demo-side")
     assert set(re.findall(r'name="door_ids" value="([^"]+)"\s+checked', r.text)) == {"1:demo-side"}
-    assert "1:demo-front" not in r.text
+    assert 'name="door_ids" value="1:demo-front"' not in r.text
 
 
 def test_regular_hours_and_override_via_forms(client):
@@ -239,3 +239,20 @@ def test_unlock_until_custom_time(client, fake):
     r = client.post("/quick-unlock", data={"door_ids": ["1:demo-front"], "minutes": "240"})
     assert "for 4 hours" in r.text
     assert "Or unlock until" in client.get("/").text
+
+
+def test_theme_setting_and_doors_list(client):
+    setup_admin(client)
+    assert "data-theme" not in client.get("/").text.split("<head>")[0]  # Auto by default
+    client.post("/theme", data={"theme": "dark", "next": "/doors"})
+    page = client.get("/doors").text
+    assert '<html lang="en" data-theme="dark">' in page
+    client.post("/theme", data={"theme": "light"})
+    assert 'data-theme="light"' in client.get("/").text
+    client.post("/theme", data={"theme": "purple"})  # unknown values fall back to Auto
+    assert 'data-theme=' not in client.get("/").text.split("<head>")[0]
+
+    client.post("/schedules", data={"kind": "default", "label": "Hours", "door_ids": ["1:demo-front"],
+                                    "day": "2030-01-07", "start": "08:00", "end": "17:00", "weekdays": ["0", "1", "2", "3", "4"]})
+    doors = client.get("/doors").text
+    assert "No regular hours" in doors and "Weekdays, 8 AM – 5 PM" in doors and 'class="drow"' in doors

@@ -269,6 +269,15 @@ def logout(request: Request):
     return redirect("/login")
 
 
+@router.post("/theme")
+def set_theme(request: Request, theme: str = Form("auto"), next: str = Form("/"),
+              user: User = Depends(require_user), session: Session = Depends(get_session)):
+    user.theme = theme if theme in {"auto", "light", "dark"} else "auto"
+    session.add(user)
+    session.commit()
+    return redirect(safe_next(next))
+
+
 @router.get("/account")
 def account_page(request: Request, user: User = Depends(require_user)):
     return render(request, "account.html", user)
@@ -771,15 +780,33 @@ def schedule_delete(request: Request, sid: int, bg: BackgroundTasks, user: User 
 
 @router.get("/doors")
 def doors_page(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
+    site_id = current_site_id(request, session, user)
     if user.is_admin:
         doors = list(session.exec(select(Door).order_by(Door.site_id, Door.name)).all())
     else:
         doors = doors_for(session, user)
-    counts = dict(session.exec(select(UserDoor.door_id, func.count()).group_by(UserDoor.door_id)).all())
-    has_default = set(session.exec(select(ScheduleDoor.door_id).join(Schedule, Schedule.id == ScheduleDoor.schedule_id)
-                                   .where(Schedule.kind == "default")).all())
-    return render(request, "doors.html", user, doors=doors, counts=counts, status=door_status(session, doors),
-                  has_default=has_default)
+    doors = [d for d in doors if site_id is None or d.site_id == site_id]
+    status = door_status(session, doors)
+    # each door's regular hours, in words
+    regular: dict[str, list[str]] = {}
+    for door_id, scheds in engine.door_schedules(session, [d.id for d in doors]).items():
+        for x in scheds:
+            if x.kind == "default":
+                end = x.start_local + timedelta(minutes=x.duration_minutes)
+                regular.setdefault(door_id, []).append(f"{describe_repeat(x).split(' until')[0]}, {_span(x.start_local, end)}")
+    state = {}
+    for d in doors:
+        st = status.get(d.id, {})
+        state[d.id] = "error" if st.get("error") else (st.get("mode") or "normal")
+    usable = [d for d in doors if d.present]
+    counts = {
+        "unlock": sum(1 for d in usable if state[d.id] == "unlock"),
+        "lock": sum(1 for d in usable if state[d.id] == "lock"),
+        "noreg": sum(1 for d in usable if d.id not in regular),
+        "error": sum(1 for d in usable if state[d.id] == "error"),
+    }
+    return render(request, "doors.html", user, doors=doors, status=status, regular=regular, state=state,
+                  counts=counts)
 
 
 @router.post("/doors/sync")

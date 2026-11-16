@@ -3,14 +3,24 @@
   --accent: #2563eb; --accent-soft: #e8efff; --ok: #16a34a; --ok-soft: #e6f6ec;
   --err: #c62828; --err-soft: #fdecec; --warn-soft: #fff6dc; --cal: #7c3aed; --cal-soft: #f1eafe;
   --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.06);
+  color-scheme: light;
 }
+/* Dark: follows the computer (Auto) unless the person picked Light or Dark */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1115; --card: #181b21; --text: #e7e9ee; --muted: #9aa1ad; --line: #2a2f38;
     --accent: #5b8cff; --accent-soft: #1b2741; --ok: #34c46a; --ok-soft: #15291d;
     --err: #ff6b6b; --err-soft: #3a1b1b; --warn-soft: #3a3115; --cal: #a78bfa; --cal-soft: #261d3d;
     --shadow: none;
+    color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+    --bg: #0f1115; --card: #181b21; --text: #e7e9ee; --muted: #9aa1ad; --line: #2a2f38;
+    --accent: #5b8cff; --accent-soft: #1b2741; --ok: #34c46a; --ok-soft: #15291d;
+    --err: #ff6b6b; --err-soft: #3a1b1b; --warn-soft: #3a3115; --cal: #a78bfa; --cal-soft: #261d3d;
+    --shadow: none;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -437,3 +447,43 @@ table.assign td:first-child, table.assign th:first-child { width: 2rem; }
 .dlgfoot .hint { margin: -.3rem 0 0; }
 .btnrow.durs { display: grid; grid-template-columns: repeat(5, 1fr); }
 @media (max-width: 520px) { .btnrow.durs { grid-template-columns: repeat(3, 1fr); } }
+/* appearance switch in the sidebar */
+.themepick { display: inline-flex; margin: .4rem .65rem .2rem; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; padding: 0 !important; }
+.themepick button { border: 0; border-radius: 0; padding: .3rem .6rem; font-size: .8rem; background: var(--card); color: var(--muted); }
+.themepick button + button { border-left: 1px solid var(--line); }
+.themepick button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* ================= doors list ================= */
+.doorfilter { gap: .75rem; }
+.fchips { display: flex; gap: .4rem; flex-wrap: wrap; }
+.fchips button { padding: .35rem .75rem; border-radius: 999px; font-size: .85rem; }
+.fchips button span { color: var(--muted); margin-left: .2rem; font-variant-numeric: tabular-nums; }
+.fchips button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fchips button.on span { color: rgba(255,255,255,.8); }
+.fchips button.bad:not(.on) { color: var(--err); }
+.dlist { padding: .5rem 1rem 1rem; }
+.dsite { margin: .5rem 0 .25rem; font-size: 1.05rem; }
+.dgroup { border-top: 1px solid var(--line); }
+.dlist > .dgroup:first-of-type, .dsite + .dgroup { border-top: 0; }
+.dghead { display: flex; align-items: center; gap: .6rem; padding: .7rem 0 .45rem; cursor: pointer; list-style: none; user-select: none; }
+.dghead::-webkit-details-marker { display: none; }
+.dgname { font-weight: 600; }
+.chev { margin-left: auto; color: var(--muted); transition: transform .15s; }
+.dgroup:not([open]) .chev { transform: rotate(-90deg); }
+.drows { display: flex; flex-direction: column; }
+.drow { display: grid; grid-template-columns: 1.5rem minmax(10rem, 1.4fr) minmax(9rem, 1fr) minmax(10rem, 1.3fr) 4rem; gap: .75rem; align-items: center;
+  padding: .5rem .5rem; border-radius: 8px; font-weight: 400; cursor: pointer; }
+.drow:hover { background: var(--bg); }
+.drow:has(input:checked) { background: var(--accent-soft); }
+.drow input { width: 17px; height: 17px; margin: 0; }
+.drow.dhdr { cursor: default; padding-top: 0; padding-bottom: .2rem; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.drow.dhdr:hover { background: none; }
+.dname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dreg { font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dview { text-align: right; }
+@media (max-width: 760px) {
+  .drow { grid-template-columns: 1.5rem 1fr auto; row-gap: .15rem; }
+  .drow.dhdr { display: none; }
+  .dname { grid-column: 2; } .dview { grid-column: 3; grid-row: 1; }
+  .dstate, .dreg { grid-column: 2 / span 2; font-size: .85rem; }
+}
