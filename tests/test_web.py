@@ -40,7 +40,7 @@ def test_admin_flow_and_permissions(client, fake):
     r = client.post("/schedules", data={"label": "Choir practice", "door_ids": ["1:demo-hall"], "day": "2030-01-02",
                                         "start": "18:00", "end": "20:30", "repeat": "weekly", "weekdays": ["2"]})
     assert r.status_code == 200
-    assert "Choir practice" in client.get("/schedules").text
+    assert "Choir practice" in client.get("/schedules?view=list").text
 
     for path in ["/users", "/users/new", "/calendars", "/activity", "/calendars/new", "/doors", "/account"]:
         assert client.get(path).status_code == 200, path
@@ -115,8 +115,8 @@ def test_regular_hours_and_override_via_forms(client):
     r = client.post("/schedules", data={"kind": "override", "action": "lock", "label": "Closed for holiday",
                                         "door_ids": ["1:demo-front"], "day": "2030-12-25", "start": "00:00", "end": "23:59"})
     assert "Saved" in r.text
-    page = client.get("/schedules").text
-    assert "Regular hours" in page and "Office hours" in page and "Keep locked" in page
+    page = client.get("/schedules?view=list").text
+    assert "Regular hours" in page and "Office hours" in page and "Kept locked" in page
     door = client.get("/doors/1:demo-front").text
     assert "Next 7 days" in door and "Closed for holiday" in door and "Office hours" in door
 
@@ -190,3 +190,29 @@ def test_home_lock_now_and_site_switcher(client, fake):
     assert "4 doors" in home and "1%3Ademo-side/lock-now" not in home
     client.get("/site?id=&next=/")
     assert "8 doors" in client.get("/").text
+
+
+
+def test_schedules_page_week_list_filters(client):
+    from app.schedules import now_local
+    setup_admin(client)
+    today = now_local().date().isoformat()
+    client.post("/schedules", data={"kind": "default", "label": "Office hours", "door_ids": ["1:demo-front"],
+                                    "day": today, "start": "08:00", "end": "17:00", "weekdays": [str(i) for i in range(7)]})
+    client.post("/schedules", data={"kind": "override", "event_type": "rental", "label": "Gym rental", "contact": "Coach Lee",
+                                    "door_ids": ["1:demo-hall", "1:demo-side"], "day": today, "start": "23:00", "end": "23:30"})
+    client.post("/schedules", data={"kind": "override", "action": "lock", "label": "Holiday", "door_ids": ["1:demo-office"],
+                                    "day": "2030-12-25", "start": "00:00", "end": "23:59"})
+    week = client.get("/schedules?view=week").text
+    assert "Office hours" in week and "Gym rental" in week and "Holiday" not in week and "Today" in week
+    nxt = client.get("/schedules?view=week&week=2030-12-23").text
+    assert "Holiday" in nxt and "Gym rental" not in nxt
+
+    lst = client.get("/schedules?view=list").text
+    assert "Holiday" in lst and "Next" in lst and "Coach Lee" in lst
+    # the choice of view is remembered
+    assert "Holiday" in client.get("/schedules").text
+    assert "Holiday" not in client.get("/schedules?type=unlock").text
+    assert "Gym rental" in client.get("/schedules?q=coach").text
+    assert "Office hours" not in client.get("/schedules?q=coach").text
+    assert "Fellowship Hall" in client.get("/schedules?q=fellowship").text  # door names are searchable

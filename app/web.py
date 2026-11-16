@@ -321,10 +321,37 @@ def pick_site(request: Request, id: str = "", next: str = "/", user: User = Depe
     return redirect(safe_next(next))
 
 
-def _names(ids: list[str], names: dict[str, str], limit: int = 3) -> str:
-    shown = [names[d] for d in ids[:limit] if d in names]
-    more = len(ids) - limit
-    return ", ".join(shown) + (f" +{more} more" if more > 0 else "")
+class DoorNamer:
+    """Short, readable door lists: whole buildings collapse to "Event Center (all 4)"."""
+
+    def __init__(self, session: Session, doors: list[Door]):
+        self.doors = {d.id: d for d in doors}
+        self.sites = {x.id: x.name for x in session.exec(select(Site)).all()}
+        self.buildings = {b.id: b.name for b in session.exec(select(Building)).all()}
+        self.totals: dict[int, int] = {}
+        for bid, n in session.exec(select(Door.building_id, func.count()).where(
+                Door.building_id != None, Door.present == True).group_by(Door.building_id)).all():  # noqa: E711,E712
+            self.totals[bid] = n
+
+    def __call__(self, ids, limit: int = 4) -> str:
+        doors = [self.doors[d] for d in ids if d in self.doors]
+        multi_site = len({d.site_id for d in doors}) > 1
+        groups: dict = {}
+        for d in doors:
+            groups.setdefault(d.building_id if d.building_id in self.buildings else None, []).append(d)
+        parts = []
+        for bid in sorted((k for k in groups if k is not None), key=lambda k: self.buildings[k].lower()):
+            ds = groups[bid]
+            tag = f", {self.sites.get(ds[0].site_id, '')}" if multi_site else ""
+            if len(ds) > 1 and len(ds) == self.totals.get(bid):
+                parts.append(f"{self.buildings[bid]} (all {len(ds)}{tag})")
+            else:
+                parts.extend(f"{d.name}" + (f" ({self.sites.get(d.site_id, '')})" if multi_site else "")
+                             for d in sorted(ds, key=lambda d: d.name.lower()))
+        parts.extend(f"{d.name}" + (f" ({self.sites.get(d.site_id, '')})" if multi_site else "")
+                     for d in sorted(groups.get(None, []), key=lambda d: d.name.lower()))
+        more = len(parts) - limit
+        return ", ".join(parts[:limit]) + (f" +{more} more" if more > 0 else "")
 
 
 @router.get("/")
@@ -334,8 +361,6 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
     in_view = {d.id for d in doors}
     names = {d.id: d.name for d in doors}
     sites = {x.id: x for x in session.exec(select(Site)).all()}
-    door_site = {d.id: d.site_id for d in doors}
-    names_site = {d.id: f"{d.name} ({sites[d.site_id].name})" if d.site_id in sites else d.name for d in doors}
     status = door_status(session, doors)
 
     # Doors that aren't simply locked on their normal rule
@@ -353,13 +378,13 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
     today = now.date()
     scheds = [x for x in visible_schedules(session, user) if x.kind == "override"]
     sd = schedule_doors(session, [x.id for x in scheds])
+    namer = DoorNamer(session, doors)
     agenda_today, agenda_week = [], {}
     for o in expand(scheds, now.replace(hour=0, minute=0, second=0, microsecond=0), now + timedelta(days=7)):
         ids = [d for d in sd[o.schedule.id] if d in in_view]
         if not ids:
             continue
-        spans = len({door_site[d] for d in ids}) > 1
-        row = {"o": o, "doors": _names(ids, names_site if spans else names), "count": len(ids),
+        row = {"o": o, "doors": namer(ids), "count": len(ids),
                "editable": can_edit(session, user, o.schedule, sd[o.schedule.id]),
                "live": o.start <= now < o.end, "past": o.end <= now}
         if o.start.date() <= today:
@@ -441,20 +466,95 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
 
 # ---------- schedules ----------
 
+SCHEDULE_TYPES = [("", "All schedules"), ("default", "Regular hours"), ("unlock", "Events (unlocked)"),
+                  ("lock", "Kept locked"), ("calendar", "From calendars")]
+
+
+def _sched_type_ok(s: Schedule, t: str) -> bool:
+    return (not t or (t == "default" and s.kind == "default")
+            or (t == "unlock" and s.kind == "override" and s.action == "unlock")
+            or (t == "lock" and s.kind == "override" and s.action == "lock")
+            or (t == "calendar" and s.source == "calendar"))
+
+
 @router.get("/schedules")
-def schedules_list(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
-    today = now_local().date()
-    scheds = [s for s in visible_schedules(session, user) if series_last_date(s) >= today - timedelta(days=1)]
-    scheds.sort(key=lambda s: s.start_local)
-    sd = schedule_doors(session, [s.id for s in scheds])
-    names = {d.id: d.name for d in session.exec(select(Door)).all()}
+def schedules_list(request: Request, view: str = "", week: str = "", q: str = "", type: str = "",
+                   building: str = "", past: str = "", user: User = Depends(require_user),
+                   session: Session = Depends(get_session)):
+    if view in ("week", "list"):
+        request.session["sched_view"] = view
+    view = request.session.get("sched_view", "week")
+    site_id = current_site_id(request, session, user)
+    doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
+    in_view = {d.id for d in doors}
+    namer = DoorNamer(session, doors)
+    buildings = sorted({d.building_id for d in doors if d.building_id} & set(namer.buildings),
+                       key=lambda b: namer.buildings[b].lower())
+    bdoors = {d.id for d in doors if building.isdigit() and d.building_id == int(building)}
+
+    scheds = visible_schedules(session, user)
+    sd = schedule_doors(session, [x.id for x in scheds])
     feeds = {f.id: f.name for f in session.exec(select(CalendarFeed)).all()}
-    allowed = allowed_door_ids(session, user)
-    rows = [{"s": s, "doors": [names.get(d, d) for d in sd[s.id] if user.is_admin or d in allowed],
-             "editable": can_edit(session, user, s, sd[s.id]), "feed": feeds.get(s.feed_id)} for s in scheds]
-    return render(request, "schedules.html", user,
-                  defaults=[r for r in rows if r["s"].kind == "default"],
-                  overrides=[r for r in rows if r["s"].kind != "default"])
+    door_text = {d.id: d.name.lower() for d in doors}
+    needle = q.strip().lower()
+    today = now_local().date()
+
+    def keep(x: Schedule) -> bool:
+        ids = [d for d in sd[x.id] if d in in_view]
+        if not ids or not _sched_type_ok(x, type):
+            return False
+        if building.isdigit() and not (set(ids) & bdoors):
+            return False
+        if needle:
+            hay = " ".join([x.label, x.contact, x.notes] + [door_text[d] for d in ids]).lower()
+            if needle not in hay:
+                return False
+        return True
+
+    scheds = [x for x in scheds if keep(x)]
+
+    def card(x: Schedule, o=None) -> dict:
+        ids = [d for d in sd[x.id] if d in in_view]
+        return {"s": x, "o": o, "doors": namer(ids), "ndoors": len(ids), "feed": feeds.get(x.feed_id),
+                "editable": can_edit(session, user, x, sd[x.id])}
+
+    ctx = dict(view=view, q=q, type=type, building=building, past=past, types=SCHEDULE_TYPES,
+               building_opts=[(b, namer.buildings[b]) for b in buildings], total=len(scheds))
+    if view == "week":
+        try:
+            ref = date.fromisoformat(week) if week else today
+        except ValueError:
+            ref = today
+        start = ref - timedelta(days=ref.weekday())
+        days = [start + timedelta(days=k) for k in range(7)]
+        lo = datetime.combine(start, datetime.min.time())
+        by_day: dict[date, list] = {d: [] for d in days}
+        for o in expand(scheds, lo, lo + timedelta(days=7)):
+            day = max(o.start.date(), start)
+            if day in by_day:
+                by_day[day].append(card(o.schedule, o))
+        for d in days:
+            by_day[d].sort(key=lambda c: (c["s"].kind != "default", c["o"].start))
+        ctx.update(days=days, by_day=by_day, week_start=start, today=today,
+                   prev_week=(start - timedelta(days=7)).isoformat(), next_week=(start + timedelta(days=7)).isoformat(),
+                   is_this_week=start <= today < start + timedelta(days=7))
+    else:
+        now = now_local()
+        rows = []
+        for x in scheds:
+            nxt = expand([x], now, now + timedelta(days=400))
+            ended = not nxt and series_last_date(x) < today
+            if ended and not past:
+                continue
+            c = card(x)
+            c["next"] = nxt[0] if nxt else None
+            c["ended"] = ended
+            rows.append(c)
+        far = datetime.max
+        rows.sort(key=lambda c: (c["next"].start if c["next"] else far, c["s"].label.lower()))
+        ctx.update(defaults=[r for r in rows if r["s"].kind == "default"],
+                   overrides=[r for r in rows if r["s"].kind != "default"])
+    return render(request, "schedules.html", user, **ctx)
 
 
 def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kind: str = "override",
