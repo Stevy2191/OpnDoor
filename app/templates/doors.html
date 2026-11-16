@@ -7,28 +7,69 @@
   <form method="post" action="/doors/sync"><button>↻ Reload from UniFi Access</button></form>
   {% endif %}
 </div>
-{% if doors %}
-<div class="table card">
-<table>
-  <thead><tr><th>Door</th><th>Status</th>{% if user.is_admin %}<th>People with access</th>{% endif %}<th></th></tr></thead>
-  <tbody>
-  {% for d in doors %}
-    <tr class="{{ '' if d.present else 'gone' }}">
-      <td><strong>{{ d.name }}</strong><br><small class="muted">{{ d.full_name }}</small></td>
-      <td>
-        {% if not d.present %}<span class="tag">No longer on controller</span>
-        {% elif d.id in open_now %}<span class="dot open"></span> Unlocked by schedule until {{ open_now[d.id]|time }}
-        {% else %}<span class="dot closed"></span> Normal{% endif %}
-        {% if d.id in errors %}<br><small class="err">⚠ {{ errors[d.id] }}</small>{% endif %}
-      </td>
-      {% if user.is_admin %}<td>{{ counts.get(d.id, 0) }} {% if counts.get(d.id, 0) == 1 %}person{% else %}people{% endif %} <small class="muted">+ admins</small></td>{% endif %}
-      <td class="right">{% if d.present %}<a class="small" href="/schedules/new?door={{ d.id }}">Schedule</a>{% endif %}</td>
-    </tr>
+{% set usable = doors|selectattr('present')|list %}
+{% if usable %}
+<p class="muted">Select one or more doors, then add a schedule to them.</p>
+<form id="pick" method="get" action="/schedules/new">
+  <div class="pickbar-top">
+    <button type="button" class="link" id="selall">Select all</button>
+  </div>
+  <div class="doorgrid">
+  {% for d in usable %}
+    <label class="doorcard">
+      <input type="checkbox" name="door" value="{{ d.id }}">
+      <span class="box">
+        <span class="tick"></span>
+        <span class="info">
+          <strong>{{ d.name }}</strong>
+          {% if d.full_name and d.full_name != d.name %}<small class="muted">{{ d.full_name }}</small>{% endif %}
+          <small>
+            {% if d.id in open_now %}<span class="dot open"></span> Unlocked until {{ open_now[d.id]|time }}
+            {% else %}<span class="dot closed"></span> Locked{% endif %}
+            {% if user.is_admin and counts.get(d.id) %}<span class="muted"> · {{ counts[d.id] }} {{ 'user' if counts[d.id] == 1 else 'users' }} assigned</span>{% endif %}
+          </small>
+          {% if d.id in errors %}<small class="err">⚠ {{ errors[d.id] }}</small>{% endif %}
+        </span>
+      </span>
+    </label>
   {% endfor %}
-  </tbody>
-</table>
-</div>
-{% else %}
-<div class="card empty"><p>{% if user.is_admin %}No doors loaded yet. Check the UniFi Access host and token, then reload.{% else %}You don't have access to any doors yet.{% endif %}</p></div>
+  </div>
+  <div class="pickbar" id="pickbar" hidden>
+    <span id="pickcount"></span>
+    <button class="primary">Add schedule</button>
+  </div>
+</form>
 {% endif %}
+
+{% set gone = doors|rejectattr('present')|list %}
+{% if gone %}
+<h2>No longer on the controller</h2>
+<p class="muted small">These doors were removed from UniFi Access. Their existing schedules are kept but do nothing.</p>
+<ul>{% for d in gone %}<li>{{ d.name }}</li>{% endfor %}</ul>
+{% endif %}
+
+{% if not doors %}
+<div class="card empty"><p>{% if user.is_admin %}No doors loaded yet. Check the UniFi Access host and API token, then reload.{% else %}You don't have access to any doors yet. Ask an administrator.{% endif %}</p></div>
+{% endif %}
+
+<script>
+(function () {
+  const form = document.getElementById('pick'); if (!form) return;
+  const boxes = [...form.querySelectorAll('input[name=door]')];
+  const bar = document.getElementById('pickbar'), count = document.getElementById('pickcount'),
+        all = document.getElementById('selall');
+  function update() {
+    const n = boxes.filter(b => b.checked).length;
+    bar.hidden = n === 0;
+    count.textContent = n + (n === 1 ? ' door selected' : ' doors selected');
+    all.textContent = n === boxes.length ? 'Clear selection' : 'Select all';
+  }
+  boxes.forEach(b => b.addEventListener('change', update));
+  all.addEventListener('click', () => {
+    const on = boxes.some(b => !b.checked);
+    boxes.forEach(b => b.checked = on); update();
+  });
+  update();
+})();
+</script>
 {% endblock %}

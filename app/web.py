@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
@@ -287,9 +287,10 @@ def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str]):
 
 
 @router.get("/schedules/new")
-def schedule_new(request: Request, door: Optional[str] = None, user: User = Depends(require_user),
+def schedule_new(request: Request, door: list[str] = Query([]), user: User = Depends(require_user),
                  session: Session = Depends(get_session)):
-    return render(request, "schedule_form.html", user, **_form_ctx(session, user, None, [door] if door else []))
+    """`?door=a&door=b` preselects doors (from the Doors page or a door's Schedule link)."""
+    return render(request, "schedule_form.html", user, **_form_ctx(session, user, None, door))
 
 
 @router.get("/schedules/{sid}")

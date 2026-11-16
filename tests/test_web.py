@@ -87,3 +87,19 @@ def test_past_one_off_rejected(client):
 
 def test_health(client):
     assert client.get("/health").json()["status"] == "ok"
+
+
+def test_multi_door_preselect(client):
+    import re
+    setup_admin(client)
+    r = client.get("/schedules/new?door=demo-front&door=demo-hall")
+    checked = set(re.findall(r'name="door_ids" value="([^"]+)" checked', r.text))
+    assert checked == {"demo-front", "demo-hall"}
+    # a door the user can't use is never offered, even if passed in the URL
+    client.post("/users", data={"name": "Bob", "email": "bob@example.com", "password": "password123",
+                                "door_ids": ["demo-side"]})
+    client.post("/logout")
+    client.post("/login", data={"email": "bob@example.com", "password": "password123"})
+    r = client.get("/schedules/new?door=demo-front&door=demo-side")
+    assert set(re.findall(r'name="door_ids" value="([^"]+)" checked', r.text)) == {"demo-side"}
+    assert "demo-front" not in r.text
