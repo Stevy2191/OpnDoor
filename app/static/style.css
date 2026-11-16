@@ -249,3 +249,12 @@ ins { color: var(--ok); text-decoration: none; font-weight: 500; }
 .changes { margin: .25rem 0 0; padding-left: 1.1rem; }
 .evicon { font-weight: 400; }
 @media (max-width: 560px) { .hentry { flex-direction: column; gap: .2rem; } }
+
+/* site admin role */
+.roles-help { display: grid; gap: .2rem; margin-bottom: 1rem; color: var(--muted); }
+.roles-help strong { color: var(--text); }
+.for-siteadmin { display: none; }
+#userform:has(input[name=role][value=site_admin]:checked) .for-siteadmin { display: inline; }
+#userform:has(input[name=role][value=site_admin]:checked) .for-operator { display: none; }
+#userform:has(input[name=role][value=site_admin]:checked) .persite { display: none; }
+input[readonly] { background: var(--bg); color: var(--muted); }

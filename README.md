@@ -16,9 +16,15 @@ Runs as a single Docker container (FastAPI + SQLite). Images are built by GitHub
 - **Multiple sites / consoles.** Add each UniFi Access console as a site with its own address,
   API token and timezone. Doors are grouped by site everywhere, and schedule times are local to
   each door's site.
-- **Two roles.** **Admins** can do everything. **Door operators** only see and schedule the doors
-  they're given: either *all doors at a site* (including doors added later) or individual doors.
-  Operators never see other sites.
+- **Three roles.**
+  - **Admin**: everything, at every site, including adding sites (consoles) and other admins.
+  - **Site admin**: runs the sites they're given: all doors there, the door operators there,
+    calendars that use those doors, and history for those sites. Can't see other sites.
+  - **Door operator**: sees and schedules only the doors they're given, either *all doors at a
+    site* (including doors added later) or single doors. Never sees other sites.
+
+  If a door operator works at two sites, each site admin can change only that person's access at
+  their own site; name, email and sign-in can then only be changed by an admin.
 - **Sign in with Microsoft** (work accounts), or with a password.
 - **History.** Every change is recorded: who, when, and what changed (before → after), in plain
   English. Filter by person, site, door, type of change or date, and download it as a spreadsheet.

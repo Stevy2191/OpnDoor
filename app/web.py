@@ -10,8 +10,9 @@ from starlette.concurrency import run_in_threadpool
 from sqlmodel import Session, func, select
 
 from . import audit, calendars, config, engine
-from .auth import (AdminRequired, LoginRequired, allowed_door_ids, current_user, hash_password,
-                   login_user, safe_next, verify_password, visible_site_ids)
+from .auth import (AdminRequired, LoginRequired, allowed_door_ids, can_manage_person, current_user,
+                   fully_managed, hash_password, login_user, managed_site_ids, person_site_ids, safe_next,
+                   verify_password, visible_site_ids)
 from .db import get_session, session_scope
 from .models import (AuditLog, CalendarFeed, CalendarRule, Door, DoorState, Schedule,
                      ScheduleDoor, Site, User, UserDoor, UserSite, utcnow)
@@ -80,6 +81,13 @@ def require_user(request: Request, session: Session = Depends(get_session)) -> U
 
 def require_admin(user: User = Depends(require_user)) -> User:
     if not user.is_admin:
+        raise AdminRequired()
+    return user
+
+
+def require_manager(user: User = Depends(require_user)) -> User:
+    """Admins and site admins."""
+    if not user.is_manager:
         raise AdminRequired()
     return user
 
@@ -539,6 +547,7 @@ def door_page(request: Request, door_id: str, user: User = Depends(require_user)
                     key=lambda x: (x.kind != "default", x.start_local))
     rows = [{"s": x, "editable": can_edit(session, user, x, sd[x.id])} for x in listed]
     return render(request, "door.html", user, door=door, site=site, days=days, rows=rows,
+                  can_history=user.is_manager and door.site_id in managed_site_ids(session, user),
                   history=audit.for_door(session, door.id), audit_mod=audit,
                   status=door_status(session, [door]).get(door.id, {}))
 
@@ -641,19 +650,36 @@ def site_delete(request: Request, site_id: int, user: User = Depends(require_adm
     return redirect("/sites")
 
 
-# ---------- people (admin) ----------
+# ---------- people (admins and site admins) ----------
+
+def people_for(session: Session, manager: User) -> list[User]:
+    users = session.exec(select(User).order_by(User.active.desc(), User.is_admin.desc(),
+                                               User.is_site_admin.desc(), User.name)).all()
+    return [u for u in users if can_manage_person(session, manager, u) or u.id == manager.id or manager.is_admin]
+
 
 @router.get("/users")
-def users_page(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
-    users = session.exec(select(User).order_by(User.active.desc(), User.is_admin.desc(), User.name)).all()
-    names = {d.id: d.name for d in session.exec(select(Door)).all()}
+def users_page(request: Request, user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    managed = managed_site_ids(session, user)
+    names = {d.id: (d.name, d.site_id) for d in session.exec(select(Door)).all()}
     site_names = {x.id: x.name for x in session.exec(select(Site)).all()}
+    users = people_for(session, user)
     access: dict[int, list[str]] = {}
+    elsewhere: set[int] = set()
     for us in session.exec(select(UserSite)).all():
-        access.setdefault(us.user_id, []).append(f"All doors at {site_names.get(us.site_id, '?')}")
+        if us.site_id in managed:
+            access.setdefault(us.user_id, []).append(f"All doors at {site_names.get(us.site_id, '?')}")
+        else:
+            elsewhere.add(us.user_id)
     for ud in session.exec(select(UserDoor)).all():
-        access.setdefault(ud.user_id, []).append(names.get(ud.door_id, ud.door_id))
-    return render(request, "users.html", user, users=users, access=access, redirect_url=sso_redirect(request))
+        name, site_id = names.get(ud.door_id, (ud.door_id, None))
+        if site_id in managed:
+            access.setdefault(ud.user_id, []).append(name)
+        else:
+            elsewhere.add(ud.user_id)
+    return render(request, "users.html", user, users=users, access=access, elsewhere=elsewhere,
+                  editable={u.id for u in users if can_manage_person(session, user, u)},
+                  redirect_url=sso_redirect(request))
 
 
 def sso_redirect(request: Request) -> str:
@@ -663,13 +689,21 @@ def sso_redirect(request: Request) -> str:
 
 @router.get("/users/{uid}")
 @router.get("/users/new")
-def user_form(request: Request, uid: Optional[int] = None, user: User = Depends(require_admin),
+def user_form(request: Request, uid: Optional[int] = None, user: User = Depends(require_manager),
               session: Session = Depends(get_session)):
     target = session.get(User, uid) if uid else None
+    if uid and (not target or not can_manage_person(session, user, target)):
+        flash(request, "Only an admin can change that person.", "error")
+        return redirect("/users")
+    managed = managed_site_ids(session, user)
     sel_doors = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == uid)).all()) if uid else set()
     sel_sites = set(session.exec(select(UserSite.site_id).where(UserSite.user_id == uid)).all()) if uid else set()
-    return render(request, "user_form.html", user, target=target, doors=all_doors(session),
-                  selected=sel_doors, selected_sites=sel_sites)
+    sites = {k: v for k, v in session.exec(select(Site.id, Site)).all() if k in managed}
+    return render(request, "user_form.html", user, target=target, sites=sites,
+                  doors=[d for d in all_doors(session) if d.site_id in managed],
+                  selected=sel_doors, selected_sites=sel_sites,
+                  full=target is None or fully_managed(session, user, target),
+                  elsewhere=bool(target and person_site_ids(session, target) - managed))
 
 
 @router.post("/users")
@@ -677,75 +711,117 @@ def user_form(request: Request, uid: Optional[int] = None, user: User = Depends(
 def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""), email: str = Form(...),
               role: str = Form("operator"), signin: str = Form("microsoft"), password: str = Form(""),
               active: bool = Form(False), door_ids: list[str] = Form([]), site_ids: list[int] = Form([]),
-              user: User = Depends(require_admin), session: Session = Depends(get_session)):
+              user: User = Depends(require_manager), session: Session = Depends(get_session)):
     email = email.strip().lower()
     back = f"/users/{uid}" if uid else "/users/new"
-    is_admin = role == "admin"
+    managed = managed_site_ids(session, user)
+    if not user.is_admin:
+        role = "operator"  # site admins add and change door operators only
+    role = role if role in {"admin", "site_admin", "operator"} else "operator"
     use_password = signin == "password" or not config.SSO_ENABLED
+
+    target = session.get(User, uid) if uid else None
+    if uid and (not target or not can_manage_person(session, user, target)):
+        flash(request, "Only an admin can change that person.", "error")
+        return redirect("/users")
     clash = session.exec(select(User).where(User.email == email)).first()
     if clash and clash.id != uid:
-        flash(request, "Another person already has that email.", "error")
-        return redirect(back)
-    target = session.get(User, uid) if uid else None
-    if uid and not target:
-        return redirect("/users")
-    if target and target.id == user.id and (not is_admin or not active):
+        if target is None and not user.is_admin and not clash.is_admin and not clash.is_site_admin:
+            # A door operator who already exists (e.g. works at another site): a site admin
+            # "adding" them just gives them access at the site admin's sites.
+            target = clash
+        else:
+            flash(request, "Another person already has that email." + (" Find them in the list and edit them."
+                  if user.is_admin else ""), "error")
+            return redirect(back)
+    full = target is None or fully_managed(session, user, target)
+
+    if target and target.id == user.id and user.is_admin and (role != "admin" or not active):
         flash(request, "You can't remove your own admin role or turn off your own account.", "error")
         return redirect(back)
-    if use_password and password and len(password) < 8:
-        flash(request, "Passwords need at least 8 characters.", "error")
+    if role == "site_admin" and not site_ids:
+        flash(request, "Pick at least one site for the site admin to manage.", "error")
         return redirect(back)
-    if use_password and not password and not (target and target.password_hash):
-        flash(request, "Set a password (at least 8 characters), or choose Microsoft sign-in.", "error")
-        return redirect(back)
+    if full:
+        if use_password and password and len(password) < 8:
+            flash(request, "Passwords need at least 8 characters.", "error")
+            return redirect(back)
+        if use_password and not password and not (target and target.password_hash):
+            flash(request, "Set a password (at least 8 characters), or choose Microsoft sign-in.", "error")
+            return redirect(back)
 
-    before = audit.user_snapshot(session, target) if target else {}
+    before = audit.user_snapshot(session, target, managed if not user.is_admin else None) if target else {}
+    sites_before = person_site_ids(session, target) if target else set()
     if target is None:
-        target = User(email=email)
+        target = User(email=email, created_by=user.id, active=True)
         active = True
-    target.name, target.email, target.is_admin, target.active = name.strip(), email, is_admin, active
-    if not use_password:
-        target.password_hash = ""
-    elif password:
-        target.password_hash = hash_password(password)
+    if full:
+        target.name, target.email, target.active = name.strip(), email, active
+        if not use_password:
+            target.password_hash = ""
+        elif password:
+            target.password_hash = hash_password(password)
+    target.is_admin, target.is_site_admin = role == "admin", role == "site_admin"
     session.add(target)
     session.flush()
 
-    # access: admins see everything, so stored grants only matter for operators
-    for row in session.exec(select(UserDoor).where(UserDoor.user_id == target.id)).all():
-        session.delete(row)
+    # Access. Admins need none. Grants outside the manager's sites are kept as they are.
     for row in session.exec(select(UserSite).where(UserSite.user_id == target.id)).all():
-        session.delete(row)
+        if row.site_id in managed:
+            session.delete(row)
+    for row in session.exec(select(UserDoor).where(UserDoor.user_id == target.id)).all():
+        door = session.get(Door, row.door_id)
+        if not door or door.site_id in managed:
+            session.delete(row)
     session.flush()
-    if not is_admin:
-        valid_sites = set(session.exec(select(Site.id)).all())
-        whole = set(site_ids) & valid_sites
+    if role != "admin":
+        whole = set(site_ids) & managed
         for sid in whole:
             session.add(UserSite(user_id=target.id, site_id=sid))
-        for d in set(door_ids):
-            door = session.get(Door, d)
-            if door and door.site_id not in whole:  # already covered by the whole site
-                session.add(UserDoor(user_id=target.id, door_id=d))
+        if role == "operator":
+            for d in set(door_ids):
+                door = session.get(Door, d)
+                if door and door.site_id in managed and door.site_id not in whole:
+                    session.add(UserDoor(user_id=target.id, door_id=d))
     session.flush()
 
-    after = audit.user_snapshot(session, target)
+    after = audit.user_snapshot(session, target, managed if not user.is_admin else None)
     changed = audit.diff(before, after)
-    if password and before and use_password:
-        changed.append(["Password", "", "(reset by admin)"])
+    if password and before and use_password and full:
+        changed.append(["Password", "", "(reset)"])
     if changed:
-        audit.record(session, "user.update" if uid else "user.create",
-                     f"{user.display} {'changed' if uid else 'added'} {target.display} ({target.role_name})",
-                     user=user, changes=changed)
+        audit.record(session, "user.update" if before else "user.create",
+                     f"{user.display} {'changed' if before else 'added'} {target.display} ({target.role_name})",
+                     user=user, changes=changed,
+                     site_ids=(sites_before | person_site_ids(session, target)) or None)
     session.commit()
     flash(request, f"Saved {target.display}.")
     return redirect("/users")
 
 
-# ---------- calendars (admin) ----------
+# ---------- calendars (admins and site admins) ----------
+
+def feed_door_ids(session: Session, feed: CalendarFeed) -> set[str]:
+    ids = set(calendars.split_ids(feed.default_door_ids))
+    for r in session.exec(select(CalendarRule).where(CalendarRule.feed_id == feed.id)).all():
+        ids |= set(calendars.split_ids(r.door_ids))
+    return ids
+
+
+def can_manage_feed(session: Session, user: User, feed: Optional[CalendarFeed]) -> bool:
+    """Admins: any calendar. Site admins: calendars that only use doors at their sites."""
+    if user.is_admin:
+        return True
+    if not user.is_site_admin or feed is None:
+        return False
+    ids = feed_door_ids(session, feed)
+    return bool(ids) and ids <= allowed_door_ids(session, user)
+
 
 @router.get("/calendars")
-def calendars_page(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
-    feeds = session.exec(select(CalendarFeed).order_by(CalendarFeed.name)).all()
+def calendars_page(request: Request, user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    feeds = [f for f in session.exec(select(CalendarFeed).order_by(CalendarFeed.name)).all()
+             if can_manage_feed(session, user, f)]
     counts = dict(session.exec(select(Schedule.feed_id, func.count()).where(Schedule.feed_id != None)  # noqa: E711
                                .group_by(Schedule.feed_id)).all())
     return render(request, "calendars.html", user, feeds=feeds, counts=counts)
@@ -753,12 +829,14 @@ def calendars_page(request: Request, user: User = Depends(require_admin), sessio
 
 @router.get("/calendars/{fid}")
 @router.get("/calendars/new")
-def calendar_form(request: Request, fid: Optional[int] = None, user: User = Depends(require_admin),
+def calendar_form(request: Request, fid: Optional[int] = None, user: User = Depends(require_manager),
                   session: Session = Depends(get_session)):
     feed = session.get(CalendarFeed, fid) if fid else None
+    if fid and not can_manage_feed(session, user, feed):
+        return redirect("/calendars")
     rules = session.exec(select(CalendarRule).where(CalendarRule.feed_id == fid)
                          .order_by(CalendarRule.position)).all() if fid else []
-    doors = all_doors(session)
+    doors = doors_for(session, user)
     upcoming = []
     if feed:
         now = now_local()
@@ -788,9 +866,12 @@ async def _rules_from_form(request: Request) -> list[dict]:
 
 @router.post("/calendars")
 @router.post("/calendars/{fid}")
-async def calendar_save(request: Request, fid: Optional[int] = None, user: User = Depends(require_admin),
+async def calendar_save(request: Request, fid: Optional[int] = None, user: User = Depends(require_manager),
                         session: Session = Depends(get_session)):
     form = await request.form()
+    if fid and not can_manage_feed(session, user, session.get(CalendarFeed, fid)):
+        return redirect("/calendars")
+    mine = allowed_door_ids(session, user)
     name, url = str(form.get("name", "")).strip(), str(form.get("url", "")).strip()
     if not name or not url.startswith(("http://", "https://", "webcal://")):
         flash(request, "Give the calendar a name and an http(s) or webcal ICS link.", "error")
@@ -799,7 +880,7 @@ async def calendar_save(request: Request, fid: Optional[int] = None, user: User 
     feed.name, feed.url = name, url
     feed.enabled = form.get("enabled") == "on"
     feed.include_all_day = form.get("include_all_day") == "on"
-    feed.default_door_ids = ",".join(str(d) for d in form.getlist("default_doors"))
+    feed.default_door_ids = ",".join(str(d) for d in form.getlist("default_doors") if str(d) in mine)
     try:
         feed.lead_minutes = max(0, int(form.get("lead_minutes") or 0))
         feed.lag_minutes = max(0, int(form.get("lag_minutes") or 0))
@@ -811,7 +892,14 @@ async def calendar_save(request: Request, fid: Optional[int] = None, user: User 
     for r in session.exec(select(CalendarRule).where(CalendarRule.feed_id == feed.id)).all():
         session.delete(r)
     for r in await _rules_from_form(request):
-        session.add(CalendarRule(feed_id=feed.id, **r))
+        r["door_ids"] = ",".join(d for d in r["door_ids"].split(",") if d in mine)
+        if r["door_ids"]:
+            session.add(CalendarRule(feed_id=feed.id, **r))
+    session.flush()
+    if not user.is_admin and not feed_door_ids(session, feed):
+        flash(request, "Pick at least one door for this calendar.", "error")
+        session.rollback()
+        return redirect(f"/calendars/{fid}" if fid else "/calendars/new")
     audit.record(session, "calendar.update" if fid else "calendar.create",
                  f"{user.display} {'changed' if fid else 'connected'} calendar “{feed.name}”", user=user,
                  door_ids=sorted(set(calendars.split_ids(feed.default_door_ids))
@@ -825,7 +913,10 @@ async def calendar_save(request: Request, fid: Optional[int] = None, user: User 
 
 
 @router.post("/calendars/{fid}/sync")
-def calendar_sync(request: Request, fid: int, bg: BackgroundTasks, user: User = Depends(require_admin)):
+def calendar_sync(request: Request, fid: int, bg: BackgroundTasks, user: User = Depends(require_manager),
+                  session: Session = Depends(get_session)):
+    if not can_manage_feed(session, user, session.get(CalendarFeed, fid)):
+        return redirect("/calendars")
     status = calendars.sync_feed(fid)
     kick_reconcile(bg)
     flash(request, status, "error" if status.startswith("Error") else "ok")
@@ -833,18 +924,18 @@ def calendar_sync(request: Request, fid: int, bg: BackgroundTasks, user: User = 
 
 
 @router.post("/calendars/{fid}/preview")
-def calendar_preview(request: Request, fid: int, user: User = Depends(require_admin),
+def calendar_preview(request: Request, fid: int, user: User = Depends(require_manager),
                      session: Session = Depends(get_session)):
     feed = session.get(CalendarFeed, fid)
-    if not feed:
+    if not feed or not can_manage_feed(session, user, feed):
         return redirect("/calendars")
     try:
         bookings = calendars.plan_feed(session, feed, calendars.fetch_ics(feed.url))
     except Exception as e:
         flash(request, f"Couldn't read the calendar: {e}", "error")
         return redirect(f"/calendars/{fid}")
-    doors = all_doors(session)
-    names = {d.id: d.name for d in doors}
+    doors = doors_for(session, user)
+    names = {d.id: d.name for d in all_doors(session)}
     preview = [{"b": b, "doors": [names[d] for d in b.door_ids]} for b in bookings]
     rules = session.exec(select(CalendarRule).where(CalendarRule.feed_id == fid).order_by(CalendarRule.position)).all()
     return render(request, "calendar_form.html", user, feed=feed, rules=rules, doors=doors,
@@ -852,10 +943,10 @@ def calendar_preview(request: Request, fid: int, user: User = Depends(require_ad
 
 
 @router.post("/calendars/{fid}/delete")
-def calendar_delete(request: Request, fid: int, bg: BackgroundTasks, user: User = Depends(require_admin),
+def calendar_delete(request: Request, fid: int, bg: BackgroundTasks, user: User = Depends(require_manager),
                     session: Session = Depends(get_session)):
     feed = session.get(CalendarFeed, fid)
-    if feed:
+    if feed and can_manage_feed(session, user, feed):
         for s in session.exec(select(Schedule).where(Schedule.feed_id == fid)).all():
             calendars.delete_schedule(session, s)
         for r in session.exec(select(CalendarRule).where(CalendarRule.feed_id == fid)).all():

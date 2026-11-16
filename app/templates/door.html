@@ -65,7 +65,7 @@
         {% if ch and e.action == 'schedule.update' %}<ul class="changes">{% for k, b, a in ch %}<li>{{ k }}: <del>{{ b or '—' }}</del> → <ins>{{ a or '—' }}</ins></li>{% endfor %}</ul>{% endif %}
       </div>
     {% else %}<p class="muted small">No changes recorded yet.</p>{% endfor %}
-    {% if user.is_admin %}<p class="small"><a href="/history?door={{ door.id|urlencode }}">Full history for this door →</a></p>{% endif %}
+    {% if can_history %}<p class="small"><a href="/history?door={{ door.id|urlencode }}">Full history for this door →</a></p>{% endif %}
   </section>
 </div>
 {% endblock %}

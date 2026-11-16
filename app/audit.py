@@ -113,15 +113,19 @@ def schedule_snapshot(session: Session, s: Schedule) -> dict:
     }
 
 
-def user_snapshot(session: Session, u: User) -> dict:
+def user_snapshot(session: Session, u: User, only_sites: Optional[set] = None) -> dict:
+    """Readable summary of a person. only_sites: show access at just these sites."""
     from .models import UserDoor, UserSite
     sites = session.exec(select(Site).join(UserSite, UserSite.site_id == Site.id).where(UserSite.user_id == u.id)).all()
     doors = session.exec(select(Door).join(UserDoor, UserDoor.door_id == Door.id).where(UserDoor.user_id == u.id)).all()
+    if only_sites is not None:
+        sites = [x for x in sites if x.id in only_sites]
+        doors = [d for d in doors if d.site_id in only_sites]
     return {
         "Name": u.name,
         "Email": u.email,
         "Role": u.role_name,
-        "Sites (all doors)": ", ".join(sorted(x.name for x in sites)) or "—",
+        ("Manages sites" if u.is_site_admin else "Sites (all doors)"): ", ".join(sorted(x.name for x in sites)) or "—",
         "Single doors": ", ".join(sorted(d.name for d in doors)) or "—",
         "Signs in with": ("Microsoft" if not u.password_hash else "Password") if u.id else "",
         "Active": "Yes" if u.active else "No",

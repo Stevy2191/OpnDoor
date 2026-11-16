@@ -61,14 +61,48 @@ def allowed_door_ids(session: Session, user: User) -> set[str]:
 
 
 def visible_site_ids(session: Session, user: User) -> set[int]:
-    """Sites a user may see: admins all, operators only sites where they have doors."""
+    """Sites a user may see: admins all; others their whole-site grants plus sites of single doors."""
     if user.is_admin:
         from .models import Site
         return set(session.exec(select(Site.id)).all())
-    ids = allowed_door_ids(session, user)
-    if not ids:
-        return set()
-    return set(session.exec(select(Door.site_id).where(Door.id.in_(ids))).all())
+    sites = set(session.exec(select(UserSite.site_id).where(UserSite.user_id == user.id)).all())
+    single = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == user.id)).all())
+    if single:
+        sites |= set(session.exec(select(Door.site_id).where(Door.id.in_(single))).all())
+    return sites
+
+
+def managed_site_ids(session: Session, user: User) -> set[int]:
+    """Sites whose people, calendars and history this user manages."""
+    if user.is_admin:
+        from .models import Site
+        return set(session.exec(select(Site.id)).all())
+    if user.is_site_admin:
+        return set(session.exec(select(UserSite.site_id).where(UserSite.user_id == user.id)).all())
+    return set()
+
+
+def person_site_ids(session: Session, person: User) -> set[int]:
+    """Every site a person has any access at."""
+    return visible_site_ids(session, person) if not person.is_admin else set()
+
+
+def can_manage_person(session: Session, manager: User, person: User) -> bool:
+    """Admins manage everyone. Site admins manage door operators who work at their sites
+    (or who have no access anywhere yet)."""
+    if manager.is_admin:
+        return True
+    if not manager.is_site_admin or person.is_admin or person.is_site_admin:
+        return False
+    theirs = person_site_ids(session, person)
+    return not theirs or bool(theirs & managed_site_ids(session, manager))
+
+
+def fully_managed(session: Session, manager: User, person: User) -> bool:
+    """True if all of the person's access is inside the manager's sites, so the manager may
+    change their name, email, sign-in and on/off. Otherwise only access at the manager's
+    own sites can be changed."""
+    return manager.is_admin or person_site_ids(session, person) <= managed_site_ids(session, manager)
 
 
 class LoginRequired(Exception):
@@ -87,7 +121,8 @@ def login_user(request: Request, session: Session, user: User, method: str) -> N
     request.session["uid"] = user.id
     user.last_login_at = utcnow()
     session.add(user)
-    record(session, "signin.ok", f"{user.display} signed in with {method}", user=user)
+    record(session, "signin.ok", f"{user.display} signed in with {method}", user=user,
+           site_ids=person_site_ids(session, user) or None)
     session.commit()
 
 

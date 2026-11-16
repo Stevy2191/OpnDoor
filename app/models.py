@@ -16,21 +16,37 @@ def utcnow() -> datetime:
 
 
 class User(SQLModel, table=True):
-    """A person. Role: admin (is_admin) or door operator."""
+    """A person.
+
+    Roles: Admin (is_admin): everything. Site admin (is_site_admin): manages the
+    sites in their UserSite rows: those doors, door operators there, calendars
+    and history for those sites. Door operator: schedules the doors they're given.
+    """
 
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
     name: str = ""
     password_hash: str = ""  # "" = no password; signs in with Microsoft only
     is_admin: bool = False
+    is_site_admin: bool = False
     active: bool = True
+    created_by: Optional[int] = None
     ms_oid: Optional[str] = Field(default=None, index=True)  # Microsoft account id, bound on first sign-in
     last_login_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utcnow)
 
     @property
     def role_name(self) -> str:
-        return "Admin" if self.is_admin else "Door operator"
+        return "Admin" if self.is_admin else "Site admin" if self.is_site_admin else "Door operator"
+
+    @property
+    def role(self) -> str:
+        return "admin" if self.is_admin else "site_admin" if self.is_site_admin else "operator"
+
+    @property
+    def is_manager(self) -> bool:
+        """Admins and site admins: can open People, Calendars and History."""
+        return self.is_admin or self.is_site_admin
 
     @property
     def display(self) -> str:

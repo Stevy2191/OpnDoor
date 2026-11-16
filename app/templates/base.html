@@ -15,10 +15,10 @@
     <a href="/" {% if request.url.path == '/' %}class="on"{% endif %}>Home</a>
     <a href="/schedules" {% if request.url.path.startswith('/schedules') %}class="on"{% endif %}>Schedules</a>
     <a href="/doors" {% if request.url.path.startswith('/doors') %}class="on"{% endif %}>Doors</a>
-    {% if user.is_admin %}
+    {% if user.is_manager %}
     <a href="/calendars" {% if request.url.path.startswith('/calendars') %}class="on"{% endif %}>Calendars</a>
     <a href="/users" {% if request.url.path.startswith('/users') %}class="on"{% endif %}>People</a>
-    <a href="/sites" {% if request.url.path.startswith('/sites') %}class="on"{% endif %}>Sites</a>
+    {% if user.is_admin %}<a href="/sites" {% if request.url.path.startswith('/sites') %}class="on"{% endif %}>Sites</a>{% endif %}
     <a href="/history" {% if request.url.path.startswith('/history') %}class="on"{% endif %}>History</a>
     {% endif %}
   </nav>
