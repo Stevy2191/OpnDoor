@@ -134,11 +134,18 @@
     </div>
     <div class="dlgfoot">
       <span class="muted small picked">Pick one or more doors</span>
-      <div class="btnrow">
-        {% for m, lbl in [(15,'15 min'),(30,'30 min'),(60,'1 hour'),(120,'2 hours')] %}
-        <button name="minutes" value="{{ m }}" class="{{ 'primary' if m == 30 }}">{{ lbl }}</button>
+      <div class="durlabel small muted">Unlock for</div>
+      <div class="btnrow durs">
+        {% for m, lbl in [(15,'15 min'),(30,'30 min'),(60,'1 hour'),(120,'2 hours'),(240,'4 hours')] %}
+        <button name="minutes" value="{{ m }}">{{ lbl }}</button>
         {% endfor %}
       </div>
+      <div class="custom">
+        <label for="unlockuntil" class="small muted">Or unlock until</label>
+        <input type="time" id="unlockuntil" name="until" value="{{ default_until }}" step="300">
+        <button name="mode" value="until" class="primary">Unlock</button>
+      </div>
+      <p class="muted small hint">If the time has already passed today, it means tomorrow.</p>
     </div>
   </form>
 </dialog>

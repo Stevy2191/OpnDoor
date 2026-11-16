@@ -216,3 +216,26 @@ def test_schedules_page_week_list_filters(client):
     assert "Gym rental" in client.get("/schedules?q=coach").text
     assert "Office hours" not in client.get("/schedules?q=coach").text
     assert "Fellowship Hall" in client.get("/schedules?q=fellowship").text  # door names are searchable
+
+
+def test_unlock_until_custom_time(client, fake):
+    from datetime import timedelta
+    from app.schedules import now_local
+    setup_admin(client)
+    now = now_local()
+    later = (now + timedelta(hours=2, minutes=10)).strftime("%H:%M")
+    r = client.post("/quick-unlock", data={"door_ids": ["1:demo-side"], "until": later, "mode": "until"})
+    assert "Unlocking Side Door until" in r.text
+    unlock = [c for c in fake.calls if c[0] == "unlock"][-1]
+    assert unlock[1] == "demo-side" and 128 <= unlock[2] <= 131
+
+    earlier = (now - timedelta(hours=1)).strftime("%H:%M")  # already passed: means tomorrow
+    client.post("/quick-unlock", data={"door_ids": ["1:demo-hall"], "until": earlier, "mode": "until"})
+    unlock = [c for c in fake.calls if c[0] == "unlock"][-1]
+    assert unlock[1] == "demo-hall" and 22 * 60 <= unlock[2] <= 23 * 60 + 2
+
+    assert "doesn" in client.post("/quick-unlock", data={"door_ids": ["1:demo-front"], "until": "25:99",
+                                                           "mode": "until"}).text
+    r = client.post("/quick-unlock", data={"door_ids": ["1:demo-front"], "minutes": "240"})
+    assert "for 4 hours" in r.text
+    assert "Or unlock until" in client.get("/").text

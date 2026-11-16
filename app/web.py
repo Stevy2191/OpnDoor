@@ -400,7 +400,9 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
     }
     return render(request, "dashboard.html", user, doors=doors, right_now=right_now, tiles=tiles,
                   agenda_today=agenda_today, agenda_week=agenda_week, site_id=site_id,
-                  today_label=now.strftime("%A, %B %-d"))
+                  today_label=now.strftime("%A, %B %-d"),
+                  default_until=(now + timedelta(minutes=75)).replace(minute=((now.minute + 75) % 60) // 15 * 15)
+                  .strftime("%H:%M"))
 
 
 @router.post("/doors/{door_id}/lock-now")
@@ -437,30 +439,66 @@ def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = D
     return redirect("/")
 
 
+def _until_minutes(until: str, tz) -> Optional[int]:
+    """Minutes from now until HH:MM at a site (today, or tomorrow if that time has passed)."""
+    try:
+        t = datetime.strptime(until.strip(), "%H:%M").time()
+    except ValueError:
+        return None
+    now = now_local(tz).replace(second=0, microsecond=0)
+    end = datetime.combine(now.date(), t)
+    if end <= now:
+        end += timedelta(days=1)
+    return int((end - now).total_seconds() // 60)
+
+
+def _duration_text(minutes: int) -> str:
+    h, m = divmod(minutes, 60)
+    if h and m:
+        return f"{h} hour{'s' if h > 1 else ''} {m} min"
+    return f"{h} hour{'s' if h > 1 else ''}" if h else f"{m} minutes"
+
+
 @router.post("/quick-unlock")
 def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Form([]),
-                 minutes: int = Form(...), user: User = Depends(require_user),
+                 minutes: Optional[int] = Form(None), until: str = Form(""), user: User = Depends(require_user),
                  session: Session = Depends(get_session)):
+    """Unlock doors now, for a number of minutes (preset buttons) or until a time (custom)."""
     allowed = allowed_door_ids(session, user)
     door_ids = [d for d in door_ids if d in allowed]
     if not door_ids:
         flash(request, "Pick at least one door.", "error")
         return redirect("/")
-    minutes = max(1, min(minutes, 12 * 60))
-    for site_id, ids in group_by_site(session, door_ids).items():
-        start = now_local(engine.site_tz(session.get(Site, site_id))).replace(second=0, microsecond=0)
+    if minutes is None and not until.strip():
+        flash(request, "Choose how long, or pick a time to unlock until.", "error")
+        return redirect("/")
+    groups = group_by_site(session, door_ids)
+    plans = []
+    for site_id, ids in groups.items():
+        tz = engine.site_tz(session.get(Site, site_id))
+        mins = minutes if minutes is not None else _until_minutes(until, tz)
+        if mins is None:
+            flash(request, "That time doesn't look right.", "error")
+            return redirect("/")
+        plans.append((tz, ids, max(1, min(mins, 24 * 60))))
+    for tz, ids, mins in plans:
+        start = now_local(tz).replace(second=0, microsecond=0)
         sched = Schedule(label=f"Unlock now by {user.display}", kind="override", action="unlock",
-                         event_type="other", start_local=start, duration_minutes=minutes + 1, source="quick",
-                         created_by=user.id)
+                         event_type="other", start_local=start, duration_minutes=mins + (1 if minutes is not None else 0),
+                         source="quick", created_by=user.id)
         session.add(sched)
         session.flush()
         calendars.set_schedule_doors(session, sched.id, ids)
-    names = ", ".join(session.get(Door, d).name for d in door_ids)
-    audit.record(session, "schedule.quick", f"{user.display} unlocked {names} for {minutes} minutes",
-                 user=user, door_ids=door_ids)
+    names = DoorNamer(session, [session.get(Door, d) for d in door_ids])(door_ids, limit=6)
+    if minutes is not None:
+        how = f"for {_duration_text(plans[0][2])}"
+    else:
+        end = datetime.strptime(until.strip(), "%H:%M")
+        how = f"until {end.strftime('%-I:%M %p').replace(':00 ', ' ')}"
+    audit.record(session, "schedule.quick", f"{user.display} unlocked {names} {how}", user=user, door_ids=door_ids)
     session.commit()
     kick_reconcile(bg)
-    flash(request, f"Unlocking {names} for {minutes} minutes.")
+    flash(request, f"Unlocking {names} {how}.")
     return redirect("/")
 
 

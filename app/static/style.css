@@ -429,3 +429,11 @@ table.assign td:first-child, table.assign th:first-child { width: 2rem; }
 .sdoors { font-size: .88rem; }
 .snext { text-align: right; min-width: 6.5rem; line-height: 1.3; }
 @media (max-width: 700px) { .srow { grid-template-columns: 2rem 1fr; } .snext, .sact { grid-column: 2; text-align: left; } .snext br { display: none; } }
+/* unlock dialog: durations + custom time */
+.durs button { flex: 1 1 0; padding-left: .4rem; padding-right: .4rem; white-space: nowrap; }
+.durlabel { margin-bottom: -.3rem; }
+.custom { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding-top: .6rem; border-top: 1px dashed var(--line); }
+.custom input { width: auto; margin: 0; }
+.dlgfoot .hint { margin: -.3rem 0 0; }
+.btnrow.durs { display: grid; grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 520px) { .btnrow.durs { grid-template-columns: repeat(3, 1fr); } }
