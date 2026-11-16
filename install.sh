@@ -397,7 +397,8 @@ main() {
         fi
         printf '%sdidn'"'"'t work%s\n' "$RED" "$R"
         if [ -z "$resp" ]; then note "No answer from $UNIFI_HOST. Check the address, and that this machine can reach the console."
-        elif printf '%s' "$resp" | grep -qi 'unauthor\|401\|token'; then note "The console said the token isn't valid."
+        elif printf '%s' "$resp" | grep -qi 'unauthor\|401\|token'; then note "The console said the token isn't valid. Use a token from the UniFi Access app"
+          note "(Settings → General → Advanced → API Token), not a UniFi OS API key."
         else note "Unexpected answer: $(printf '%s' "$resp" | head -c 150)"; fi
         if ! yes_no "  Try again?" Y; then
           if yes_no "  Keep these details anyway (you can fix them later under Sites)?" N; then break; fi

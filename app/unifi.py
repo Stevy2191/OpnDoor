@@ -49,7 +49,9 @@ class UnifiClient:
         except httpx.HTTPError as e:
             raise UnifiError(f"Cannot reach the UniFi Access console: {e}") from e
         if resp.status_code == 401:
-            raise UnifiError("UniFi Access rejected the API token (401)")
+            raise UnifiError("UniFi Access rejected the API token (401). Make a new token in the UniFi Access "
+                             "app under Settings → General → Advanced → API Token (not a UniFi OS API key), "
+                             "with door permissions, and paste all of it.")
         try:
             body = resp.json()
         except ValueError:

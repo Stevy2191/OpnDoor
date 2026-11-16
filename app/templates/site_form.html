@@ -17,8 +17,10 @@
     <small class="muted">The UniFi Access API, usually port 12445 on the console. Enter <code>demo</code> for a pretend console.</small>
   </label>
   <label>API token
-    <input type="password" name="token" autocomplete="off" placeholder="{{ 'Saved: leave blank to keep' if site and site.token else 'Paste the token' }}">
-    <small class="muted">In UniFi Access: Settings → General → Advanced → API Token. Give it permission to view and operate doors.</small>
+    <input type="text" name="token" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
+      placeholder="{{ 'Saved: leave blank to keep' if site and site.token else 'Paste the token' }}">
+    <small class="muted">Create it in the <strong>UniFi Access</strong> app: Settings → General → Advanced → API Token, with permission to view and operate doors.
+      UniFi shows it only once, so copy it right away. (A UniFi OS / Control Plane API key won't work.)</small>
   </label>
   <label>Timezone
     <input name="timezone" list="tzs" value="{{ site.timezone if site else config.TZ_NAME }}" required>
