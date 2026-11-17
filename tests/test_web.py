@@ -133,7 +133,7 @@ def test_add_second_site_groups_doors(client):
     r = client.post("/sites", data={"name": "North Campus", "host": "demo", "timezone": "America/New_York"})
     assert "Saved North Campus" in r.text and "OK: 4 doors" in r.text
     page = client.get("/doors").text  # two sites: the Doors page starts with site cards
-    assert "North Campus" in page and "Demo site" in page and "Pick a site" in page
+    assert "North Campus" in page and "Demo site" in page and "Pick the site you" in page
     assert "2:demo-front" in client.get("/site?id=2&next=/doors").text
     client.get("/site?id=&next=/")
     r = client.post("/sites", data={"name": "Bad", "host": "demo", "timezone": "Mars/Base"})
