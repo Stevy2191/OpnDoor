@@ -262,3 +262,13 @@ def test_theme_setting_and_doors_list(client):
     doors = client.get("/doors").text
     assert 'class="drow"' in doors and "Next event" in doors
     assert "Regular hours</span>" not in doors and "No regular hours" not in doors
+
+
+def test_stylesheet_link_changes_with_its_content(client):
+    import hashlib
+    from pathlib import Path
+    import app.web
+    setup_admin(client)
+    want = hashlib.sha256((Path(app.web.__file__).parent / "static" / "style.css").read_bytes()).hexdigest()[:10]
+    assert f'/static/style.css?v={want}' in client.get("/").text
+    assert client.get(f"/static/style.css?v={want}").status_code == 200

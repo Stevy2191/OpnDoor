@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}OpnDoor{% endblock %}</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='5' y='2' width='14' height='20' rx='2' fill='%232563eb'/><circle cx='15' cy='12' r='1.6' fill='white'/></svg>">
 </head>
 <body class="{{ 'app' if user else 'bare' }}">
