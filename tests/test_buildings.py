@@ -46,7 +46,8 @@ def test_auto_group_from_unifi_names_and_pickers(client):
         assert s.get(Door, f"{sid}:gate").building_id is None  # no building in its UniFi name
 
     form = client.get(f"/schedules/new?door={sid}:gate").text
-    assert "Event Center" in form and "All 4" in form and "All 3" in form and "Other doors" in form
+    assert 'data-name="Event Center"' in form and 'data-name="VIP Building"' in form and "Other doors" in form
+    assert "Pick doors" in form and "4 doors" in form
     doors = client.get(f"/site?id={sid}&next=/doors").text
     assert "Event Center" in doors and "Organize buildings" in doors
     assert "VIP Building" in client.get("/").text  # unlock dialog groups by building

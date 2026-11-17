@@ -44,3 +44,39 @@
   {% else %}<span class="dot closed"></span> Locked{% endif %}
   {% if st.error %}<small class="err">⚠ {{ st.error }}</small>{% endif %}
 {% endmacro %}
+
+{# Compact door picker for the schedule form: one row per building (tick = whole building),
+   "Pick doors" opens that building's doors. #}
+{% macro door_picker(doors, name, selected, sites) %}
+{% set tree = door_tree(doors) %}
+{% set multi = tree|length > 1 %}
+<div class="dpk" data-picker>
+  {% if doors|length > 6 %}
+  <input type="search" class="dpksearch" placeholder="Search {{ doors|length }} doors or buildings…" aria-label="Search doors">
+  {% endif %}
+  {% for site_id, groups in tree %}
+    {% if multi %}<div class="dpksite">{{ sites[site_id].name if site_id in sites else 'Site' }}</div>{% endif %}
+    {% set has_b = groups|length > 1 or groups[0][0] %}
+    <div class="dpklist">
+    {% for b, group in groups %}
+      {% set bname = (b.name if b else 'Other doors') if has_b else 'All doors' %}
+      {% set npick = group|selectattr('id', 'in', selected)|list|length %}
+      <div class="dpkb {{ '' if (npick and npick < group|length) or doors|length <= 6 else 'collapsed' }}" data-group data-name="{{ bname }}">
+        <div class="dpkbrow">
+          <label class="dpkball"><input type="checkbox" class="groupall" aria-label="All of {{ bname }}"><span>{{ bname }}</span></label>
+          <span class="dpkbcount muted small" data-total="{{ group|length }}">{{ group|length }} door{{ '' if group|length == 1 else 's' }}</span>
+          {% if group|length > 1 %}<button type="button" class="link small dpkexp">Pick doors</button>{% endif %}
+        </div>
+        <div class="dpkdoors">
+        {% for d in group %}
+          <label class="dpkdoor" data-find="{{ (d.name ~ ' ' ~ bname)|lower }}"><input type="checkbox" name="{{ name }}" value="{{ d.id }}"
+            {% if d.id in selected or doors|length == 1 %}checked{% endif %}><span>{{ d.name }}</span></label>
+        {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  {% endfor %}
+  <p class="muted small dpknone" hidden>No doors match.</p>
+</div>
+{% endmacro %}
