@@ -306,10 +306,14 @@ def account_page(request: Request, user: User = Depends(require_user)):
     return render(request, "account.html", user)
 
 
+START_PAGES = {"home", "doors", "map", "schedules"}
+
+
 @router.post("/account")
 def account(request: Request, name: str = Form(""), current_password: str = Form(""),
-            new_password: str = Form(""), user: User = Depends(require_user),
+            new_password: str = Form(""), start_page: str = Form(""), user: User = Depends(require_user),
             session: Session = Depends(get_session)):
+    user.start_page = start_page if start_page in START_PAGES else ""
     old_name = user.name
     user.name = name.strip()
     if old_name != user.name:
@@ -387,6 +391,15 @@ class DoorNamer:
 
 
 @router.get("/")
+def start(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
+    """Each person lands on their start page (Home unless they or an admin chose another)."""
+    page = user.start_path
+    if page != "/home":
+        return redirect(page)
+    return dashboard(request, user, session)
+
+
+@router.get("/home")
 def dashboard(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
     site_id = current_site_id(request, session, user)
     doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
@@ -432,9 +445,11 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
     }
     return render(request, "dashboard.html", user, doors=doors, right_now=right_now, tiles=tiles,
                   agenda_today=agenda_today, agenda_week=agenda_week, site_id=site_id,
-                  today_label=now.strftime("%A, %B %-d"),
-                  default_until=(now + timedelta(minutes=75)).replace(minute=((now.minute + 75) % 60) // 15 * 15)
-                  .strftime("%H:%M"))
+                  today_label=now.strftime("%A, %B %-d"), default_until=_default_until(now))
+
+
+def _default_until(now: datetime) -> str:
+    return (now + timedelta(minutes=75)).replace(minute=((now.minute + 75) % 60) // 15 * 15).strftime("%H:%M")
 
 
 @router.post("/doors/{door_id}/lock-now")
@@ -878,7 +893,7 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
     }
     return render(request, "doors.html", user, doors=doors, status=status, state=state,
                   counts=counts, nextev=nextev, now=now, site_id=site_id,
-                  multi_site=len(visible) > 1)
+                  multi_site=len(visible) > 1, default_until=_default_until(now))
 
 
 @router.post("/doors/sync")
@@ -1246,7 +1261,7 @@ def users_unifi_check(request: Request, user: User = Depends(require_manager), s
 @router.post("/users/{uid}")
 def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""), email: str = Form(...),
               role: str = Form("operator"), signin: str = Form("microsoft"), password: str = Form(""),
-              username: str = Form(""), door_source: str = Form("opndoor"),
+              username: str = Form(""), door_source: str = Form("opndoor"), start_page: str = Form(""),
               active: bool = Form(False), door_ids: list[str] = Form([]), site_ids: list[int] = Form([]),
               user: User = Depends(require_manager), session: Session = Depends(get_session)):
     email = email.strip().lower()
@@ -1316,6 +1331,7 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
     target.can_schedule = role != "opener"
     if full:
         target.door_source = door_source
+        target.start_page = start_page if start_page in START_PAGES else ""
     session.add(target)
     session.flush()
 

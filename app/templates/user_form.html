@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Edit' if target else 'Add' }} person · OpnDoor{% endblock %}
 {% block mainclass %}narrow{% endblock %}
+{% from "_macros.html" import start_select %}
 {% block content %}
 <p class="small"><a href="/users">← People</a></p>
 <h1>{{ target.display if target else 'Add a person' }}</h1>
@@ -84,6 +85,7 @@
   </fieldset>
 
   {% if full %}
+  {{ start_select(target, user) }}
   <fieldset>
     <legend>How do they sign in?</legend>
     {% set pw = (target and target.password_hash) or not config.SSO_ENABLED %}

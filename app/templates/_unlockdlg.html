@@ -1,0 +1,73 @@
+{% from "_macros.html" import padlock %}
+<dialog id="unlockdlg" class="dlg">
+  <form method="post" action="/quick-unlock" class="dlgform">
+    <input type="hidden" name="next" value="{{ request.url.path }}">
+    <div class="dlghead">
+      <h2>Open or unlock</h2>
+      <button type="button" class="link" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
+    </div>
+    <input type="search" class="doorsearch" placeholder="Search {{ doors|length }} doors or buildings…" autocomplete="off" aria-label="Search doors">
+    <div class="doorpick">
+      {% for site_id, groups in door_tree(doors) %}
+        {% set sname = sites[site_id].name if site_id in sites else '' %}
+        {% if sites|length > 1 and not current_site %}<div class="sitehead" data-head>{{ sname }}</div>{% endif %}
+        {% set has_b = groups|length > 1 or groups[0][0] %}
+        {% for b, group in groups %}
+          <div class="pickgroup" data-group>
+          {% if has_b %}<div class="bhead" data-head><span class="bname">{{ b.name if b else 'Other doors' }}</span>
+            {% if group|length > 1 %}<label class="ball"><input type="checkbox" class="groupall"> All {{ group|length }}</label>{% endif %}</div>{% endif %}
+          {% for d in group %}
+          <label class="pickrow" data-find="{{ (d.name ~ ' ' ~ (b.name if b else '') ~ ' ' ~ sname)|lower }}"><input type="checkbox" name="door_ids" value="{{ d.id }}" {% if doors|length == 1 %}checked{% endif %}>
+            <span>{{ d.name }}</span></label>
+          {% endfor %}
+          </div>
+        {% endfor %}
+      {% endfor %}
+      <p class="muted nomatch" hidden>No doors match.</p>
+    </div>
+    <div class="dlgfoot">
+      <span class="muted small picked">Pick one or more doors</span>
+      <div class="openrow">
+        <button name="mode" value="open" class="primary">Open now</button>
+        <span class="muted small">Unlocks for a few seconds, like tapping a badge, then locks by itself. For letting someone in or opening a bay door.</span>
+      </div>
+      <div class="durlabel small muted">Or keep it unlocked for</div>
+      <div class="btnrow durs">
+        {% for m, lbl in [(15,'15 min'),(30,'30 min'),(60,'1 hour'),(120,'2 hours'),(240,'4 hours')] %}
+        <button name="minutes" value="{{ m }}">{{ lbl }}</button>
+        {% endfor %}
+      </div>
+      <div class="custom">
+        <label for="unlockuntil" class="small muted">Or unlock until</label>
+        <input type="time" id="unlockuntil" name="until" value="{{ default_until }}" step="300">
+        <button name="mode" value="until" class="primary">Unlock</button>
+      </div>
+      <p class="muted small hint">If the time has already passed today, it means tomorrow.</p>
+    </div>
+  </form>
+</dialog>
+<script>
+(function () {
+  const dlg = document.getElementById('unlockdlg'); if (!dlg) return;
+  const q = dlg.querySelector('.doorsearch'), rows = [...dlg.querySelectorAll('.pickrow')];
+  const none = dlg.querySelector('.nomatch'), picked = dlg.querySelector('.picked');
+  function filter() {
+    const t = q.value.trim().toLowerCase(); let shown = 0;
+    rows.forEach(r => { const hit = !t || r.dataset.find.includes(t); r.hidden = !hit; shown += hit; });
+    dlg.querySelectorAll('.pickgroup').forEach(g => { g.hidden = !g.querySelector('.pickrow:not([hidden])'); });
+    dlg.querySelectorAll('.sitehead').forEach(h => { let n = h.nextElementSibling, any = false;
+      while (n && n.classList.contains('pickgroup')) { any = any || !n.hidden; n = n.nextElementSibling; } h.hidden = !any; });
+    none.hidden = shown > 0;
+  }
+  function count() {
+    const n = rows.filter(r => r.querySelector('input').checked).length;
+    picked.textContent = n ? n + (n === 1 ? ' door picked' : ' doors picked') : 'Pick one or more doors';
+  }
+  q.addEventListener('input', filter);
+  dlg.addEventListener('change', () => setTimeout(count));
+  dlg.querySelector('form').addEventListener('submit', e => {
+    if (!rows.some(r => r.querySelector('input').checked)) { e.preventDefault(); picked.textContent = 'Pick at least one door first'; }
+  });
+  dlg.addEventListener('close', () => { q.value = ''; filter(); });
+})();
+</script>

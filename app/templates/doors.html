@@ -8,11 +8,12 @@
 <div class="pagehead">
   <div>
     <h1>{{ cur.name if cur else 'Doors' }}</h1>
-    <p class="muted">{{ usable|length }} door{{ '' if usable|length == 1 else 's' }} · {{ 'tick doors, then set regular hours or add an override' if user.schedules else 'click a door to open it' }}</p>
+    <p class="muted">{{ usable|length }} door{{ '' if usable|length == 1 else 's' }} · {{ 'tick doors, then set regular hours or add an override' if user.schedules else 'tap Open to let someone in' }}</p>
   </div>
   <div class="btnrow">
     {% if user.is_manager and (cur or sites|length == 1) %}<a class="button" href="/sites/{{ (cur or (sites.values()|first)).id }}#buildings">🏢 Organize buildings</a>{% endif %}
     {% if user.is_admin %}<form method="post" action="/doors/sync"><button>↻ Reload from UniFi</button></form>{% endif %}
+    {% if usable %}<button type="button" class="button {{ 'primary' if not user.schedules }}" onclick="document.getElementById('unlockdlg').showModal()">Open or unlock</button>{% endif %}
     {% if user.schedules %}<a class="button primary" href="/schedules/new">+ New schedule</a>{% endif %}
   </div>
 </div>
@@ -54,8 +55,11 @@
             {% elif st.mode == 'lock' %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ '' if (st.until|day) == 'Today' else (st.until|day) ~ ' ' }}{{ st.until|time }}</small>{% endif %}
             {% else %}<span class="muted">Locked</span>{% endif %}
           </span>
-          <span class="dnext">{% set ev = nextev.get(d.id) %}{% if ev %}{{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
-          <a class="small dview" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View →</a>
+          {% set ev = nextev.get(d.id) %}<span class="dnext {{ 'empty' if not ev }}">{% if ev %}{{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
+          <span class="dact">
+            <button type="button" class="small dopen" data-open="{{ d.id }}" data-name="{{ d.name }}" title="Unlocks for a few seconds, then locks by itself">Open</button>
+            <a class="small dview" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View →</a>
+          </span>
         </label>
         {% endfor %}
       </div>
@@ -115,4 +119,18 @@
   update();
 })();
 </script>
+{% if usable %}
+<form method="post" action="/quick-unlock" id="openone" hidden>
+  <input type="hidden" name="door_ids"><input type="hidden" name="mode" value="open">
+  <input type="hidden" name="next" value="/doors">
+</form>
+<script>
+document.querySelectorAll('.dopen').forEach(b => b.addEventListener('click', e => {
+  e.preventDefault(); e.stopPropagation();
+  const f = document.getElementById('openone');
+  f.door_ids.value = b.dataset.open; b.disabled = true; b.textContent = 'Opening…'; f.submit();
+}));
+</script>
+{% with doors = usable %}{% include "_unlockdlg.html" %}{% endwith %}
+{% endif %}
 {% endblock %}

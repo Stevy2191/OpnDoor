@@ -130,6 +130,7 @@ def user_snapshot(session: Session, u: User, only_sites: Optional[set] = None) -
         "Email": u.email,
         "Username": u.username or "—",
         "Role": u.role_name,
+        "Start page": {"home": "Home", "doors": "Doors", "map": "Map", "schedules": "Schedules"}.get(u.start_page, "Automatic"),
         "Doors from": "UniFi Access permissions" if u.follows_unifi else "Picked in OpnDoor",
         ("Manages sites" if u.is_site_admin else "Sites (all doors)"): ", ".join(sorted(x.name for x in sites)) or "—",
         "Single doors": ", ".join(sorted(d.name for d in doors)) or "—",

@@ -93,3 +93,15 @@
 {% macro trash() -%}
 <svg class="trash" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>
 {%- endmacro %}
+
+{% macro start_select(person, viewer) -%}
+{% set cur = person.start_page if person else '' %}
+<label>Start page <small class="muted">(where they land after signing in)</small>
+  <select name="start_page">
+    <option value="" {% if not cur %}selected{% endif %}>Automatic: Home, or Doors for door openers</option>
+    <option value="home" {% if cur == 'home' %}selected{% endif %}>Home: today at a glance</option>
+    <option value="doors" {% if cur == 'doors' %}selected{% endif %}>Doors: pick the site you're at, then open doors</option>
+    <option value="map" {% if cur == 'map' %}selected{% endif %}>Map</option>
+    <option value="schedules" {% if cur == 'schedules' %}selected{% endif %}>Schedules</option>
+  </select></label>
+{%- endmacro %}

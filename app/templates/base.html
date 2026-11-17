@@ -45,7 +45,7 @@
 
   {% set p = request.url.path %}
   <nav class="navgroup">
-    <a href="/" class="{{ 'on' if p == '/' }}">{{ icon('home') }}Home</a>
+    <a href="/home" class="{{ 'on' if p in ('/', '/home') }}">{{ icon('home') }}Home</a>
     <a href="/doors" class="{{ 'on' if p.startswith('/doors') }}">{{ icon('door') }}Doors</a>
     <a href="/map" class="{{ 'on' if p.startswith('/map') or p.startswith('/floorplans') }}">{{ icon('map') }}Map</a>
     {% if user.schedules %}<a href="/schedules" class="{{ 'on' if p.startswith('/schedules') }}">{{ icon('list') }}Schedules</a>{% endif %}

@@ -126,3 +126,31 @@ def test_hours_check():
         hours[today] = []
         s.get(UnifiGrant, (1, "1:a")).hours = json.dumps(hours)
         assert not access.open_hours_ok(s, U, s.get(Door, "1:a"))[0]
+
+
+def test_start_page_and_open_from_doors_list(client, fake):
+    setup_admin(client)
+    client.post("/sites", data={"name": "Fairgrounds", "host": "https://10.0.0.2:12445", "token": "t",
+                                "timezone": "America/Chicago"})
+    client.post("/users", data={"name": "Gus", "email": "gus@example.com", "password": "password123",
+                                "signin": "password", "role": "opener", "site_ids": ["1", "2"]})
+    login(client, "gus@example.com")
+    # door openers land on Doors; with two sites they pick one first
+    r = client.get("/", follow_redirects=False)
+    assert r.headers["location"] == "/doors"
+    page = client.get("/doors").text
+    assert "Fairgrounds" in page and 'href="/site?id=2' in page and 'data-open=' not in page  # site picker
+    client.get("/site?id=1&next=/doors")
+    page = client.get("/doors").text
+    assert 'data-open="1:demo-front"' in page and "Open or unlock" in page
+    r = client.post("/quick-unlock", data={"door_ids": "1:demo-front", "mode": "open", "next": "/doors"},
+                    follow_redirects=False)
+    assert r.headers["location"] == "/doors" and ("open", "demo-front") in fake.calls
+    # they can choose another start page themselves
+    client.post("/account", data={"name": "Gus", "start_page": "map"})
+    assert client.get("/", follow_redirects=False).headers["location"] == "/map"
+    assert client.get("/home").status_code == 200
+
+    # admins keep Home unless changed
+    login(client, "ada@example.com")
+    assert client.get("/").status_code == 200

@@ -41,6 +41,7 @@ class User(SQLModel, table=True):
     theme: str = "auto"  # auto | light | dark
     can_schedule: bool = True  # False = door opener: may open/unlock doors but not make schedules
     door_source: str = "opndoor"  # opndoor | unifi (doors follow their UniFi Access permissions)
+    start_page: str = ""  # where they land: "" (automatic), home, doors, map, schedules
     unifi_note: str = ""  # result of the last UniFi Access permission check, shown to admins
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -66,6 +67,13 @@ class User(SQLModel, table=True):
     def schedules(self) -> bool:
         """May make and change schedules (everyone but door openers)."""
         return self.is_admin or self.is_site_admin or self.can_schedule
+
+    @property
+    def start_path(self) -> str:
+        page = self.start_page or ("doors" if not self.schedules else "home")
+        if page == "schedules" and not self.schedules:
+            page = "doors"
+        return {"doors": "/doors", "map": "/map", "schedules": "/schedules"}.get(page, "/home")
 
     @property
     def follows_unifi(self) -> bool:

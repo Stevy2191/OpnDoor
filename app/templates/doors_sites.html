@@ -4,9 +4,9 @@
 <div class="pagehead">
   <div>
     <h1>{{ page_title or 'Doors' }}</h1>
-    <p class="muted">{{ page_hint or 'Pick a site to see its buildings, doors and schedules.' }}</p>
+    <p class="muted">{{ page_hint or ("Pick the site you're at to see its doors." if not user.schedules else "Pick the site you're at to see its buildings, doors and schedules.") }}</p>
   </div>
-  <a class="button primary" href="/schedules/new">+ New schedule</a>
+  {% if user.schedules %}<a class="button primary" href="/schedules/new">+ New schedule</a>{% endif %}
 </div>
 <div class="sitegrid">
 {% for x in summaries %}{% set site = x.site %}
@@ -20,7 +20,7 @@
       {% if x.locked %}<span class="pill lock">{{ x.locked }} kept locked</span>{% endif %}
       {% if x.problems %}<span class="pill bad">{{ x.problems }} problem{{ '' if x.problems == 1 else 's' }}</span>{% endif %}
       {% if not (x.unlocked or x.locked or x.problems) %}<span class="muted small">All locked, on regular hours</span>{% endif %}
-      <span class="open">Open →</span>
+      <span class="open">{{ 'See map' if next_path == '/map' else 'See doors' }} →</span>
     </div>
   </a>
 {% endfor %}
