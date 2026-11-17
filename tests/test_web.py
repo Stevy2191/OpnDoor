@@ -296,3 +296,25 @@ def test_schedule_form_single_choice_mode(client, fake):
     # editing shows the right choice
     edit = client.get("/schedules/1").text
     assert 'name="mode" value="lock" checked' in edit and "Delete this schedule" in edit
+
+
+def test_username_sign_in_and_day_link(client):
+    setup_admin(client)
+    r = client.post("/users", data={"name": "Jo", "email": "jo@example.com", "username": "JSmith", "role": "operator",
+                                    "signin": "password", "password": "password123", "site_ids": ["1"]})
+    assert "Saved Jo" in r.text
+    assert "is already taken" in client.post("/users", data={"name": "X", "email": "x@example.com", "username": "jsmith",
+                                                              "signin": "password", "password": "password123"}).text
+    assert "Usernames are" in client.post("/users", data={"name": "Y", "email": "y@example.com", "username": "bad name",
+                                                           "signin": "password", "password": "password123"}).text
+    client.post("/logout")
+    r = client.post("/login", data={"email": "JSMITH", "password": "password123"})  # usernames ignore case
+    assert r.url.path == "/" and "Hi, Jo" in r.text
+    client.post("/logout")
+    assert "email or username and password didn" in client.post("/login", data={"email": "jsmith", "password": "nope"}).text.replace("&#39;", "'")
+    r = client.post("/login", data={"email": "jo@example.com", "password": "password123"})
+    assert r.url.path == "/"
+
+    week = client.get("/schedules?view=week&week=2030-01-07").text
+    assert 'href="/schedules/new?day=2030-01-09"' in week and 'data-day="2030-01-13"' in week
+    assert 'name="day" value="2030-01-09"' in client.get("/schedules/new?day=2030-01-09").text

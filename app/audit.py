@@ -126,6 +126,7 @@ def user_snapshot(session: Session, u: User, only_sites: Optional[set] = None) -
     return {
         "Name": u.name,
         "Email": u.email,
+        "Username": u.username or "—",
         "Role": u.role_name,
         ("Manages sites" if u.is_site_admin else "Sites (all doors)"): ", ".join(sorted(x.name for x in sites)) or "—",
         "Single doors": ", ".join(sorted(d.name for d in doors)) or "—",

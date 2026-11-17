@@ -25,6 +25,7 @@ class User(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
+    username: Optional[str] = Field(default=None, index=True)  # optional; sign in with this or the email
     name: str = ""
     password_hash: str = ""  # "" = no password; signs in with Microsoft only
     is_admin: bool = False

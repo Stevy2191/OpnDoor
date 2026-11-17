@@ -14,7 +14,7 @@
       <summary>Sign in with email and password instead</summary>
   {% endif %}
   <form method="post" action="/login{% if nxt %}?next={{ nxt|urlencode }}{% endif %}">
-    <label>Email <input type="email" name="email" required {% if not config.SSO_ENABLED %}autofocus{% endif %} autocomplete="username"></label>
+    <label>Email or username <input type="text" name="email" required {% if not config.SSO_ENABLED %}autofocus{% endif %} autocomplete="username" autocapitalize="none" spellcheck="false"></label>
     <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
     <button class="{{ 'wide' if config.SSO_ENABLED else 'primary wide' }}">Sign in</button>
   </form>

@@ -588,3 +588,13 @@ details.more label { margin-top: .6rem; }
 .padlock.lck { color: var(--err); }
 .mcard .mi .padlock { width: 1.6rem; height: 1.6rem; }
 .padlock.inline { width: 1.1em; height: 1.1em; }
+/* week view: click a day to add */
+.wday[data-day] { cursor: pointer; }
+.wday[data-day]:hover { border-color: var(--accent); }
+.wadd { margin-left: auto; width: 1.5rem; height: 1.5rem; display: grid; place-items: center; border-radius: 6px; font-weight: 700; color: var(--accent); }
+.wadd:hover { background: var(--accent-soft); text-decoration: none; }
+.wdhead .todaytag + .wadd { margin-left: .35rem; }
+.wfill { flex: 1; min-height: 1.5rem; display: grid; place-items: center; color: transparent; font-size: .8rem; font-weight: 600; border-radius: 7px; }
+.wday:hover .wfill { color: var(--accent); background: var(--accent-soft); }
+.wday.past .wfill span { display: none; }
+@media (max-width: 1100px) { .wfill { min-height: 1.75rem; } }

@@ -259,8 +259,12 @@ def login_page(request: Request, session: Session = Depends(get_session)):
 @router.post("/login")
 def login(request: Request, email: str = Form(...), password: str = Form(...),
           session: Session = Depends(get_session)):
+    """Sign in with a password, using the email address or the username."""
     email = email.strip().lower()
-    user = session.exec(select(User).where(User.email == email)).first()
+    if "@" in email:
+        user = session.exec(select(User).where(User.email == email)).first()
+    else:
+        user = session.exec(select(User).where(User.username == email)).first()
     if not user or not user.active or not user.password_hash or not verify_password(password, user.password_hash):
         reason = ("their account is turned off" if user and not user.active
                   else "their account signs in with Microsoft" if user and not user.password_hash
@@ -269,7 +273,7 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
         session.commit()
         flash(request, "This account signs in with Microsoft. Use the Microsoft button."
               if user and user.active and not user.password_hash and config.SSO_ENABLED
-              else "That email and password didn't match.", "error")
+              else "That email or username and password didn't match.", "error")
         return redirect("/login")
     login_user(request, session, user, "a password")
     return redirect(safe_next(request.query_params.get("next")))
@@ -653,12 +657,16 @@ def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kin
 
 
 @router.get("/schedules/new")
-def schedule_new(request: Request, door: list[str] = Query([]), kind: str = "override",
+def schedule_new(request: Request, door: list[str] = Query([]), kind: str = "override", day: str = "",
                  user: User = Depends(require_user), session: Session = Depends(get_session)):
-    """`?door=a&door=b` preselects doors; `?kind=default` starts a regular-hours schedule."""
+    """`?door=a&door=b` preselects doors; `?kind=default` starts regular hours; `?day=2030-01-31` sets the date."""
     kind = "default" if kind == "default" else "override"
-    return render(request, "schedule_form.html", user,
-                  **_form_ctx(session, user, None, door, kind, current_site_id(request, session, user)))
+    ctx = _form_ctx(session, user, None, door, kind, current_site_id(request, session, user))
+    try:
+        ctx["date_val"] = date.fromisoformat(day).isoformat()
+    except ValueError:
+        pass
+    return render(request, "schedule_form.html", user, **ctx)
 
 
 @router.get("/schedules/{sid}")
@@ -1165,6 +1173,7 @@ def user_form(request: Request, uid: Optional[int] = None, user: User = Depends(
 @router.post("/users/{uid}")
 def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""), email: str = Form(...),
               role: str = Form("operator"), signin: str = Form("microsoft"), password: str = Form(""),
+              username: str = Form(""),
               active: bool = Form(False), door_ids: list[str] = Form([]), site_ids: list[int] = Form([]),
               user: User = Depends(require_manager), session: Session = Depends(get_session)):
     email = email.strip().lower()
@@ -1190,6 +1199,16 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
                   if user.is_admin else ""), "error")
             return redirect(back)
     full = target is None or fully_managed(session, user, target)
+    import re
+    username = username.strip().lower()
+    if username and full:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,31}", username):
+            flash(request, "Usernames are 2–32 letters, numbers, dots, dashes or underscores (no spaces or @).", "error")
+            return redirect(back)
+        taken = session.exec(select(User).where(User.username == username)).first()
+        if taken and (target is None or taken.id != target.id):
+            flash(request, f"The username “{username}” is already taken.", "error")
+            return redirect(back)
 
     if target and target.id == user.id and user.is_admin and (role != "admin" or not active):
         flash(request, "You can't remove your own admin role or turn off your own account.", "error")
@@ -1212,6 +1231,7 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
         active = True
     if full:
         target.name, target.email, target.active = name.strip(), email, active
+        target.username = username or None
         if not use_password:
             target.password_hash = ""
         elif password:
