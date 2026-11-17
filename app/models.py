@@ -41,6 +41,7 @@ class User(SQLModel, table=True):
     theme: str = "auto"  # auto | light | dark
     can_schedule: bool = True  # False = door opener: may open/unlock doors but not make schedules
     door_source: str = "opndoor"  # opndoor | unifi (doors follow their UniFi Access permissions)
+    door_view: str = ""  # Doors page layout: "" (automatic), tiles, list
     start_page: str = ""  # where they land: "" (automatic), home, doors, map, schedules
     unifi_note: str = ""  # result of the last UniFi Access permission check, shown to admins
     created_at: datetime = Field(default_factory=utcnow)
@@ -101,6 +102,8 @@ class Site(SQLModel, table=True):
     enabled: bool = True
     last_sync_at: Optional[datetime] = None
     last_sync_status: str = ""
+    protect_key: str = ""  # UniFi OS API key for UniFi Protect (camera pictures); optional
+    protect_host: str = ""  # Protect console address if not the same console as Access
     created_at: datetime = Field(default_factory=utcnow)
 
     @property
@@ -127,6 +130,7 @@ class Door(SQLModel, table=True):
     present: bool = True  # False once the door disappears from the controller
     lock_status: str = ""  # last seen relay status ("lock"/"unlock")
     position_status: str = ""  # last seen door position ("open"/"close")
+    camera_id: str = ""  # UniFi Protect camera showing this door (see protect.py)
     updated_at: datetime = Field(default_factory=utcnow)
 
 

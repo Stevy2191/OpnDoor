@@ -694,3 +694,49 @@ table.fp td { vertical-align: middle; }
   .dnext.empty { display: none; }
   .dact { grid-row: 1 / span 2; }
 }
+
+/* ================= doors: tiles ================= */
+.doorfilter { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+.viewswitch { margin: 0 0 0 auto; }
+.viewswitch button { border: 0; border-radius: 0; background: transparent; padding: .35rem .7rem; font-weight: 500; color: var(--muted); }
+.viewswitch button.on { background: var(--accent-soft); color: var(--accent); }
+.dtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .8rem; padding: .3rem 0 .4rem; }
+.dtile { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+  overflow: hidden; border-top: 4px solid var(--line); }
+.dtile.st-unlock { border-top-color: #16a34a; }
+.dtile.st-lock { border-top-color: #dc2626; }
+.dtile.st-error { border-top-color: #f59e0b; }
+.dtile[hidden] { display: none; }
+.dtile:has(input:checked) { outline: 2px solid var(--accent); outline-offset: -1px; }
+.dcam { display: block; width: 100%; padding: 0; border: 0; border-radius: 0; background: #111; aspect-ratio: 16 / 9; cursor: zoom-in; }
+.dcam img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity .2s; }
+.dcam img.stale { opacity: .45; }
+.dtbody { padding: .65rem .8rem .3rem; display: flex; flex-direction: column; gap: .3rem; flex: 1; }
+.dttop { display: flex; align-items: center; gap: .5rem; }
+.dttop input { width: 17px; height: 17px; margin: 0; }
+.dtname { font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.dtstate { display: flex; flex-direction: column; gap: .15rem; font-size: .9rem; }
+.dtnext { font-size: .8rem; }
+.dopen.big { margin: .5rem .8rem .8rem; padding: .7rem .8rem; border-radius: 10px; font-size: 1rem; display: flex; align-items: center;
+  justify-content: center; gap: .4rem; border-width: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dopen.big svg { flex: none; }
+.camdlg { width: min(900px, 96vw); }
+.camimg { width: 100%; border-radius: 10px; background: #111; aspect-ratio: 16 / 9; object-fit: contain; display: block; }
+.camdlg .dopen.big { margin: .8rem 0 0; width: 100%; }
+.camnote { margin: .4rem 0 0; }
+.protectbox { border: 1px solid var(--line); border-radius: 10px; padding: .6rem .8rem; }
+.protectbox summary { cursor: pointer; }
+.protectbox[open] summary { margin-bottom: .6rem; }
+.protectbox label { margin-top: .5rem; }
+@media (max-width: 760px) { .viewswitch { margin-left: 0; } .dtiles { grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .dopen.big { font-size: .92rem; padding: .7rem .4rem; margin: .4rem .5rem .6rem; } }
+@media (max-width: 420px) { .dtiles { grid-template-columns: 1fr; } }
+.doorcam img { width: 100%; max-height: 60vh; object-fit: contain; background: #111; border-radius: 10px; display: block; }
+.camform { margin-top: .7rem; align-items: flex-end; }
+.camform select { width: auto; min-width: 14rem; }
+.camdlg > .camimg, .camdlg > .camnote, .camdlg > .dopen.big { margin-left: 1rem; margin-right: 1rem; width: calc(100% - 2rem); }
+.camdlg > .dopen.big { margin-bottom: 1rem; }
+@media (max-width: 420px) { .dtiles { grid-template-columns: 1fr 1fr; } .dtbody { padding: .5rem .55rem .2rem; } .dtname { font-size: .92rem; } }
+@media (max-width: 330px) { .dtiles { grid-template-columns: 1fr; } }
+.dopen.big > span { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 760px) { .dtiles .dopname { display: none; } }

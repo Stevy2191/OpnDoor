@@ -893,7 +893,8 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
     }
     return render(request, "doors.html", user, doors=doors, status=status, state=state,
                   counts=counts, nextev=nextev, now=now, site_id=site_id,
-                  multi_site=len(visible) > 1, default_until=_default_until(now))
+                  multi_site=len(visible) > 1, default_until=_default_until(now),
+                  view=user.door_view or ("list" if user.schedules else "tiles"))
 
 
 @router.post("/doors/sync")
@@ -925,7 +926,15 @@ def door_page(request: Request, door_id: str, user: User = Depends(require_user)
     listed = sorted([x for x in scheds if series_last_date(x) >= today - timedelta(days=1)],
                     key=lambda x: (x.kind != "default", x.start_local))
     rows = [{"s": x, "editable": can_edit(session, user, x, sd[x.id])} for x in listed]
+    from . import protect
+    cams, cam_error = [], ""
+    if door.site_id in managed_site_ids(session, user) and protect.enabled(site):
+        try:
+            cams = protect.cameras(site)
+        except protect.ProtectError as e:
+            cam_error = str(e)
     return render(request, "door.html", user, door=door, site=site, days=days, rows=rows,
+                  cams=cams, cam_error=cam_error, protect_on=protect.enabled(site),
                   can_history=user.is_manager and door.site_id in managed_site_ids(session, user),
                   history=audit.for_door(session, door.id), audit_mod=audit,
                   status=door_status(session, [door]).get(door.id, {}))
@@ -994,7 +1003,8 @@ def site_page(request: Request, site_id: int, user: User = Depends(require_manag
 @router.post("/sites/{site_id}")
 def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = None, name: str = Form(...),
               host: str = Form(""), token: str = Form(""), timezone: str = Form("America/Chicago"),
-              verify_tls: bool = Form(False), enabled: bool = Form(False), user: User = Depends(require_admin),
+              verify_tls: bool = Form(False), enabled: bool = Form(False), protect_key: str = Form(""),
+              protect_host: str = Form(""), protect_clear: bool = Form(False), user: User = Depends(require_admin),
               session: Session = Depends(get_session)):
     from zoneinfo import ZoneInfo
     back = f"/sites/{site_id}" if site_id else "/sites/new"
@@ -1015,11 +1025,18 @@ def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = No
     site.verify_tls, site.enabled = verify_tls, enabled if site_id else True
     if token.strip():
         site.token = token.strip()
+    site.protect_host = protect_host.strip().rstrip("/")
+    if protect_clear:
+        site.protect_key = ""
+    elif protect_key.strip():
+        site.protect_key = protect_key.strip()
     session.add(site)
     session.flush()
     changed = audit.diff(before, audit.site_snapshot(site))
     if token.strip() and site_id:
         changed.append(["API token", "(hidden)", "(new token)"])
+    if protect_key.strip() or protect_clear:
+        changed.append(["UniFi Protect key", "(hidden)", "(removed)" if protect_clear else "(new key)"])
     if changed or not site_id:
         audit.record(session, "site.update" if site_id else "site.create",
                      f"{user.display} {'changed' if site_id else 'added'} site “{site.name}”",

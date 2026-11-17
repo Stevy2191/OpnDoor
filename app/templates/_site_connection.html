@@ -16,6 +16,18 @@
   </label>
   <label class="check"><input type="checkbox" name="verify_tls" value="true" {% if site and site.verify_tls %}checked{% endif %}>
     Verify the console's HTTPS certificate <small class="muted">(leave off for the console's built-in self-signed certificate)</small></label>
+  <details class="protectbox" {% if site and site.protect_key %}open{% endif %}>
+    <summary><strong>Cameras (optional)</strong> <span class="muted small">· show each door's camera from UniFi Protect</span></summary>
+    <label>UniFi Protect API key
+      <input type="text" name="protect_key" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
+        placeholder="{{ 'Saved: leave blank to keep' if site and site.protect_key else 'Paste the key' }}">
+      <small class="muted">Make it in <strong>UniFi OS</strong>: Settings → Control Plane → Integrations → Create API Key.
+        This one <em>is</em> a UniFi OS key (not the Access token). OpnDoor only reads camera pictures with it.</small>
+    </label>
+    <label>Protect console address <small class="muted">(only if Protect runs on a different console)</small>
+      <input name="protect_host" value="{{ site.protect_host if site else '' }}" placeholder="https://192.168.1.10"></label>
+    {% if site and site.protect_key %}<label class="check"><input type="checkbox" name="protect_clear" value="true"> Remove the saved Protect key</label>{% endif %}
+  </details>
   {% if site %}
   <label class="check"><input type="checkbox" name="enabled" value="true" {% if site.enabled %}checked{% endif %}> Active</label>
   {% endif %}

@@ -20,6 +20,31 @@
   </div>
 </div>
 
+{% if door.camera_id or cams or cam_error %}
+<section class="card doorcam">
+  {% if door.camera_id %}
+  <img id="doorcam" src="/doors/{{ door.id|urlencode }}/snapshot" alt="Camera at {{ door.name }}" data-src="/doors/{{ door.id|urlencode }}/snapshot">
+  <p class="muted small" style="margin:.4rem 0 0">Camera picture from UniFi Protect · updates every 2 seconds</p>
+  {% endif %}
+  {% if cams or cam_error %}
+  <form method="post" action="/doors/{{ door.id|urlencode }}/camera" class="btnrow camform">
+    <label class="small">Camera for this door
+      <select name="camera_id">
+        <option value="">No camera</option>
+        {% for c in cams|sort(attribute='name') %}<option value="{{ c.id }}" {% if c.id == door.camera_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select></label>
+    <button class="small">Save</button>
+    {% if cam_error %}<small class="err">{{ cam_error }}</small>{% endif %}
+  </form>
+  {% endif %}
+</section>
+<script>
+(function () { const i = document.getElementById('doorcam'); if (!i) return;
+  setInterval(() => { if (document.hidden) return; const n = new Image();
+    n.onload = () => { i.src = n.src; }; n.src = i.dataset.src + '?t=' + Date.now(); }, 2000); })();
+</script>
+{% endif %}
+
 <div class="grid2 wide-left">
   <section class="card">
     <h2>Next 7 days</h2>
