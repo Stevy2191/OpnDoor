@@ -95,7 +95,7 @@ def changes_of(entry: AuditLog) -> list:
 # ---- readable snapshots of things, for before/after ----
 
 def schedule_snapshot(session: Session, s: Schedule) -> dict:
-    from .schedules import EVENT_TYPES, describe_kind, describe_repeat
+    from .schedules import describe_kind, describe_repeat
     from .web import _span  # time formatting shared with the pages
     door_ids = session.exec(select(ScheduleDoor.door_id).where(ScheduleDoor.schedule_id == s.id)).all()
     doors = session.exec(select(Door).where(Door.id.in_(door_ids))).all() if door_ids else []
@@ -105,7 +105,7 @@ def schedule_snapshot(session: Session, s: Schedule) -> dict:
     when = describe_repeat(s) or s.start_local.strftime("%a %b %-d, %Y")
     return {
         "Event": s.label,
-        "Type": describe_kind(s) if s.kind == "default" else EVENT_TYPES.get(s.event_type, ("", s.event_type))[1],
+        "Type": describe_kind(s),
         "Doors will be": "Unlocked" if s.action != "lock" or s.kind == "default" else "Kept locked",
         "Doors": ", ".join(sorted(f"{d.name} ({sites.get(d.site_id, '')})" if multi else d.name for d in doors)),
         "When": when + (f", starting {s.start_local:%b %-d, %Y}" if s.repeat_weekdays else ""),

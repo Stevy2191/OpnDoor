@@ -579,3 +579,6 @@ details.more label { margin-top: .6rem; }
 .dpkdoor { display: flex; align-items: center; gap: .55rem; font-weight: 400; padding: .3rem 0; cursor: pointer; min-width: 0; }
 .dpkdoor span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dpkb:has(.dpkdoor input:checked) { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+/* schedules list without the icon column */
+.srow { grid-template-columns: 1fr auto auto; }
+@media (max-width: 700px) { .srow { grid-template-columns: 1fr; } .snext, .sact { grid-column: 1; } }

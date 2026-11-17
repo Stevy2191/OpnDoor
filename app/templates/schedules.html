@@ -64,7 +64,7 @@
     {% for c in by_day[d] %}{% set s = c.s %}
     <a class="ev {{ kindclass(s) }}" href="{{ '/schedules/' ~ s.id if c.editable else '#' }}" {% if not c.editable %}aria-disabled="true"{% endif %} title="{{ s.label }} · {{ c.doors }}">
       <span class="evtime">{{ span(c.o.start, c.o.end) }}</span>
-      <span class="evname">{{ event_icon(s) }} {{ s.label }}</span>
+      <span class="evname">{{ s.label }}</span>
       <span class="evdoors">{{ c.doors }}</span>
     </a>
     {% else %}<div class="wempty">—</div>{% endfor %}
@@ -77,7 +77,6 @@
 <div class="slist">
 {% for c in list %}{% set s = c.s %}
   <div class="srow {{ kindclass(s) }} {{ 'ended' if c.ended }}">
-    <div class="sicon">{{ event_icon(s) }}</div>
     <div class="smain">
       <div class="stitle"><strong>{{ s.label }}</strong> {{ whatpill(s) }}
         {% if s.source == 'calendar' %}<span class="pill cal">📅 {{ c.feed or 'calendar' }}</span>{% elif s.source == 'quick' %}<span class="pill">Unlock now</span>{% endif %}</div>

@@ -72,7 +72,7 @@
     <div class="arow {{ 'live' if r.live }} {{ 'past' if r.past }} {{ 'lockov' if s.action == 'lock' }}">
       <div class="atime">{{ span(r.o.start, r.o.end) }}{% if r.live %}<span class="livedot">now</span>{% endif %}</div>
       <div class="awhat">
-        <div><span class="evicon">{{ event_icon(s) }}</span> <strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
+        <div><strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
         <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
       </div>
       {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}
@@ -94,7 +94,7 @@
     <div class="arow {{ 'lockov' if s.action == 'lock' }}">
       <div class="atime">{{ span(r.o.start, r.o.end) }}</div>
       <div class="awhat">
-        <div><span class="evicon">{{ event_icon(s) }}</span> <strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
+        <div><strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
         <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
       </div>
       {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}

@@ -32,12 +32,6 @@
       <input name="label" class="biginput" value="{{ sched.label if sched else ('Regular hours' if mode == 'default' else '') }}"
              placeholder="e.g. Smith wedding" aria-label="Name" autocomplete="off">
       <div class="m-event">
-        <div class="small muted typelbl">Type</div>
-        <div class="chips types small">
-        {% for key, (icon, tname) in EVENT_TYPES.items() %}
-          <label class="chip"><input type="radio" name="event_type" value="{{ key }}" {% if key == event_type %}checked{% endif %}><span>{{ icon }} {{ tname }}</span></label>
-        {% endfor %}
-        </div>
         <details class="more" {% if sched and (sched.contact or sched.notes) %}open{% endif %}>
           <summary>Add a contact person or notes</summary>
           <label>Contact person <input name="contact" value="{{ sched.contact if sched else '' }}" placeholder="e.g. Jane Smith, 555-0123"></label>

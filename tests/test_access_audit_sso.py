@@ -84,7 +84,7 @@ def test_history_records_who_what_when_with_before_after(client):
     assert "Smith wedding" in client.get("/history?door=1:demo-side").text
     door = client.get("/doors/1:demo-hall").text
     assert "Recent changes" in door and "changed “Smith wedding”" in door
-    assert "🔑" in door and "Rental" in door and "Jane 555-0123" in door
+    assert "🔑" not in door and "Jane 555-0123" in door  # no event-type icons
 
     csv = client.get("/history.csv?what=schedule")
     assert csv.headers["content-type"].startswith("text/csv")
