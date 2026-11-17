@@ -7,8 +7,8 @@
 
 {% macro whatpill(s) -%}
 {% if s.kind == 'default' %}<span class="pill def">Regular hours</span>
-{% elif s.action == 'lock' %}<span class="pill lock">🔒 Kept locked</span>
-{% else %}<span class="pill unl">🔓 Unlocked</span>{% endif %}
+{% elif s.action == 'lock' %}<span class="pill lock">Kept locked</span>
+{% else %}<span class="pill unl">Unlocked</span>{% endif %}
 {%- endmacro %}
 
 {% block content %}
@@ -84,7 +84,7 @@
         {% if s.repeat_weekdays %}{{ describe_repeat(s) }}, {{ span(s.start_local, s.start_local + minutes(s.duration_minutes)) }}
         {% else %}{{ s.start_local|day }}, {{ span(s.start_local, s.start_local + minutes(s.duration_minutes)) }}{% endif %}
       </div>
-      <div class="sdoors muted">🚪 {{ c.doors }}{% if s.contact %} · 👤 {{ s.contact }}{% endif %}</div>
+      <div class="sdoors muted">{{ c.doors }}{% if s.contact %} · Contact: {{ s.contact }}{% endif %}</div>
     </div>
     <div class="snext">
       {% if c.ended %}<span class="muted small">Finished</span>

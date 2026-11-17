@@ -9,7 +9,7 @@
       {% if site.last_sync_status %}· <span class="{{ 'err' if site.last_sync_status.startswith('Error') else '' }}" style="display:inline">{{ site.last_sync_status }}</span>{% endif %}</p>
   </div>
   <div class="btnrow">
-    <a class="button" href="/site?id={{ site.id }}&next=/doors">🚪 View doors</a>
+    <a class="button" href="/site?id={{ site.id }}&next=/doors">View doors</a>
     <a class="button primary" href="/site?id={{ site.id }}&next=/schedules/new">+ New schedule here</a>
   </div>
 </div>
