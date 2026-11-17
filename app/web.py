@@ -431,8 +431,8 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
 
 
 @router.post("/doors/{door_id}/lock-now")
-def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = Depends(require_user),
-             session: Session = Depends(get_session)):
+def lock_now(request: Request, door_id: str, bg: BackgroundTasks, next: str = Form("/"),
+             user: User = Depends(require_user), session: Session = Depends(get_session)):
     """Lock a door that a schedule has unlocked, until that unlock would have ended.
 
     Adds a short "keep locked" override (newest wins), so the schedule itself is untouched
@@ -441,12 +441,12 @@ def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = D
     door = session.get(Door, door_id)
     if not door or door_id not in allowed_door_ids(session, user):
         flash(request, "That door isn't available to you.", "error")
-        return redirect("/")
+        return redirect(safe_next(next))
     now_utc = utcnow()
     plan = current_plan(engine.door_timeline(session, door, now_utc, now_utc + engine.HORIZON))
     if not plan or plan.state != "unlock":
         flash(request, f"{door.name} is already locked.")
-        return redirect("/")
+        return redirect(safe_next(next))
     tz = engine.site_tz(session.get(Site, door.site_id))
     minutes = max(1, int((plan.end - now_utc).total_seconds() // 60) + 1)
     why = plan.schedule.label if plan.schedule else "its schedule"
@@ -461,7 +461,7 @@ def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = D
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Locking {door.name}. It goes back to its normal schedule afterwards.")
-    return redirect("/")
+    return redirect(safe_next(next))
 
 
 def _until_minutes(until: str, tz) -> Optional[int]:
@@ -486,17 +486,17 @@ def _duration_text(minutes: int) -> str:
 
 @router.post("/quick-unlock")
 def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Form([]),
-                 minutes: Optional[int] = Form(None), until: str = Form(""), user: User = Depends(require_user),
-                 session: Session = Depends(get_session)):
+                 minutes: Optional[int] = Form(None), until: str = Form(""), next: str = Form("/"),
+                 user: User = Depends(require_user), session: Session = Depends(get_session)):
     """Unlock doors now, for a number of minutes (preset buttons) or until a time (custom)."""
     allowed = allowed_door_ids(session, user)
     door_ids = [d for d in door_ids if d in allowed]
     if not door_ids:
         flash(request, "Pick at least one door.", "error")
-        return redirect("/")
+        return redirect(safe_next(next))
     if minutes is None and not until.strip():
         flash(request, "Choose how long, or pick a time to unlock until.", "error")
-        return redirect("/")
+        return redirect(safe_next(next))
     groups = group_by_site(session, door_ids)
     plans = []
     for site_id, ids in groups.items():
@@ -504,7 +504,7 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
         mins = minutes if minutes is not None else _until_minutes(until, tz)
         if mins is None:
             flash(request, "That time doesn't look right.", "error")
-            return redirect("/")
+            return redirect(safe_next(next))
         plans.append((tz, ids, max(1, min(mins, 24 * 60))))
     for tz, ids, mins in plans:
         start = now_local(tz).replace(second=0, microsecond=0)
@@ -524,7 +524,7 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Unlocking {names} {how}.")
-    return redirect("/")
+    return redirect(safe_next(next))
 
 
 # ---------- schedules ----------
@@ -925,8 +925,15 @@ def site_page(request: Request, site_id: int, user: User = Depends(require_manag
     doors = list(session.exec(select(Door).where(Door.site_id == site.id, Door.present == True)  # noqa: E712
                               .order_by(Door.name)).all())
     counts = {b.id: sum(1 for d in doors if d.building_id == b.id) for b in buildings}
+    from .models import DoorPin, FloorPlan
+    plans = session.exec(select(FloorPlan).where(FloorPlan.building_id.in_([b.id for b in buildings]))
+                         .order_by(FloorPlan.name)).all() if buildings else []
+    plans_by_b: dict[int, list] = {}
+    for fp in plans:
+        plans_by_b.setdefault(fp.building_id, []).append(fp)
+    pin_counts = dict(session.exec(select(DoorPin.plan_id, func.count()).group_by(DoorPin.plan_id)).all())
     return render(request, "site.html", user, site=site, buildings=buildings, doors=doors, counts=counts,
-                  timezones=COMMON_TZ)
+                  timezones=COMMON_TZ, plans_by_b=plans_by_b, pin_counts=pin_counts)
 
 
 @router.post("/sites")
@@ -983,6 +990,12 @@ def site_delete(request: Request, site_id: int, user: User = Depends(require_adm
     for row in session.exec(select(ScheduleDoor).where(ScheduleDoor.door_id.in_(door_ids))).all():
         touched.add(row.schedule_id)
         session.delete(row)
+    from .maps import delete_building_plans
+    from .models import DoorPin
+    for row in session.exec(select(DoorPin).where(DoorPin.door_id.in_(door_ids))).all():
+        session.delete(row)
+    for b in session.exec(select(Building).where(Building.site_id == site_id)).all():
+        delete_building_plans(session, b.id)
     for row in session.exec(select(DoorState).where(DoorState.door_id.in_(door_ids))).all():
         if row.mode:  # release anything OpnDoor is holding on that console
             try:
@@ -1039,6 +1052,8 @@ async def buildings_save(request: Request, user: User = Depends(require_manager)
     # renames and deletes
     for bid, b in list(buildings.items()):
         if form.get(f"delete_{bid}") == "on":
+            from .maps import delete_building_plans
+            delete_building_plans(session, bid)
             for d in session.exec(select(Door).where(Door.building_id == bid)).all():
                 d.building_id = None
                 session.add(d)

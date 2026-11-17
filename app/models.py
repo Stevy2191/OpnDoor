@@ -99,6 +99,25 @@ class Door(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class FloorPlan(SQLModel, table=True):
+    """A floor plan image for a building (one per floor)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    building_id: int = Field(foreign_key="building.id", index=True)
+    name: str = "Main floor"
+    filename: str  # stored in DATA_DIR/floorplans
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class DoorPin(SQLModel, table=True):
+    """Where a door is on a floor plan, as percentages of the image (0-100)."""
+
+    door_id: str = Field(foreign_key="door.id", primary_key=True)
+    plan_id: int = Field(foreign_key="floorplan.id", index=True)
+    x: float
+    y: float
+
+
 class UserDoor(SQLModel, table=True):
     """Access to one door."""
 

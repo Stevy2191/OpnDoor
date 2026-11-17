@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
-from . import history, sso
+from . import history, maps, sso
 from .web import render, router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -54,6 +54,7 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 app.include_router(router)
 app.include_router(sso.router)
 app.include_router(history.router)
+app.include_router(maps.router)
 
 
 @app.exception_handler(LoginRequired)

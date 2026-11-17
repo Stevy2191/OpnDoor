@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Doors · OpnDoor{% endblock %}
+{% block title %}{{ page_title or 'Doors' }} · OpnDoor{% endblock %}
 {% block content %}
 <div class="pagehead">
   <div>
-    <h1>Doors</h1>
-    <p class="muted">Pick a site to see its buildings, doors and schedules.</p>
+    <h1>{{ page_title or 'Doors' }}</h1>
+    <p class="muted">{{ page_hint or 'Pick a site to see its buildings, doors and schedules.' }}</p>
   </div>
   <a class="button primary" href="/schedules/new">+ New schedule</a>
 </div>
 <div class="sitegrid">
 {% for x in summaries %}{% set site = x.site %}
-  <a class="card sitecard" href="/site?id={{ site.id }}&next=/doors">
+  <a class="card sitecard" href="/site?id={{ site.id }}&next={{ next_path or '/doors' }}">
     <div class="sctop"><h2>{{ site.name }}</h2>
       {% if site.last_sync_status.startswith('Error') %}<span class="pill bad">⚠️ Can't reach console</span>{% endif %}</div>
     <div class="muted small">{{ x.doors }} door{{ '' if x.doors == 1 else 's' }}{% if x.buildings %} · {{ x.buildings|length }} building{{ '' if x.buildings|length == 1 else 's' }}{% endif %}</div>
