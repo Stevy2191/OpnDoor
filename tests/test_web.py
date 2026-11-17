@@ -29,7 +29,7 @@ def test_admin_flow_and_permissions(client, fake):
     setup_admin(client)
     # dashboard lists demo doors
     r = client.get("/")
-    assert "Front Entrance" in r.text and "Unlock now" in r.text
+    assert "Front Entrance" in r.text and "Open now" in r.text
 
     # create a user who may only use the side door
     r = client.post("/users", data={"name": "Bob", "email": "bob@example.com", "password": "password123",
@@ -133,7 +133,7 @@ def test_add_second_site_groups_doors(client):
     r = client.post("/sites", data={"name": "North Campus", "host": "demo", "timezone": "America/New_York"})
     assert "Saved North Campus" in r.text and "OK: 4 doors" in r.text
     page = client.get("/doors").text  # two sites: the Doors page starts with site cards
-    assert "North Campus" in page and "Demo site" in page and "Pick a site" in page
+    assert "North Campus" in page and "Demo site" in page and "Pick the site you" in page
     assert "2:demo-front" in client.get("/site?id=2&next=/doors").text
     client.get("/site?id=&next=/")
     r = client.post("/sites", data={"name": "Bad", "host": "demo", "timezone": "Mars/Base"})
@@ -296,3 +296,25 @@ def test_schedule_form_single_choice_mode(client, fake):
     # editing shows the right choice
     edit = client.get("/schedules/1").text
     assert 'name="mode" value="lock" checked' in edit and "Delete this schedule" in edit
+
+
+def test_username_sign_in_and_day_link(client):
+    setup_admin(client)
+    r = client.post("/users", data={"name": "Jo", "email": "jo@example.com", "username": "JSmith", "role": "operator",
+                                    "signin": "password", "password": "password123", "site_ids": ["1"]})
+    assert "Saved Jo" in r.text
+    assert "is already taken" in client.post("/users", data={"name": "X", "email": "x@example.com", "username": "jsmith",
+                                                              "signin": "password", "password": "password123"}).text
+    assert "Usernames are" in client.post("/users", data={"name": "Y", "email": "y@example.com", "username": "bad name",
+                                                           "signin": "password", "password": "password123"}).text
+    client.post("/logout")
+    r = client.post("/login", data={"email": "JSMITH", "password": "password123"})  # usernames ignore case
+    assert r.url.path == "/" and "Hi, Jo" in r.text
+    client.post("/logout")
+    assert "email or username and password didn" in client.post("/login", data={"email": "jsmith", "password": "nope"}).text.replace("&#39;", "'")
+    r = client.post("/login", data={"email": "jo@example.com", "password": "password123"})
+    assert r.url.path == "/"
+
+    week = client.get("/schedules?view=week&week=2030-01-07").text
+    assert 'href="/schedules/new?day=2030-01-09"' in week and 'data-day="2030-01-13"' in week
+    assert 'name="day" value="2030-01-09"' in client.get("/schedules/new?day=2030-01-09").text

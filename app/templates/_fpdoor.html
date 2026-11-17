@@ -1,0 +1,5 @@
+{% set p = pins.get(d.id) %}
+<button type="button" class="fpdoor {{ 'placed' if p and p.plan_id == plan.id }}" data-id="{{ d.id }}" data-name="{{ d.name }}">
+  <span class="fpname">{{ d.name }}</span>
+  <span class="fpstate small muted">{% if p and p.plan_id == plan.id %}On this plan{% elif p %}On “{{ plan_names.get(p.plan_id, 'another plan') }}”{% else %}Not placed{% endif %}</span>
+</button>

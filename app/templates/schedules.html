@@ -59,8 +59,9 @@
 </div>
 <div class="week">
   {% for d in days %}
-  <div class="wday {{ 'today' if d == today }} {{ 'past' if d < today }}">
-    <div class="wdhead"><span class="dow">{{ d.strftime('%a') }}</span> <span class="dnum">{{ d.day }}</span>{% if d == today %}<span class="todaytag">Today</span>{% endif %}</div>
+  <div class="wday {{ 'today' if d == today }} {{ 'past' if d < today }}" data-day="{{ d.isoformat() }}" title="Click to add a schedule on {{ d.strftime('%a, %b %-d') }}">
+    <div class="wdhead"><span class="dow">{{ d.strftime('%a') }}</span> <span class="dnum">{{ d.day }}</span>{% if d == today %}<span class="todaytag">Today</span>{% endif %}
+      <a class="wadd" href="/schedules/new?day={{ d.isoformat() }}" aria-label="Add a schedule on {{ d.strftime('%A, %B %-d') }}">+</a></div>
     {% for c in by_day[d] %}{% set s = c.s %}
     <a class="ev {{ kindclass(s) }}" href="{{ '/schedules/' ~ s.id if c.editable else '#' }}" {% if not c.editable %}aria-disabled="true"{% endif %} title="{{ s.label }} · {{ c.doors }}">
       <span class="evtime">{{ span(c.o.start, c.o.end) }}</span>
@@ -68,9 +69,19 @@
       <span class="evdoors">{{ c.doors }}</span>
     </a>
     {% else %}<div class="wempty">—</div>{% endfor %}
+    <div class="wfill"><span>+ Add</span></div>
   </div>
   {% endfor %}
 </div>
+<script>
+// Click empty space in a day to add a schedule on that day (event cards still open their own schedule).
+document.querySelectorAll('.wday[data-day]').forEach(function (d) {
+  d.addEventListener('click', function (e) {
+    if (e.target.closest('a.ev, a.wadd')) return;
+    location.href = '/schedules/new?day=' + d.dataset.day;
+  });
+});
+</script>
 
 {% else %}
 {% macro rows(list) %}

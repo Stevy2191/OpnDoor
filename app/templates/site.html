@@ -16,12 +16,38 @@
 
 <nav class="subtabs">
   <a href="#buildings">Buildings and doors</a>
+  <a href="#floorplans">Floor plans</a>
   {% if user.is_admin %}<a href="#console">Console connection</a>{% endif %}
 </nav>
 
 <div id="buildings">
 {% include "_buildings.html" %}
 </div>
+
+<section class="card" id="floorplans">
+  <h2>Floor plans</h2>
+  <p class="muted small">Add a picture of each building's floor plan, then place its doors on it. Everyone sees them under <a href="/map">Map</a>.</p>
+  {% if buildings %}
+  <table class="list fp">
+    <tbody>
+    {% for b in buildings %}
+      <tr><td><strong>{{ b.name }}</strong></td>
+        <td>{% for fp in plans_by_b.get(b.id, []) %}<span class="fpitem">{{ fp.name }} <small class="muted">{{ pin_counts.get(fp.id, 0) }} doors placed</small>
+            <a class="small" href="/floorplans/{{ fp.id }}/edit">Edit</a></span>{% else %}<span class="muted small">No floor plan yet</span>{% endfor %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <form method="post" action="/floorplans" enctype="multipart/form-data" class="fpupload">
+    <label>Building <select name="building_id" required>{% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select></label>
+    <label>Floor name <input name="name" value="Main floor" required></label>
+    <label>Picture <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required>
+      <small class="muted">PNG, JPG or WebP, up to 15 MB. A screenshot or photo of the plan works.</small></label>
+    <div><button class="primary">Add floor plan</button></div>
+  </form>
+  {% else %}
+  <p class="muted">Add buildings first (above), then you can add a floor plan for each.</p>
+  {% endif %}
+</section>
 
 {% if user.is_admin %}
 <section class="card" id="console">

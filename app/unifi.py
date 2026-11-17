@@ -7,6 +7,12 @@ Uses the developer API on each console (port 12445):
       {"type": "keep_lock"}                       stay locked (overrides UniFi's own schedules)
       {"type": "reset"}                           back to the door's normal rule
 
+  PUT /api/v1/developer/doors/{id}/unlock          open now (like a badge tap; relocks by itself)
+  GET /api/v1/developer/users                      people in UniFi Access (for "follow UniFi permissions")
+  GET /api/v1/developer/users/{id}/access_policies their policies, including ones from user groups
+  GET /api/v1/developer/door_groups/{id}           doors in a door group
+  GET /api/v1/developer/access_policies/schedules/{id}  when a policy applies
+
 A "custom" rule counts down on the console itself, so a door relocks on time
 even if OpnDoor is down.
 """
@@ -85,6 +91,39 @@ class UnifiClient:
     def reset(self, door_id: str) -> None:
         self._rule(door_id, {"type": "reset"})
 
+    def open_door(self, door_id: str, actor_id: str, actor_name: str) -> None:
+        """Momentary unlock; UniFi relocks after the door's own unlock time."""
+        try:
+            self._call("PUT", f"/doors/{door_id}/unlock", json={"actor_id": actor_id, "actor_name": actor_name})
+        except UnifiError as e:
+            if "400" not in str(e):
+                raise
+            self._call("PUT", f"/doors/{door_id}/unlock")  # Access before 3.3.21 takes no actor
+
+    # --- people and permissions (needs the token's Users and Access Policies "View" permissions) ---
+
+    def list_users(self) -> list[dict]:
+        out, page = [], 1
+        while True:
+            data = self._call("GET", "/users", params={"page_num": page, "page_size": 200,
+                                                       "expand[]": "access_policy"}) or []
+            out.extend(data)
+            if len(data) < 200 or page >= 50:
+                return out
+            page += 1
+
+    def user_policies(self, user_id: str) -> list[dict]:
+        return self._call("GET", f"/users/{user_id}/access_policies") or []
+
+    def list_policies(self) -> list[dict]:
+        return self._call("GET", "/access_policies") or []
+
+    def door_group(self, group_id: str) -> dict:
+        return self._call("GET", f"/door_groups/{group_id}") or {}
+
+    def policy_schedule(self, schedule_id: str) -> dict:
+        return self._call("GET", f"/access_policies/schedules/{schedule_id}") or {}
+
 
 DEMO_DOORS = [
     ("demo-front", "Front Entrance", "1F"),
@@ -116,6 +155,12 @@ class FakeUnifiClient:
             floor = f"{(k % 3) + 1}F"
             self.doors.append(RemoteDoor(f"demo-{k}", name, f"{site_name} - {floor} - {name}", "lock", "close"))
         self.calls: list[tuple] = []
+        # demo people and permissions (tests fill these in)
+        self.users: list[dict] = []
+        self.policies: dict[str, dict] = {}  # id -> {id, name, resources, schedule_id}
+        self.user_policy_ids: dict[str, list[str]] = {}
+        self.groups: dict[str, dict] = {}
+        self.schedules: dict[str, dict] = {}
 
     def list_doors(self) -> list[RemoteDoor]:
         return list(self.doors)
@@ -132,6 +177,25 @@ class FakeUnifiClient:
     def reset(self, door_id: str) -> None:
         self.calls.append(("reset", door_id))
         log.info("[demo] reset %s", door_id)
+
+    def open_door(self, door_id: str, actor_id: str, actor_name: str) -> None:
+        self.calls.append(("open", door_id))
+        log.info("[demo] open %s for %s", door_id, actor_name)
+
+    def list_users(self) -> list[dict]:
+        return list(self.users)
+
+    def user_policies(self, user_id: str) -> list[dict]:
+        return [self.policies[p] for p in self.user_policy_ids.get(user_id, []) if p in self.policies]
+
+    def list_policies(self) -> list[dict]:
+        return list(self.policies.values())
+
+    def door_group(self, group_id: str) -> dict:
+        return self.groups.get(group_id, {})
+
+    def policy_schedule(self, schedule_id: str) -> dict:
+        return self.schedules.get(schedule_id, {})
 
 
 _clients: dict = {}

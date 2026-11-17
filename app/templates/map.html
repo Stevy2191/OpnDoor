@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Map · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Map</h1>
+    <p class="muted">{{ site.name if site else '' }}{% if current %} · {{ bnames.get(current.building_id, '') }} · {{ current.name }}{% endif %}</p>
+  </div>
+  {% if manager and site %}
+  <div class="btnrow">
+    {% if current %}<a class="button" href="/floorplans/{{ current.id }}/edit">Place doors</a>{% endif %}
+    <a class="button" href="/sites/{{ site.id }}#floorplans">Manage floor plans</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if not plans %}
+<div class="card empty">
+  {% if manager and site %}
+  <p><strong>No floor plans yet.</strong></p>
+  <p>Add a picture of a building's floor plan, then place its doors on it.</p>
+  <p><a class="button primary" href="/sites/{{ site.id }}#floorplans">Add a floor plan</a></p>
+  {% else %}<p>There are no floor plans for your buildings yet.</p>{% endif %}
+</div>
+{% else %}
+
+{% set ns = namespace(seen=[]) %}
+<nav class="segtabs maptabs" aria-label="Buildings">
+  {% for p in plans %}{% if p.building_id not in ns.seen %}{% set ns.seen = ns.seen + [p.building_id] %}
+  <a href="/map?plan={{ p.id }}" class="{{ 'on' if p.building_id == current.building_id }}">{{ bnames.get(p.building_id, 'Building') }}</a>
+  {% endif %}{% endfor %}
+</nav>
+{% set floors = plans|selectattr('building_id', 'equalto', current.building_id)|list %}
+{% if floors|length > 1 %}
+<nav class="floortabs" aria-label="Floors">
+  {% for p in floors %}<a href="/map?plan={{ p.id }}" class="{{ 'on' if p.id == current.id }}">{{ p.name }}</a>{% endfor %}
+</nav>
+{% endif %}
+
+<div class="maptools">
+  <div class="legend small muted">
+    <span><i class="pdot open"></i>Unlocked</span><span><i class="pdot held"></i>Kept locked</span>
+    <span><i class="pdot normal"></i>Locked</span><span><i class="pdot bad"></i>Problem</span>
+  </div>
+  <label class="check small"><input type="checkbox" id="shownames" checked> Show door names</label>
+  <div class="zoom" role="group" aria-label="Zoom">
+    <button type="button" data-zoom="-1" aria-label="Zoom out">−</button>
+    <button type="button" data-zoom="0">Fit</button>
+    <button type="button" data-zoom="1" aria-label="Zoom in">+</button>
+  </div>
+</div>
+
+<div class="mapwrap names" id="mapwrap">
+  <div class="mapinner" id="mapinner">
+    <img src="/floorplans/{{ current.id }}/image" alt="Floor plan: {{ bnames.get(current.building_id, '') }}, {{ current.name }}" draggable="false">
+    {% for pin, d in pins %}{% set st = status.get(d.id, {}) %}{% set ev = nextev.get(d.id) %}
+    {% set state = 'bad' if st.error else ('open' if st.mode == 'unlock' else ('held' if st.mode == 'lock' else 'normal')) %}
+    <button type="button" class="pin {{ state }}" style="left: {{ pin.x }}%; top: {{ pin.y }}%"
+      data-id="{{ d.id }}" data-name="{{ d.name }}" data-state="{{ state }}"
+      data-status="{% if st.error %}Problem: {{ st.error }}{% elif st.mode == 'unlock' %}Unlocked until {{ st.until|time }}{% if st.label %} · {{ st.label }}{% endif %}{% elif st.mode == 'lock' %}Kept locked{% if st.until %} until {{ st.until|day }} {{ st.until|time }}{% endif %}{% if st.label %} · {{ st.label }}{% endif %}{% else %}Locked{% endif %}"
+      data-next="{% if ev %}{{ ev.schedule.label }}, {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}{% endif %}"
+      aria-label="{{ d.name }}">
+      <span class="pinlbl">{{ d.name }}</span>
+    </button>
+    {% endfor %}
+  </div>
+</div>
+{% if not pins %}<p class="muted">No doors have been placed on this plan yet.{% if manager %} <a href="/floorplans/{{ current.id }}/edit">Place doors</a>{% endif %}</p>{% endif %}
+{% if unplaced %}
+<p class="muted small">Not on the map yet: {{ unplaced|map(attribute='name')|join(', ') }}{% if manager %} · <a href="/floorplans/{{ current.id }}/edit">Place them</a>{% endif %}</p>
+{% endif %}
+
+<div class="pinpop card" id="pinpop" hidden role="dialog" aria-label="Door">
+  <div class="pphead"><strong class="ppname"></strong><button type="button" class="link ppclose" aria-label="Close">✕</button></div>
+  <div class="ppstatus small"></div>
+  <div class="ppnext small muted"></div>
+  <form method="post" action="/quick-unlock" class="pprow">
+    <input type="hidden" name="door_ids" class="ppid"><input type="hidden" name="next" value="/map?plan={{ current.id }}">
+    <button name="mode" value="open" class="small primary" title="Unlocks for a few seconds, then locks by itself">Open now</button>
+    <span class="small muted">or unlock for</span>
+    <button name="minutes" value="15" class="small">15 min</button>
+    <button name="minutes" value="60" class="small">1 hour</button>
+  </form>
+  <form method="post" class="pplock pprow" hidden><input type="hidden" name="next" value="/map?plan={{ current.id }}">
+    <button class="small">Lock now</button></form>
+  <div class="pprow">
+    {% if user.schedules %}<a class="small ppsched" href="#">Add schedule</a>{% endif %}
+    <a class="small ppview" href="#">View door</a>
+    {% if user.schedules %}<label class="check small ppselect"><input type="checkbox"> Select</label>{% endif %}
+  </div>
+</div>
+
+<div class="pickbar" id="pickbar" hidden>
+  <span id="pickcount"></span>
+  <a class="button ghost" id="pickregular" href="#">Set regular hours</a>
+  <a class="button primary" id="pickoverride" href="#">Add override</a>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  const wrap = document.getElementById('mapwrap'); if (!wrap) return;
+  const inner = document.getElementById('mapinner'), pop = document.getElementById('pinpop');
+  const sel = new Set(); let curPin = null, zoom = 100;
+  document.getElementById('shownames').addEventListener('change', e => wrap.classList.toggle('names', e.target.checked));
+  document.querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => {
+    const z = +b.dataset.zoom; zoom = z === 0 ? 100 : Math.min(400, Math.max(100, zoom + z * 50));
+    inner.style.width = zoom + '%'; place();
+  }));
+  function place() {
+    if (!curPin || pop.hidden) return;
+    const r = curPin.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    let left = r.left + r.width / 2 - w / 2, top = r.bottom + 10;
+    if (top + h > innerHeight - 8) top = r.top - h - 10;
+    pop.style.left = Math.max(8, Math.min(innerWidth - w - 8, left)) + 'px'; pop.style.top = Math.max(8, top) + 'px';
+  }
+  function open(pin) {
+    curPin = pin; const id = pin.dataset.id, enc = encodeURIComponent(id);
+    pop.querySelector('.ppname').textContent = pin.dataset.name;
+    pop.querySelector('.ppstatus').textContent = pin.dataset.status;
+    pop.querySelector('.ppnext').textContent = pin.dataset.next ? 'Next: ' + pin.dataset.next : '';
+    pop.querySelector('.ppid').value = id;
+    const lock = pop.querySelector('.pplock'); lock.hidden = pin.dataset.state !== 'open'; lock.action = '/doors/' + enc + '/lock-now';
+    if (pop.querySelector('.ppsched')) pop.querySelector('.ppsched').href = '/schedules/new?door=' + enc;
+    pop.querySelector('.ppview').href = '/doors/' + enc;
+    if (pop.querySelector('.ppselect')) pop.querySelector('.ppselect input').checked = sel.has(id);
+    document.querySelectorAll('.pin.active').forEach(p => p.classList.remove('active')); pin.classList.add('active');
+    pop.hidden = false; place();
+  }
+  function close() { pop.hidden = true; document.querySelectorAll('.pin.active').forEach(p => p.classList.remove('active')); }
+  inner.addEventListener('click', e => { const pin = e.target.closest('.pin'); if (pin) { e.stopPropagation(); open(pin); } });
+  document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.pin')) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  pop.querySelector('.ppclose').addEventListener('click', close);
+  wrap.addEventListener('scroll', place); addEventListener('resize', place); addEventListener('scroll', place);
+  const bar = document.getElementById('pickbar');
+  function updateSel() {
+    bar.hidden = sel.size === 0;
+    document.getElementById('pickcount').textContent = sel.size + (sel.size === 1 ? ' door selected' : ' doors selected');
+    const q = [...sel].map(i => 'door=' + encodeURIComponent(i)).join('&');
+    document.getElementById('pickoverride').href = '/schedules/new?' + q;
+    document.getElementById('pickregular').href = '/schedules/new?kind=default&' + q;
+    document.querySelectorAll('.pin').forEach(p => p.classList.toggle('sel', sel.has(p.dataset.id)));
+  }
+  if (pop.querySelector('.ppselect')) pop.querySelector('.ppselect input').addEventListener('change', e => {
+    const id = curPin.dataset.id; e.target.checked ? sel.add(id) : sel.delete(id); updateSel();
+  });
+})();
+</script>
+{% endblock %}

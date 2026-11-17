@@ -53,6 +53,9 @@ def allowed_door_ids(session: Session, user: User) -> set[str]:
     """
     if user.is_admin:
         return set(session.exec(select(Door.id)).all())
+    if user.follows_unifi:
+        from .models import UnifiGrant
+        return set(session.exec(select(UnifiGrant.door_id).where(UnifiGrant.user_id == user.id)).all())
     site_ids = set(session.exec(select(UserSite.site_id).where(UserSite.user_id == user.id)).all())
     doors = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == user.id)).all())
     if site_ids:
@@ -65,6 +68,9 @@ def visible_site_ids(session: Session, user: User) -> set[int]:
     if user.is_admin:
         from .models import Site
         return set(session.exec(select(Site.id)).all())
+    if user.follows_unifi:
+        ids = allowed_door_ids(session, user)
+        return set(session.exec(select(Door.site_id).where(Door.id.in_(ids))).all()) if ids else set()
     sites = set(session.exec(select(UserSite.site_id).where(UserSite.user_id == user.id)).all())
     single = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == user.id)).all())
     if single:

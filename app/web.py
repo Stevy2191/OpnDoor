@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from sqlmodel import Session, func, select
 
-from . import audit, calendars, config, engine
+from . import audit, calendars, config, engine, unifi
 from .auth import (AdminRequired, LoginRequired, allowed_door_ids, can_manage_person, current_user,
                    fully_managed, hash_password, login_user, managed_site_ids, person_site_ids, safe_next,
                    verify_password, visible_site_ids)
@@ -124,6 +124,13 @@ def require_admin(user: User = Depends(require_user)) -> User:
     return user
 
 
+def require_scheduler(user: User = Depends(require_user)) -> User:
+    """Everyone but door openers."""
+    if not user.schedules:
+        raise AdminRequired()
+    return user
+
+
 def require_manager(user: User = Depends(require_user)) -> User:
     """Admins and site admins."""
     if not user.is_manager:
@@ -182,7 +189,7 @@ def visible_schedules(session: Session, user: User) -> list[Schedule]:
 
 
 def can_edit(session: Session, user: User, sched: Schedule, door_ids: list[str]) -> bool:
-    if sched.source == "calendar":
+    if sched.source == "calendar" or not user.schedules:
         return False
     return user.is_admin or set(door_ids) <= allowed_door_ids(session, user)
 
@@ -259,8 +266,12 @@ def login_page(request: Request, session: Session = Depends(get_session)):
 @router.post("/login")
 def login(request: Request, email: str = Form(...), password: str = Form(...),
           session: Session = Depends(get_session)):
+    """Sign in with a password, using the email address or the username."""
     email = email.strip().lower()
-    user = session.exec(select(User).where(User.email == email)).first()
+    if "@" in email:
+        user = session.exec(select(User).where(User.email == email)).first()
+    else:
+        user = session.exec(select(User).where(User.username == email)).first()
     if not user or not user.active or not user.password_hash or not verify_password(password, user.password_hash):
         reason = ("their account is turned off" if user and not user.active
                   else "their account signs in with Microsoft" if user and not user.password_hash
@@ -269,7 +280,7 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
         session.commit()
         flash(request, "This account signs in with Microsoft. Use the Microsoft button."
               if user and user.active and not user.password_hash and config.SSO_ENABLED
-              else "That email and password didn't match.", "error")
+              else "That email or username and password didn't match.", "error")
         return redirect("/login")
     login_user(request, session, user, "a password")
     return redirect(safe_next(request.query_params.get("next")))
@@ -295,10 +306,14 @@ def account_page(request: Request, user: User = Depends(require_user)):
     return render(request, "account.html", user)
 
 
+START_PAGES = {"home", "doors", "map", "schedules"}
+
+
 @router.post("/account")
 def account(request: Request, name: str = Form(""), current_password: str = Form(""),
-            new_password: str = Form(""), user: User = Depends(require_user),
+            new_password: str = Form(""), start_page: str = Form(""), user: User = Depends(require_user),
             session: Session = Depends(get_session)):
+    user.start_page = start_page if start_page in START_PAGES else ""
     old_name = user.name
     user.name = name.strip()
     if old_name != user.name:
@@ -376,6 +391,15 @@ class DoorNamer:
 
 
 @router.get("/")
+def start(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
+    """Each person lands on their start page (Home unless they or an admin chose another)."""
+    page = user.start_path
+    if page != "/home":
+        return redirect(page)
+    return dashboard(request, user, session)
+
+
+@router.get("/home")
 def dashboard(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
     site_id = current_site_id(request, session, user)
     doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
@@ -421,14 +445,16 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
     }
     return render(request, "dashboard.html", user, doors=doors, right_now=right_now, tiles=tiles,
                   agenda_today=agenda_today, agenda_week=agenda_week, site_id=site_id,
-                  today_label=now.strftime("%A, %B %-d"),
-                  default_until=(now + timedelta(minutes=75)).replace(minute=((now.minute + 75) % 60) // 15 * 15)
-                  .strftime("%H:%M"))
+                  today_label=now.strftime("%A, %B %-d"), default_until=_default_until(now))
+
+
+def _default_until(now: datetime) -> str:
+    return (now + timedelta(minutes=75)).replace(minute=((now.minute + 75) % 60) // 15 * 15).strftime("%H:%M")
 
 
 @router.post("/doors/{door_id}/lock-now")
-def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = Depends(require_user),
-             session: Session = Depends(get_session)):
+def lock_now(request: Request, door_id: str, bg: BackgroundTasks, next: str = Form("/"),
+             user: User = Depends(require_user), session: Session = Depends(get_session)):
     """Lock a door that a schedule has unlocked, until that unlock would have ended.
 
     Adds a short "keep locked" override (newest wins), so the schedule itself is untouched
@@ -437,12 +463,12 @@ def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = D
     door = session.get(Door, door_id)
     if not door or door_id not in allowed_door_ids(session, user):
         flash(request, "That door isn't available to you.", "error")
-        return redirect("/")
+        return redirect(safe_next(next))
     now_utc = utcnow()
     plan = current_plan(engine.door_timeline(session, door, now_utc, now_utc + engine.HORIZON))
     if not plan or plan.state != "unlock":
         flash(request, f"{door.name} is already locked.")
-        return redirect("/")
+        return redirect(safe_next(next))
     tz = engine.site_tz(session.get(Site, door.site_id))
     minutes = max(1, int((plan.end - now_utc).total_seconds() // 60) + 1)
     why = plan.schedule.label if plan.schedule else "its schedule"
@@ -457,7 +483,7 @@ def lock_now(request: Request, door_id: str, bg: BackgroundTasks, user: User = D
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Locking {door.name}. It goes back to its normal schedule afterwards.")
-    return redirect("/")
+    return redirect(safe_next(next))
 
 
 def _until_minutes(until: str, tz) -> Optional[int]:
@@ -482,17 +508,27 @@ def _duration_text(minutes: int) -> str:
 
 @router.post("/quick-unlock")
 def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Form([]),
-                 minutes: Optional[int] = Form(None), until: str = Form(""), user: User = Depends(require_user),
-                 session: Session = Depends(get_session)):
-    """Unlock doors now, for a number of minutes (preset buttons) or until a time (custom)."""
+                 minutes: Optional[int] = Form(None), until: str = Form(""), next: str = Form("/"),
+                 mode: str = Form(""), user: User = Depends(require_user), session: Session = Depends(get_session)):
+    """Open doors (momentary, like a badge tap), or unlock them for a number of minutes or until a time."""
+    from .access import open_hours_ok
     allowed = allowed_door_ids(session, user)
     door_ids = [d for d in door_ids if d in allowed]
     if not door_ids:
         flash(request, "Pick at least one door.", "error")
-        return redirect("/")
+        return redirect(safe_next(next))
+    for did in list(door_ids):
+        ok, why = open_hours_ok(session, user, session.get(Door, did))
+        if not ok:
+            flash(request, why, "error")
+            door_ids.remove(did)
+    if not door_ids:
+        return redirect(safe_next(next))
+    if mode == "open":
+        return _open_doors(request, session, user, door_ids, next)
     if minutes is None and not until.strip():
         flash(request, "Choose how long, or pick a time to unlock until.", "error")
-        return redirect("/")
+        return redirect(safe_next(next))
     groups = group_by_site(session, door_ids)
     plans = []
     for site_id, ids in groups.items():
@@ -500,7 +536,7 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
         mins = minutes if minutes is not None else _until_minutes(until, tz)
         if mins is None:
             flash(request, "That time doesn't look right.", "error")
-            return redirect("/")
+            return redirect(safe_next(next))
         plans.append((tz, ids, max(1, min(mins, 24 * 60))))
     for tz, ids, mins in plans:
         start = now_local(tz).replace(second=0, microsecond=0)
@@ -520,7 +556,28 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Unlocking {names} {how}.")
-    return redirect("/")
+    return redirect(safe_next(next))
+
+
+def _open_doors(request: Request, session: Session, user: User, door_ids: list[str], next: str):
+    """Momentary unlock: UniFi opens the lock for the door's own unlock time, then relocks."""
+    opened, failed = [], []
+    for did in door_ids:
+        door = session.get(Door, did)
+        try:
+            unifi.get_client(session.get(Site, door.site_id)).open_door(door.remote_id, f"opndoor-{user.id}",
+                                                                          f"{user.display} (OpnDoor)")
+            opened.append(did)
+        except unifi.UnifiError as e:
+            failed.append(f"{door.name}: {e}")
+    if opened:
+        names = DoorNamer(session, [session.get(Door, d) for d in opened])(opened, limit=6)
+        audit.record(session, "door.open", f"{user.display} opened {names}", user=user, door_ids=opened)
+        session.commit()
+        flash(request, f"Opened {names}. It locks again by itself in a few seconds.")
+    for f in failed:
+        flash(request, f"Couldn't open {f}", "error")
+    return redirect(safe_next(next))
 
 
 # ---------- schedules ----------
@@ -653,16 +710,20 @@ def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kin
 
 
 @router.get("/schedules/new")
-def schedule_new(request: Request, door: list[str] = Query([]), kind: str = "override",
-                 user: User = Depends(require_user), session: Session = Depends(get_session)):
-    """`?door=a&door=b` preselects doors; `?kind=default` starts a regular-hours schedule."""
+def schedule_new(request: Request, door: list[str] = Query([]), kind: str = "override", day: str = "",
+                 user: User = Depends(require_scheduler), session: Session = Depends(get_session)):
+    """`?door=a&door=b` preselects doors; `?kind=default` starts regular hours; `?day=2030-01-31` sets the date."""
     kind = "default" if kind == "default" else "override"
-    return render(request, "schedule_form.html", user,
-                  **_form_ctx(session, user, None, door, kind, current_site_id(request, session, user)))
+    ctx = _form_ctx(session, user, None, door, kind, current_site_id(request, session, user))
+    try:
+        ctx["date_val"] = date.fromisoformat(day).isoformat()
+    except ValueError:
+        pass
+    return render(request, "schedule_form.html", user, **ctx)
 
 
 @router.get("/schedules/{sid}")
-def schedule_edit(request: Request, sid: int, user: User = Depends(require_user),
+def schedule_edit(request: Request, sid: int, user: User = Depends(require_scheduler),
                   session: Session = Depends(get_session)):
     sched = session.get(Schedule, sid)
     if not sched:
@@ -727,7 +788,7 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
                   start: str = Form(...), end: str = Form(...), repeat: str = Form("none"),
                   weekdays: list[str] = Form([]), until: str = Form(""), notes: str = Form(""),
                   kind: str = Form("override"), action: str = Form("unlock"), event_type: str = Form("event"),
-                  contact: str = Form(""), mode: str = Form(""), user: User = Depends(require_user),
+                  contact: str = Form(""), mode: str = Form(""), user: User = Depends(require_scheduler),
                   session: Session = Depends(get_session)):
     # The form asks one question, "what do you want to do?": unlock / lock / default (regular hours)
     if mode in ("unlock", "lock"):
@@ -782,7 +843,8 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
 
 
 @router.post("/schedules/{sid}/delete")
-def schedule_delete(request: Request, sid: int, bg: BackgroundTasks, user: User = Depends(require_user),
+def schedule_delete(request: Request, sid: int, bg: BackgroundTasks, next: str = Form("/schedules"),
+                    user: User = Depends(require_scheduler),
                     session: Session = Depends(get_session)):
     sched = session.get(Schedule, sid)
     door_ids = schedule_doors(session, [sid])[sid] if sched else []
@@ -795,7 +857,7 @@ def schedule_delete(request: Request, sid: int, bg: BackgroundTasks, user: User 
         session.commit()
         kick_reconcile(bg)
         flash(request, f"Deleted “{sched.label}”.")
-    return redirect("/schedules")
+    return redirect(safe_next(next))
 
 
 # ---------- doors ----------
@@ -831,7 +893,8 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
     }
     return render(request, "doors.html", user, doors=doors, status=status, state=state,
                   counts=counts, nextev=nextev, now=now, site_id=site_id,
-                  multi_site=len(visible) > 1)
+                  multi_site=len(visible) > 1, default_until=_default_until(now),
+                  view=user.door_view or ("list" if user.schedules else "tiles"))
 
 
 @router.post("/doors/sync")
@@ -863,7 +926,15 @@ def door_page(request: Request, door_id: str, user: User = Depends(require_user)
     listed = sorted([x for x in scheds if series_last_date(x) >= today - timedelta(days=1)],
                     key=lambda x: (x.kind != "default", x.start_local))
     rows = [{"s": x, "editable": can_edit(session, user, x, sd[x.id])} for x in listed]
+    from . import protect
+    cams, cam_error = [], ""
+    if door.site_id in managed_site_ids(session, user) and protect.enabled(site):
+        try:
+            cams = protect.cameras(site)
+        except protect.ProtectError as e:
+            cam_error = str(e)
     return render(request, "door.html", user, door=door, site=site, days=days, rows=rows,
+                  cams=cams, cam_error=cam_error, protect_on=protect.enabled(site),
                   can_history=user.is_manager and door.site_id in managed_site_ids(session, user),
                   history=audit.for_door(session, door.id), audit_mod=audit,
                   status=door_status(session, [door]).get(door.id, {}))
@@ -917,15 +988,23 @@ def site_page(request: Request, site_id: int, user: User = Depends(require_manag
     doors = list(session.exec(select(Door).where(Door.site_id == site.id, Door.present == True)  # noqa: E712
                               .order_by(Door.name)).all())
     counts = {b.id: sum(1 for d in doors if d.building_id == b.id) for b in buildings}
+    from .models import DoorPin, FloorPlan
+    plans = session.exec(select(FloorPlan).where(FloorPlan.building_id.in_([b.id for b in buildings]))
+                         .order_by(FloorPlan.name)).all() if buildings else []
+    plans_by_b: dict[int, list] = {}
+    for fp in plans:
+        plans_by_b.setdefault(fp.building_id, []).append(fp)
+    pin_counts = dict(session.exec(select(DoorPin.plan_id, func.count()).group_by(DoorPin.plan_id)).all())
     return render(request, "site.html", user, site=site, buildings=buildings, doors=doors, counts=counts,
-                  timezones=COMMON_TZ)
+                  timezones=COMMON_TZ, plans_by_b=plans_by_b, pin_counts=pin_counts)
 
 
 @router.post("/sites")
 @router.post("/sites/{site_id}")
 def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = None, name: str = Form(...),
               host: str = Form(""), token: str = Form(""), timezone: str = Form("America/Chicago"),
-              verify_tls: bool = Form(False), enabled: bool = Form(False), user: User = Depends(require_admin),
+              verify_tls: bool = Form(False), enabled: bool = Form(False), protect_key: str = Form(""),
+              protect_host: str = Form(""), protect_clear: bool = Form(False), user: User = Depends(require_admin),
               session: Session = Depends(get_session)):
     from zoneinfo import ZoneInfo
     back = f"/sites/{site_id}" if site_id else "/sites/new"
@@ -946,11 +1025,18 @@ def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = No
     site.verify_tls, site.enabled = verify_tls, enabled if site_id else True
     if token.strip():
         site.token = token.strip()
+    site.protect_host = protect_host.strip().rstrip("/")
+    if protect_clear:
+        site.protect_key = ""
+    elif protect_key.strip():
+        site.protect_key = protect_key.strip()
     session.add(site)
     session.flush()
     changed = audit.diff(before, audit.site_snapshot(site))
     if token.strip() and site_id:
         changed.append(["API token", "(hidden)", "(new token)"])
+    if protect_key.strip() or protect_clear:
+        changed.append(["UniFi Protect key", "(hidden)", "(removed)" if protect_clear else "(new key)"])
     if changed or not site_id:
         audit.record(session, "site.update" if site_id else "site.create",
                      f"{user.display} {'changed' if site_id else 'added'} site “{site.name}”",
@@ -975,6 +1061,12 @@ def site_delete(request: Request, site_id: int, user: User = Depends(require_adm
     for row in session.exec(select(ScheduleDoor).where(ScheduleDoor.door_id.in_(door_ids))).all():
         touched.add(row.schedule_id)
         session.delete(row)
+    from .maps import delete_building_plans
+    from .models import DoorPin
+    for row in session.exec(select(DoorPin).where(DoorPin.door_id.in_(door_ids))).all():
+        session.delete(row)
+    for b in session.exec(select(Building).where(Building.site_id == site_id)).all():
+        delete_building_plans(session, b.id)
     for row in session.exec(select(DoorState).where(DoorState.door_id.in_(door_ids))).all():
         if row.mode:  # release anything OpnDoor is holding on that console
             try:
@@ -1031,6 +1123,8 @@ async def buildings_save(request: Request, user: User = Depends(require_manager)
     # renames and deletes
     for bid, b in list(buildings.items()):
         if form.get(f"delete_{bid}") == "on":
+            from .maps import delete_building_plans
+            delete_building_plans(session, bid)
             for d in session.exec(select(Door).where(Door.building_id == bid)).all():
                 d.building_id = None
                 session.add(d)
@@ -1132,7 +1226,12 @@ def users_page(request: Request, user: User = Depends(require_manager), session:
             access.setdefault(ud.user_id, []).append(name)
         else:
             elsewhere.add(ud.user_id)
+    from .models import UnifiGrant
+    unifi_counts: dict[int, int] = {}
+    for g in session.exec(select(UnifiGrant)).all():
+        unifi_counts[g.user_id] = unifi_counts.get(g.user_id, 0) + 1
     return render(request, "users.html", user, users=users, access=access, elsewhere=elsewhere,
+                  unifi_counts=unifi_counts, any_unifi=any(u.follows_unifi for u in users),
                   editable={u.id for u in users if can_manage_person(session, user, u)},
                   redirect_url=sso_redirect(request))
 
@@ -1154,25 +1253,41 @@ def user_form(request: Request, uid: Optional[int] = None, user: User = Depends(
     sel_doors = set(session.exec(select(UserDoor.door_id).where(UserDoor.user_id == uid)).all()) if uid else set()
     sel_sites = set(session.exec(select(UserSite.site_id).where(UserSite.user_id == uid)).all()) if uid else set()
     sites = {k: v for k, v in session.exec(select(Site.id, Site)).all() if k in managed}
-    return render(request, "user_form.html", user, target=target, sites=sites,
+    unifi_doors = []
+    if target and target.follows_unifi:
+        from .models import UnifiGrant
+        unifi_doors = sorted(d.name for d in session.exec(select(Door).join(UnifiGrant, UnifiGrant.door_id == Door.id)
+                                                          .where(UnifiGrant.user_id == target.id)).all())
+    return render(request, "user_form.html", user, target=target, sites=sites, unifi_doors=unifi_doors,
                   doors=[d for d in all_doors(session) if d.site_id in managed],
                   selected=sel_doors, selected_sites=sel_sites,
                   full=target is None or fully_managed(session, user, target),
                   elsewhere=bool(target and person_site_ids(session, target) - managed))
 
 
+@router.post("/users/unifi-check")
+def users_unifi_check(request: Request, user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    from . import access
+    access.sync(session)
+    session.commit()
+    flash(request, "Checked everyone's UniFi Access permissions.")
+    return redirect("/users")
+
+
 @router.post("/users")
 @router.post("/users/{uid}")
 def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""), email: str = Form(...),
               role: str = Form("operator"), signin: str = Form("microsoft"), password: str = Form(""),
+              username: str = Form(""), door_source: str = Form("opndoor"), start_page: str = Form(""),
               active: bool = Form(False), door_ids: list[str] = Form([]), site_ids: list[int] = Form([]),
               user: User = Depends(require_manager), session: Session = Depends(get_session)):
     email = email.strip().lower()
     back = f"/users/{uid}" if uid else "/users/new"
     managed = managed_site_ids(session, user)
-    if not user.is_admin:
-        role = "operator"  # site admins add and change door operators only
-    role = role if role in {"admin", "site_admin", "operator"} else "operator"
+    if not user.is_admin and role not in {"operator", "opener"}:
+        role = "operator"  # site admins add and change door operators and openers only
+    role = role if role in {"admin", "site_admin", "operator", "opener"} else "operator"
+    door_source = "unifi" if door_source == "unifi" and role in {"operator", "opener"} else "opndoor"
     use_password = signin == "password" or not config.SSO_ENABLED
 
     target = session.get(User, uid) if uid else None
@@ -1190,6 +1305,16 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
                   if user.is_admin else ""), "error")
             return redirect(back)
     full = target is None or fully_managed(session, user, target)
+    import re
+    username = username.strip().lower()
+    if username and full:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,31}", username):
+            flash(request, "Usernames are 2–32 letters, numbers, dots, dashes or underscores (no spaces or @).", "error")
+            return redirect(back)
+        taken = session.exec(select(User).where(User.username == username)).first()
+        if taken and (target is None or taken.id != target.id):
+            flash(request, f"The username “{username}” is already taken.", "error")
+            return redirect(back)
 
     if target and target.id == user.id and user.is_admin and (role != "admin" or not active):
         flash(request, "You can't remove your own admin role or turn off your own account.", "error")
@@ -1212,6 +1337,7 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
         active = True
     if full:
         target.name, target.email, target.active = name.strip(), email, active
+        target.username = username or None
         if not use_password:
             target.password_hash = ""
         elif password:
@@ -1219,6 +1345,10 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
     if target.is_owner:
         role = "admin"  # the main admin always stays an admin
     target.is_admin, target.is_site_admin = role == "admin", role == "site_admin"
+    target.can_schedule = role != "opener"
+    if full:
+        target.door_source = door_source
+        target.start_page = start_page if start_page in START_PAGES else ""
     session.add(target)
     session.flush()
 
@@ -1231,16 +1361,22 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
         if not door or door.site_id in managed:
             session.delete(row)
     session.flush()
-    if role != "admin":
+    if role == "site_admin" or (role != "admin" and not target.follows_unifi):
         whole = set(site_ids) & managed
         for sid in whole:
             session.add(UserSite(user_id=target.id, site_id=sid))
-        if role == "operator":
+        if role in {"operator", "opener"} and not target.follows_unifi:
             for d in set(door_ids):
                 door = session.get(Door, d)
                 if door and door.site_id in managed and door.site_id not in whole:
                     session.add(UserDoor(user_id=target.id, door_id=d))
     session.flush()
+    if target.follows_unifi:
+        from . import access
+        try:
+            access.sync(session, [target])
+        except Exception as e:  # noqa: BLE001 - never lose the save over a lookup
+            target.unifi_note = f"Couldn't check UniFi Access yet: {e}"
 
     after = audit.user_snapshot(session, target, managed if not user.is_admin else None)
     changed = audit.diff(before, after)

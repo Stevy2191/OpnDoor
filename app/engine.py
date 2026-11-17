@@ -73,6 +73,13 @@ def sync_site(site_id: int) -> str:
                     door.present = False
                     s.add(door)
             status = f"OK: {len(remote)} doors"
+            from . import protect
+            if protect.enabled(site):
+                s.flush()
+                try:
+                    protect.match(s, site)
+                except protect.ProtectError as e:
+                    log.warning("cameras at %s: %s", site.name, e)
         if status != site.last_sync_status and status.startswith("Error"):
             audit(s, "site.error", f"{site.name}: {status}", site_ids=[site.id])
         site.last_sync_at, site.last_sync_status = utcnow(), status[:500]

@@ -375,7 +375,8 @@ main() {
   else
     say "  OpnDoor needs your console's address and an API token to see and control doors."
     note "Make the token in UniFi Access: Settings → General → Advanced → API Token"
-    note "(allow it to view and operate doors). You can also skip this and add consoles later"
+    note "(Locations: Edit, Devices: View; add Users: View and Access Policies: View to let"
+    note "people's doors follow their UniFi Access permissions). You can also skip this and add consoles later"
     note "in OpnDoor: it asks for them right after you first sign in."
     if yes_no "  Connect a console now?" Y; then
       while true; do
