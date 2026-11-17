@@ -582,3 +582,9 @@ details.more label { margin-top: .6rem; }
 /* schedules list without the icon column */
 .srow { grid-template-columns: 1fr auto auto; }
 @media (max-width: 700px) { .srow { grid-template-columns: 1fr; } .snext, .sact { grid-column: 1; } }
+/* padlock icons */
+.padlock { width: 1.05em; height: 1.05em; vertical-align: -0.16em; flex: none; }
+.padlock.unl { color: var(--ok); }
+.padlock.lck { color: var(--err); }
+.mcard .mi .padlock { width: 1.6rem; height: 1.6rem; }
+.padlock.inline { width: 1.1em; height: 1.1em; }

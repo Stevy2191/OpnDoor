@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import door_picker %}
+{% from "_macros.html" import door_picker, padlock %}
 {% block title %}{{ 'Edit schedule' if sched else 'New schedule' }} · OpnDoor{% endblock %}
 {% block content %}
 <p class="crumbs small"><a href="/schedules">Schedules</a> › {{ 'Edit' if sched else 'New schedule' }}</p>
@@ -19,9 +19,9 @@
       <h2><span class="num">1</span>What do you want to do?</h2>
       <div class="modecards">
         <label class="mcard"><input type="radio" name="mode" value="unlock" {% if mode == 'unlock' %}checked{% endif %}>
-          <span><b class="mi">🔓</b><strong>Unlock doors</strong><small>For an event, rental or meeting. The doors unlock, then lock again afterwards.</small></span></label>
+          <span><b class="mi">{{ padlock(True) }}</b><strong>Unlock doors</strong><small>For an event, rental or meeting. The doors unlock, then lock again afterwards.</small></span></label>
         <label class="mcard"><input type="radio" name="mode" value="lock" {% if mode == 'lock' %}checked{% endif %}>
-          <span><b class="mi">🔒</b><strong>Keep doors locked</strong><small>For a holiday or closure. The doors stay locked, even during their regular hours.</small></span></label>
+          <span><b class="mi">{{ padlock(False) }}</b><strong>Keep doors locked</strong><small>For a holiday or closure. The doors stay locked, even during their regular hours.</small></span></label>
         <label class="mcard"><input type="radio" name="mode" value="default" {% if mode == 'default' %}checked{% endif %}>
           <span><b class="mi">🕘</b><strong>Set regular hours</strong><small>The normal times these doors are unlocked each week.</small></span></label>
       </div>
@@ -161,7 +161,8 @@
     if (weekly && !picked.length) missing.push('Pick the days (step 4)');
     if (!s || !e) missing.push('Set the times (step 4)');
 
-    const verb = mode === 'lock' ? '🔒 Keep <b>locked</b>' : mode === 'default' ? '🕘 <b>Unlocked</b> as regular hours:' : '🔓 <b>Unlock</b>';
+    const LOCK = {{ padlock(False, 'inline')|tojson }}, OPEN = {{ padlock(True, 'inline')|tojson }};
+    const verb = mode === 'lock' ? LOCK + ' Keep <b>locked</b>' : mode === 'default' ? '🕘 <b>Unlocked</b> as regular hours:' : OPEN + ' <b>Unlock</b>';
     const what = d.n ? '<b>' + d.text + '</b>' : '<span class="muted">(no doors yet)</span>';
     const when = weekly
       ? (daysTxt || '<span class="muted">(no days yet)</span>') + ', ' + t12(s) + ' – ' + t12(e) + (e && s && e <= s ? ' (next day)' : '') + (until ? ', until ' + dayname(until) : '') + (mode === 'default' ? '' : ', starting ' + dayname(day))
