@@ -1,92 +1,183 @@
 {% extends "base.html" %}
-{% from "_macros.html" import door_chips %}
-{% block title %}{{ 'Edit' if sched else 'New' }} schedule · OpnDoor{% endblock %}
-{% block mainclass %}narrow{% endblock %}
+{% from "_macros.html" import door_picker, padlock %}
+{% block title %}{{ 'Edit schedule' if sched else 'New schedule' }} · OpnDoor{% endblock %}
 {% block content %}
-<h1>{% if sched %}Edit schedule{% elif kind == 'default' %}Set regular hours{% else %}Add an override{% endif %}</h1>
+<p class="crumbs small"><a href="/schedules">Schedules</a> › {{ 'Edit' if sched else 'New schedule' }}</p>
+<h1 style="margin-bottom:.25rem">{{ 'Edit schedule' if sched else 'New schedule' }}</h1>
 {% if sched %}
 <p class="muted small">Added by {{ people.get(sched.created_by, 'OpnDoor') }} on {{ (sched.created_at|local)|day }}{% if sched.updated_at %} · last changed by {{ people.get(sched.updated_by, 'someone') }} on {{ (sched.updated_at|local)|day }} at {{ (sched.updated_at|local)|time }}{% endif %}</p>
 {% endif %}
+
 {% if not doors %}
 <div class="card empty"><p>You don't have access to any doors yet.</p></div>
 {% else %}
-<form method="post" action="/schedules{% if sched %}/{{ sched.id }}{% endif %}" class="card stack" id="schedform">
-  <fieldset>
-    <legend>Type</legend>
-    <div class="seg kind">
-      <label><input type="radio" name="kind" value="default" {% if kind == 'default' %}checked{% endif %}><span>Regular hours</span></label>
-      <label><input type="radio" name="kind" value="override" {% if kind != 'default' %}checked{% endif %}><span>Override</span></label>
-    </div>
-    <p class="muted small only-default">The door's normal weekly unlocked hours. Outside these hours it stays locked.</p>
-    <p class="muted small only-override">Replaces the regular hours while it's on, e.g. an event, a rental, or a holiday closure.</p>
-  </fieldset>
+<form method="post" action="/schedules{% if sched %}/{{ sched.id }}{% endif %}" id="sform" class="sform">
+  <div class="sgrid">
+  <div class="ssteps">
 
-  <fieldset class="only-override">
-    <legend>During the override, the doors are</legend>
-    <div class="seg">
-      <label><input type="radio" name="action" value="unlock" {% if action != 'lock' %}checked{% endif %}><span>🔓 Unlocked</span></label>
-      <label><input type="radio" name="action" value="lock" {% if action == 'lock' %}checked{% endif %}><span>🔒 Kept locked</span></label>
-    </div>
-  </fieldset>
-
-  <label><span class="only-override-inline">Event: what is it for?</span><span class="only-default-inline">Name</span>
-    <input name="label" value="{{ sched.label if sched else ('Regular hours' if kind == 'default' else '') }}" placeholder="e.g. Smith wedding, Thanksgiving closure" required>
-  </label>
-
-  <fieldset class="only-override">
-    <legend>Type of event</legend>
-    <div class="chips types">
-    {% for key, (icon, name) in EVENT_TYPES.items() %}
-      <label class="chip"><input type="radio" name="event_type" value="{{ key }}" {% if key == event_type %}checked{% endif %}><span>{{ icon }} {{ name }}</span></label>
-    {% endfor %}
-    </div>
-  </fieldset>
-
-  <label class="only-override">Contact person (optional)
-    <input name="contact" value="{{ sched.contact if sched else '' }}" placeholder="e.g. Jane Smith, 555-0123">
-  </label>
-
-  <fieldset>
-    <legend>Doors</legend>
-    {{ door_chips(doors, 'door_ids', selected, sites, True) }}
-    {% if sites|length > 1 %}<p class="muted small">Times are local to each door's site.</p>{% endif %}
-  </fieldset>
-
-  <div class="row3">
-    <label><span class="only-override-inline">Date</span><span class="only-default-inline">Starting</span>
-      <input type="date" name="day" value="{{ date_val }}" required></label>
-    <label>From <input type="time" name="start" value="{{ start_val }}" required></label>
-    <label>To <input type="time" name="end" value="{{ end_val }}" required></label>
-  </div>
-  <p class="muted small">If the end time is earlier than the start time, it runs overnight into the next day.</p>
-
-  <fieldset>
-    <legend>Repeat</legend>
-    <div class="seg only-override">
-      <label><input type="radio" name="repeat" value="none" {% if not days %}checked{% endif %}><span>Just once</span></label>
-      <label><input type="radio" name="repeat" value="weekly" {% if days %}checked{% endif %}><span>Every week</span></label>
-    </div>
-    <div class="repeat-opts">
-      <div class="chips days">
-      {% for i in range(7) %}
-        <label class="chip"><input type="checkbox" name="weekdays" value="{{ i }}" {% if i in days %}checked{% endif %}><span>{{ WEEKDAYS[i] }}</span></label>
-      {% endfor %}
+    <section class="card step">
+      <h2><span class="num">1</span>What do you want to do?</h2>
+      <div class="modecards">
+        <label class="mcard"><input type="radio" name="mode" value="unlock" {% if mode == 'unlock' %}checked{% endif %}>
+          <span><b class="mi">{{ padlock(True) }}</b><strong>Unlock doors</strong><small>For an event, rental or meeting. The doors unlock, then lock again afterwards.</small></span></label>
+        <label class="mcard"><input type="radio" name="mode" value="lock" {% if mode == 'lock' %}checked{% endif %}>
+          <span><b class="mi">{{ padlock(False) }}</b><strong>Keep doors locked</strong><small>For a holiday or closure. The doors stay locked, even during their regular hours.</small></span></label>
+        <label class="mcard"><input type="radio" name="mode" value="default" {% if mode == 'default' %}checked{% endif %}>
+          <span><b class="mi">🕘</b><strong>Set regular hours</strong><small>The normal times these doors are unlocked each week.</small></span></label>
       </div>
-      <label>Until (optional) <input type="date" name="until" value="{{ sched.repeat_until.isoformat() if sched and sched.repeat_until else '' }}"></label>
-    </div>
-  </fieldset>
+    </section>
 
-  <label>Notes (optional) <textarea name="notes" rows="2">{{ sched.notes if sched else '' }}</textarea></label>
+    <section class="card step">
+      <h2><span class="num">2</span><span class="m-event">What's it for?</span><span class="m-default">Name these hours</span></h2>
+      <input name="label" class="biginput" value="{{ sched.label if sched else ('Regular hours' if mode == 'default' else '') }}"
+             placeholder="e.g. Smith wedding" aria-label="Name" autocomplete="off">
+      <div class="m-event">
+        <details class="more" {% if sched and (sched.contact or sched.notes) %}open{% endif %}>
+          <summary>Add a contact person or notes</summary>
+          <label>Contact person <input name="contact" value="{{ sched.contact if sched else '' }}" placeholder="e.g. Jane Smith, 555-0123"></label>
+          <label>Notes <textarea name="notes" rows="2">{{ sched.notes if sched else '' }}</textarea></label>
+        </details>
+      </div>
+    </section>
 
-  <div class="btnrow">
-    <button class="primary">{{ 'Save changes' if sched else 'Save' }}</button>
-    <a class="button" href="/doors">Cancel</a>
+    <section class="card step">
+      <h2><span class="num">3</span>Which doors?</h2>
+      <p class="muted small hint">Tick a building for all its doors, or use <b>Pick doors</b> to choose some of them.</p>
+      {{ door_picker(doors, 'door_ids', selected, sites) }}
+    </section>
+
+    <section class="card step">
+      <h2><span class="num">4</span>When?</h2>
+      <div class="seg m-event repeatseg">
+        <label><input type="radio" name="repeat" value="none" {% if not days %}checked{% endif %}><span>One day</span></label>
+        <label><input type="radio" name="repeat" value="weekly" {% if days %}checked{% endif %}><span>Repeats every week</span></label>
+      </div>
+
+      <div class="whenrow">
+        <label class="w-date"><span class="w-once">Date</span><span class="w-weekly">Starting</span>
+          <input type="date" name="day" value="{{ date_val }}" required></label>
+        <label>From <input type="time" name="start" value="{{ start_val }}" required></label>
+        <label>To <input type="time" name="end" value="{{ end_val }}" required></label>
+      </div>
+      <p class="small overnight" hidden>Ends the next day.</p>
+
+      <div class="w-weekly daysblock">
+        <div class="dayshead"><span class="small muted">On these days</span>
+          <span class="presets"><button type="button" class="link small" data-days="0,1,2,3,4">Weekdays</button>
+          <button type="button" class="link small" data-days="5,6">Weekends</button>
+          <button type="button" class="link small" data-days="0,1,2,3,4,5,6">Every day</button></span></div>
+        <div class="chips days">
+        {% for i in range(7) %}
+          <label class="chip"><input type="checkbox" name="weekdays" value="{{ i }}" {% if i in days %}checked{% endif %}><span>{{ WEEKDAYS[i] }}</span></label>
+        {% endfor %}
+        </div>
+        <label class="untilfield">Until <small class="muted">(optional; leave empty to keep going)</small>
+          <input type="date" name="until" value="{{ until_val }}"></label>
+      </div>
+    </section>
+  </div>
+
+  <aside class="ssum card">
+    <h2>Summary</h2>
+    <p class="sumtext">Choose what to do, the doors and the time.</p>
+    <ul class="needed small"></ul>
+    <button class="primary wide savebtn">{{ 'Save changes' if sched else 'Save' }}</button>
+    <a class="button wide cancel" href="/schedules">Cancel</a>
+  </aside>
   </div>
 </form>
 {% if sched %}
-<form method="post" action="/schedules/{{ sched.id }}/delete" onsubmit="return confirm('Delete this schedule? Doors it is holding open or locked right now go back to their other schedules.')">
-  <button class="danger">Delete schedule</button>
+<form method="post" action="/schedules/{{ sched.id }}/delete" class="delform" onsubmit="return confirm('Delete this schedule? Doors it is holding open or locked right now go back to their other schedules.')">
+  <button class="danger">Delete this schedule</button>
 </form>
 {% endif %}
+
+<script>
+(function () {
+  const f = document.getElementById('sform'); if (!f) return;
+  const $ = s => f.querySelector(s), $$ = s => [...f.querySelectorAll(s)];
+  const save = $('.savebtn'), sum = $('.sumtext'), need = $('.needed'), over = $('.overnight');
+  const label = $('input[name=label]');
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const t12 = v => { if (!v) return '?'; let [h, m] = v.split(':').map(Number); const ap = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12; return h + (m ? ':' + String(m).padStart(2, '0') : '') + ' ' + ap; };
+  const dayname = v => v ? new Date(v + 'T12:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '?';
+  let lastMode = null;
+
+  // door picker: expand/collapse, search, counts
+  f.querySelectorAll('[data-picker]').forEach(p => {
+    p.querySelectorAll('.dpkexp').forEach(b => b.addEventListener('click', () => {
+      const g = b.closest('.dpkb'); g.classList.toggle('collapsed'); b.textContent = g.classList.contains('collapsed') ? 'Pick doors' : 'Hide doors';
+    }));
+    p.querySelectorAll('.dpkb').forEach(g => { const b = g.querySelector('.dpkexp'); if (b && !g.classList.contains('collapsed')) b.textContent = 'Hide doors'; });
+    const q = p.querySelector('.dpksearch');
+    if (q) q.addEventListener('input', () => {
+      const t = q.value.trim().toLowerCase(); let shown = 0;
+      p.querySelectorAll('.dpkdoor').forEach(d => { const hit = !t || d.dataset.find.includes(t); d.hidden = !hit; shown += hit; });
+      p.querySelectorAll('.dpkb').forEach(g => { const any = !!g.querySelector('.dpkdoor:not([hidden])'); g.hidden = !any; if (t && any) g.classList.remove('collapsed'); });
+      p.querySelector('.dpknone').hidden = shown > 0;
+    });
+  });
+
+  function doorText() {
+    const parts = []; let n = 0;
+    $$('.dpkb').forEach(g => {
+      const boxes = [...g.querySelectorAll('.dpkdoor input')], on = boxes.filter(b => b.checked);
+      const cnt = g.querySelector('.dpkbcount'), total = boxes.length;
+      cnt.textContent = on.length === 0 ? total + (total === 1 ? ' door' : ' doors') : on.length === total ? (total === 1 ? 'Picked' : 'All ' + total + ' picked') : on.length + ' of ' + total + ' picked';
+      cnt.classList.toggle('on', on.length > 0);
+      n += on.length;
+      if (!on.length) return;
+      if (on.length === total && total > 1) parts.push(g.dataset.name + ' (all ' + total + ')');
+      else {
+        const names = on.map(b => b.closest('.dpkdoor').textContent.trim()).join(', ');
+        parts.push(g.dataset.name === 'All doors' || g.dataset.name === 'Other doors' ? names : g.dataset.name + ': ' + names);
+      }
+    });
+    const shown = parts.slice(0, 4).join(', ') + (parts.length > 4 ? ' +' + (parts.length - 4) + ' more' : '');
+    return { n, text: shown };
+  }
+
+  function update() {
+    const mode = ($('input[name=mode]:checked') || {}).value;
+    f.dataset.mode = mode || '';
+    if (mode !== lastMode) {
+      if (mode === 'default' && !label.value.trim()) label.value = 'Regular hours';
+      if (mode !== 'default' && label.value === 'Regular hours') label.value = '';
+      label.placeholder = mode === 'lock' ? 'e.g. Thanksgiving closure' : mode === 'default' ? 'e.g. Office hours' : 'e.g. Smith wedding';
+      lastMode = mode;
+    }
+    const weekly = mode === 'default' || ($('input[name=repeat]:checked') || {}).value === 'weekly';
+    f.dataset.weekly = weekly ? '1' : '';
+    const d = doorText();
+    const s = $('input[name=start]').value, e = $('input[name=end]').value, day = $('input[name=day]').value;
+    over.hidden = !(s && e && e <= s);
+    const picked = $$('input[name=weekdays]:checked').map(x => +x.value);
+    const daysTxt = picked.length === 7 ? 'every day' : picked.join() === '0,1,2,3,4' ? 'on weekdays' : picked.join() === '5,6' ? 'on weekends' : picked.length ? 'every ' + picked.map(i => days[i]).join(', ') : '';
+    const until = $('input[name=until]').value;
+    const missing = [];
+    if (!mode) missing.push('Choose what you want to do (step 1)');
+    if (!label.value.trim()) missing.push('Give it a name (step 2)');
+    if (!d.n) missing.push('Pick at least one door (step 3)');
+    if (weekly && !picked.length) missing.push('Pick the days (step 4)');
+    if (!s || !e) missing.push('Set the times (step 4)');
+
+    const LOCK = {{ padlock(False, 'inline')|tojson }}, OPEN = {{ padlock(True, 'inline')|tojson }};
+    const verb = mode === 'lock' ? LOCK + ' Keep <b>locked</b>' : mode === 'default' ? '🕘 <b>Unlocked</b> as regular hours:' : OPEN + ' <b>Unlock</b>';
+    const what = d.n ? '<b>' + d.text + '</b>' : '<span class="muted">(no doors yet)</span>';
+    const when = weekly
+      ? (daysTxt || '<span class="muted">(no days yet)</span>') + ', ' + t12(s) + ' – ' + t12(e) + (e && s && e <= s ? ' (next day)' : '') + (until ? ', until ' + dayname(until) : '') + (mode === 'default' ? '' : ', starting ' + dayname(day))
+      : 'on ' + dayname(day) + ', ' + t12(s) + ' – ' + t12(e) + (e && s && e <= s ? ' (next day)' : '');
+    sum.innerHTML = mode ? verb + ' ' + what + ' ' + when + '.' + (mode === 'default' ? '<br><small class="muted">Outside these hours the doors stay locked.</small>' : '') : 'Choose what you want to do, then the doors and the time.';
+    need.innerHTML = missing.map(m => '<li>' + m + '</li>').join('');
+    save.disabled = missing.length > 0;
+  }
+  f.querySelectorAll('[data-days]').forEach(b => b.addEventListener('click', () => {
+    const want = b.dataset.days.split(','); $$('input[name=weekdays]').forEach(x => x.checked = want.includes(x.value)); update();
+  }));
+  f.addEventListener('input', () => setTimeout(update));
+  f.addEventListener('change', () => setTimeout(update));
+  update();
+})();
+</script>
 {% endif %}
 {% endblock %}

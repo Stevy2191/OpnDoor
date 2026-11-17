@@ -27,7 +27,7 @@
           <span class="when">{{ span(it.start, it.end) }}</span>
           <span class="what">
             {% if seg.state == 'unlock' %}<strong>Unlocked</strong>{% elif seg.state == 'lock' %}<strong>Kept locked</strong>{% else %}Locked{% endif %}
-            {% if seg.schedule %}<small>· {{ event_icon(seg.schedule) }} {{ 'Regular hours' if seg.schedule.kind == 'default' else seg.schedule.label }}</small>{% endif %}
+            {% if seg.schedule %}<small>· {{ 'Regular hours' if seg.schedule.kind == 'default' else seg.schedule.label }}</small>{% endif %}
           </span>
         </li>
       {% endfor %}
@@ -43,8 +43,7 @@
           <span class="tag {{ 'def' if s.kind == 'default' else ('lock' if s.action == 'lock' else 'rep') }}">{{ describe_kind(s) }}</span>
           {% if s.source == 'calendar' %}<span class="tag cal">📅 calendar</span>{% endif %}
         </div>
-        <strong>{{ event_icon(s) }} {{ s.label }}</strong>
-        {% if s.kind == 'override' %}<small class="muted"> · {{ event_name(s) }}</small>{% endif %}
+        <strong>{{ s.label }}</strong>
         {% if s.contact %}<div class="small muted">Contact: {{ s.contact }}</div>{% endif %}
         <div class="small">
           {% if s.repeat_weekdays %}{{ describe_repeat(s) }}{% else %}{{ s.start_local|day }}{% endif %},

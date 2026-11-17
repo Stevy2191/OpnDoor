@@ -44,3 +44,48 @@
   {% else %}<span class="dot closed"></span> Locked{% endif %}
   {% if st.error %}<small class="err">⚠ {{ st.error }}</small>{% endif %}
 {% endmacro %}
+
+{# Compact door picker for the schedule form: one row per building (tick = whole building),
+   "Pick doors" opens that building's doors. #}
+{% macro door_picker(doors, name, selected, sites) %}
+{% set tree = door_tree(doors) %}
+{% set multi = tree|length > 1 %}
+<div class="dpk" data-picker>
+  {% if doors|length > 6 %}
+  <input type="search" class="dpksearch" placeholder="Search {{ doors|length }} doors or buildings…" aria-label="Search doors">
+  {% endif %}
+  {% for site_id, groups in tree %}
+    {% if multi %}<div class="dpksite">{{ sites[site_id].name if site_id in sites else 'Site' }}</div>{% endif %}
+    {% set has_b = groups|length > 1 or groups[0][0] %}
+    <div class="dpklist">
+    {% for b, group in groups %}
+      {% set bname = (b.name if b else 'Other doors') if has_b else 'All doors' %}
+      {% set npick = group|selectattr('id', 'in', selected)|list|length %}
+      <div class="dpkb {{ '' if (npick and npick < group|length) or doors|length <= 6 else 'collapsed' }}" data-group data-name="{{ bname }}">
+        <div class="dpkbrow">
+          <label class="dpkball"><input type="checkbox" class="groupall" aria-label="All of {{ bname }}"><span>{{ bname }}</span></label>
+          <span class="dpkbcount muted small" data-total="{{ group|length }}">{{ group|length }} door{{ '' if group|length == 1 else 's' }}</span>
+          {% if group|length > 1 %}<button type="button" class="link small dpkexp">Pick doors</button>{% endif %}
+        </div>
+        <div class="dpkdoors">
+        {% for d in group %}
+          <label class="dpkdoor" data-find="{{ (d.name ~ ' ' ~ bname)|lower }}"><input type="checkbox" name="{{ name }}" value="{{ d.id }}"
+            {% if d.id in selected or doors|length == 1 %}checked{% endif %}><span>{{ d.name }}</span></label>
+        {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  {% endfor %}
+  <p class="muted small dpknone" hidden>No doors match.</p>
+</div>
+{% endmacro %}
+
+
+{# Padlock icons drawn like the menu icons. open=True: unlocked (green), False: locked (red). #}
+{% macro padlock(open=True, cls='') -%}
+<svg class="padlock {{ 'unl' if open else 'lck' }} {{ cls }}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+{%- if open %}<rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7.5a4 4 0 0 1 7.6-1.8"/><circle cx="12" cy="16" r="1.3" fill="currentColor" stroke="none"/>
+{%- else %}<rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/><circle cx="12" cy="16" r="1.3" fill="currentColor" stroke="none"/>{% endif -%}
+</svg>
+{%- endmacro %}

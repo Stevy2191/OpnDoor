@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_line %}
+{% from "_macros.html" import status_line, padlock %}
 {% block content %}
 {% set hour = now_hour %}
 <div class="pagehead">
@@ -9,7 +9,7 @@
   </div>
   {% if doors %}
   <div class="btnrow">
-    <button type="button" class="button" onclick="document.getElementById('unlockdlg').showModal()">🔓 Unlock a door now</button>
+    <button type="button" class="button" onclick="document.getElementById('unlockdlg').showModal()">{{ padlock(True) }} Unlock a door now</button>
     <a class="button primary" href="/schedules/new">+ New schedule</a>
   </div>
   {% endif %}
@@ -30,8 +30,8 @@
 {% else %}
 
 <section class="tiles">
-  <a class="tile {{ 'hot ok' if tiles.unlocked }}" href="#now"><span class="num">{{ tiles.unlocked }}</span><span class="lbl">🔓 Unlocked now</span></a>
-  <a class="tile {{ 'hot lock' if tiles.locked }}" href="#now"><span class="num">{{ tiles.locked }}</span><span class="lbl">🔒 Kept locked</span></a>
+  <a class="tile {{ 'hot ok' if tiles.unlocked }}" href="#now"><span class="num">{{ tiles.unlocked }}</span><span class="lbl">{{ padlock(True) }} Unlocked now</span></a>
+  <a class="tile {{ 'hot lock' if tiles.locked }}" href="#now"><span class="num">{{ tiles.locked }}</span><span class="lbl">{{ padlock(False) }} Kept locked</span></a>
   <a class="tile {{ 'hot bad' if tiles.problems }}" href="#now"><span class="num">{{ tiles.problems }}</span><span class="lbl">⚠️ Problems</span></a>
   <a class="tile" href="#today"><span class="num">{{ tiles.events }}</span><span class="lbl">📅 Events left today</span></a>
 </section>
@@ -72,7 +72,7 @@
     <div class="arow {{ 'live' if r.live }} {{ 'past' if r.past }} {{ 'lockov' if s.action == 'lock' }}">
       <div class="atime">{{ span(r.o.start, r.o.end) }}{% if r.live %}<span class="livedot">now</span>{% endif %}</div>
       <div class="awhat">
-        <div><span class="evicon">{{ event_icon(s) }}</span> <strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
+        <div><strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
         <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
       </div>
       {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}
@@ -94,7 +94,7 @@
     <div class="arow {{ 'lockov' if s.action == 'lock' }}">
       <div class="atime">{{ span(r.o.start, r.o.end) }}</div>
       <div class="awhat">
-        <div><span class="evicon">{{ event_icon(s) }}</span> <strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
+        <div><strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
         <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
       </div>
       {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}

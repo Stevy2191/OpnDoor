@@ -54,7 +54,7 @@
             {% elif st.mode == 'lock' %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ '' if (st.until|day) == 'Today' else (st.until|day) ~ ' ' }}{{ st.until|time }}</small>{% endif %}
             {% else %}<span class="muted">Locked</span>{% endif %}
           </span>
-          <span class="dnext">{% set ev = nextev.get(d.id) %}{% if ev %}{{ event_icon(ev.schedule) }} {{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
+          <span class="dnext">{% set ev = nextev.get(d.id) %}{% if ev %}{{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
           <a class="small dview" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View →</a>
         </label>
         {% endfor %}

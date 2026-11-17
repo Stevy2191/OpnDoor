@@ -642,8 +642,11 @@ def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kin
     doors = doors_for(session, user)
     if site_id is not None:  # follow the sidebar site switcher, but never hide doors already picked
         doors = [d for d in doors if d.site_id == site_id or d.id in set(selected)]
-    return dict(sched=sched, doors=doors, selected=set(selected), kind=kind,
-                action=sched.action if sched else "unlock", people=people,
+    action = sched.action if sched else "unlock"
+    mode = "default" if kind == "default" else ("lock" if action == "lock" else "unlock")
+    return dict(sched=sched, doors=doors, selected=set(selected), kind=kind, mode=mode,
+                action=action, people=people,
+                until_val=sched.repeat_until.isoformat() if sched and sched.repeat_until else "",
                 event_type=sched.event_type if sched else "event",
                 date_val=start.date().isoformat(), start_val=start.strftime("%H:%M"),
                 end_val=end.strftime("%H:%M"), days=days)
@@ -724,8 +727,13 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
                   start: str = Form(...), end: str = Form(...), repeat: str = Form("none"),
                   weekdays: list[str] = Form([]), until: str = Form(""), notes: str = Form(""),
                   kind: str = Form("override"), action: str = Form("unlock"), event_type: str = Form("event"),
-                  contact: str = Form(""), user: User = Depends(require_user),
+                  contact: str = Form(""), mode: str = Form(""), user: User = Depends(require_user),
                   session: Session = Depends(get_session)):
+    # The form asks one question, "what do you want to do?": unlock / lock / default (regular hours)
+    if mode in ("unlock", "lock"):
+        kind, action = "override", mode
+    elif mode == "default":
+        kind, action = "default", "unlock"
     allowed = allowed_door_ids(session, user)
     sched, old_doors = None, []
     if sid is not None:

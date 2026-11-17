@@ -519,3 +519,72 @@ table.assign td:first-child, table.assign th:first-child { width: 2rem; }
 .drow { grid-template-columns: 1.5rem minmax(10rem, 1.4fr) minmax(9rem, 1fr) minmax(10rem, 1.4fr) 3.5rem; }
 @media (max-width: 760px) { .drow { grid-template-columns: 1.5rem 1fr auto; } }
 .hintline { margin: -.6rem 0 .9rem; }
+
+/* ================= schedule form (guided) ================= */
+.sgrid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1rem; align-items: start; margin-top: 1rem; }
+@media (max-width: 980px) { .sgrid { grid-template-columns: 1fr; } }
+.step h2 { display: flex; align-items: center; gap: .6rem; margin: 0 0 .9rem; font-size: 1.1rem; }
+.step .num { display: inline-grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 50%; background: var(--accent); color: #fff; font-size: .9rem; flex: none; }
+.step .hint { margin: -.4rem 0 .75rem; }
+.modecards { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+@media (max-width: 700px) { .modecards { grid-template-columns: 1fr; } }
+.mcard { cursor: pointer; font-weight: 400; }
+.mcard input { position: absolute; opacity: 0; }
+.mcard > span { display: flex; flex-direction: column; gap: .25rem; height: 100%; padding: .9rem 1rem; border: 1.5px solid var(--line); border-radius: 12px; }
+.mcard > span:hover { border-color: var(--accent); }
+.mcard .mi { font-size: 1.5rem; font-weight: 400; }
+.mcard small { color: var(--muted); line-height: 1.35; }
+.mcard input:checked + span { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.mcard input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.biginput { font-size: 1.05rem; padding: .7rem .8rem; margin: 0 0 .75rem; }
+.typelbl { margin-bottom: .35rem; }
+.chips.small .chip span { padding: .3rem .7rem; font-size: .88rem; }
+details.more { margin-top: .75rem; }
+details.more summary { cursor: pointer; color: var(--accent); font-size: .9rem; }
+details.more label { margin-top: .6rem; }
+/* mode-dependent parts */
+.sform[data-mode="default"] .m-event, .sform:not([data-mode="default"]) .m-default { display: none; }
+.sform:not([data-weekly="1"]) .w-weekly, .sform[data-weekly="1"] .w-once { display: none; }
+.repeatseg { margin-bottom: .9rem; }
+.whenrow { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: .75rem; }
+@media (max-width: 600px) { .whenrow { grid-template-columns: 1fr 1fr; } .whenrow .w-date { grid-column: 1 / -1; } }
+.overnight { color: var(--accent); margin: .4rem 0 0; }
+.daysblock { margin-top: .9rem; display: flex; flex-direction: column; gap: .5rem; }
+.dayshead { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.presets { display: flex; gap: .9rem; }
+.untilfield { margin-top: .25rem; max-width: 260px; }
+/* summary */
+.ssum { position: sticky; top: 1rem; display: flex; flex-direction: column; gap: .6rem; }
+.ssum h2 { margin: 0; font-size: 1rem; }
+.sumtext { margin: 0; line-height: 1.5; }
+.needed { margin: 0; padding-left: 1.1rem; color: var(--err); }
+.needed:empty { display: none; }
+.savebtn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+.button.wide { display: block; text-align: center; }
+.delform { margin-top: 1rem; }
+@media (max-width: 980px) { .ssum { position: static; } }
+/* door picker */
+.dpk { display: flex; flex-direction: column; gap: .5rem; }
+.dpksearch { margin: 0; }
+.dpksite { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-top: .4rem; }
+.dpklist { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.dpkb + .dpkb { border-top: 1px solid var(--line); }
+.dpkbrow { display: flex; align-items: center; gap: .75rem; padding: .6rem .8rem; }
+.dpkball { display: flex; align-items: center; gap: .6rem; font-weight: 600; cursor: pointer; flex: 1; min-width: 0; }
+.dpkball input, .dpkdoor input { width: 18px; height: 18px; margin: 0; flex: none; }
+.dpkbcount.on { color: var(--accent); font-weight: 600; }
+.dpkexp { white-space: nowrap; }
+.dpkdoors { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .1rem .75rem; padding: 0 .8rem .6rem 2.5rem; }
+.dpkb.collapsed .dpkdoors { display: none; }
+.dpkdoor { display: flex; align-items: center; gap: .55rem; font-weight: 400; padding: .3rem 0; cursor: pointer; min-width: 0; }
+.dpkdoor span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dpkb:has(.dpkdoor input:checked) { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+/* schedules list without the icon column */
+.srow { grid-template-columns: 1fr auto auto; }
+@media (max-width: 700px) { .srow { grid-template-columns: 1fr; } .snext, .sact { grid-column: 1; } }
+/* padlock icons */
+.padlock { width: 1.05em; height: 1.05em; vertical-align: -0.16em; flex: none; }
+.padlock.unl { color: var(--ok); }
+.padlock.lck { color: var(--err); }
+.mcard .mi .padlock { width: 1.6rem; height: 1.6rem; }
+.padlock.inline { width: 1.1em; height: 1.1em; }

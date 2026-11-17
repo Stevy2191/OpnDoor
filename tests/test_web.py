@@ -272,3 +272,27 @@ def test_stylesheet_link_changes_with_its_content(client):
     want = hashlib.sha256((Path(app.web.__file__).parent / "static" / "style.css").read_bytes()).hexdigest()[:10]
     assert f'/static/style.css?v={want}' in client.get("/").text
     assert client.get(f"/static/style.css?v={want}").status_code == 200
+
+
+def test_schedule_form_single_choice_mode(client, fake):
+    import re
+    setup_admin(client)
+    form = client.get("/schedules/new").text
+    assert "What do you want to do?" in form and 'name="mode" value="unlock" checked' in form
+    assert 'name="mode" value="default" checked' in client.get("/schedules/new?kind=default").text
+
+    # mode=lock -> keep-locked override; mode=default -> regular hours (weekly)
+    client.post("/schedules", data={"mode": "lock", "label": "Closed", "door_ids": ["1:demo-front"],
+                                    "day": "2030-01-02", "start": "00:00", "end": "23:59"})
+    client.post("/schedules", data={"mode": "default", "label": "Office hours", "door_ids": ["1:demo-side"],
+                                    "day": "2030-01-01", "start": "08:00", "end": "17:00", "weekdays": ["0", "4"]})
+    from app.db import session_scope
+    from app.models import Schedule
+    from sqlmodel import select
+    with session_scope() as s:
+        got = {x.label: (x.kind, x.action, x.repeat_weekdays) for x in s.exec(select(Schedule)).all()}
+    assert got["Closed"] == ("override", "lock", "")
+    assert got["Office hours"] == ("default", "unlock", "0,4")
+    # editing shows the right choice
+    edit = client.get("/schedules/1").text
+    assert 'name="mode" value="lock" checked' in edit and "Delete this schedule" in edit
