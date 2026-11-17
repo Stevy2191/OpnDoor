@@ -77,6 +77,18 @@ def door_tree(doors) -> list:
 
 templates.env.globals["door_tree"] = door_tree
 
+
+def _asset_version() -> str:
+    """Fingerprint of the stylesheet, so browsers fetch the new one after an update."""
+    import hashlib
+    try:
+        return hashlib.sha256((Path(__file__).parent / "static" / "style.css").read_bytes()).hexdigest()[:10]
+    except OSError:
+        return config.VERSION
+
+
+templates.env.globals["asset_v"] = _asset_version()
+
 def flash(request: Request, msg: str, kind: str = "ok") -> None:
     request.session.setdefault("flash", []).append([kind, msg])
 
