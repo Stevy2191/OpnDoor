@@ -76,16 +76,17 @@
   <div class="ppnext small muted"></div>
   <form method="post" action="/quick-unlock" class="pprow">
     <input type="hidden" name="door_ids" class="ppid"><input type="hidden" name="next" value="/map?plan={{ current.id }}">
-    <span class="small muted">Unlock for</span>
+    <button name="mode" value="open" class="small primary" title="Unlocks for a few seconds, then locks by itself">Open now</button>
+    <span class="small muted">or unlock for</span>
     <button name="minutes" value="15" class="small">15 min</button>
     <button name="minutes" value="60" class="small">1 hour</button>
   </form>
   <form method="post" class="pplock pprow" hidden><input type="hidden" name="next" value="/map?plan={{ current.id }}">
     <button class="small">Lock now</button></form>
   <div class="pprow">
-    <a class="small ppsched" href="#">Add schedule</a>
+    {% if user.schedules %}<a class="small ppsched" href="#">Add schedule</a>{% endif %}
     <a class="small ppview" href="#">View door</a>
-    <label class="check small ppselect"><input type="checkbox"> Select</label>
+    {% if user.schedules %}<label class="check small ppselect"><input type="checkbox"> Select</label>{% endif %}
   </div>
 </div>
 
@@ -120,9 +121,9 @@
     pop.querySelector('.ppnext').textContent = pin.dataset.next ? 'Next: ' + pin.dataset.next : '';
     pop.querySelector('.ppid').value = id;
     const lock = pop.querySelector('.pplock'); lock.hidden = pin.dataset.state !== 'open'; lock.action = '/doors/' + enc + '/lock-now';
-    pop.querySelector('.ppsched').href = '/schedules/new?door=' + enc;
+    if (pop.querySelector('.ppsched')) pop.querySelector('.ppsched').href = '/schedules/new?door=' + enc;
     pop.querySelector('.ppview').href = '/doors/' + enc;
-    pop.querySelector('.ppselect input').checked = sel.has(id);
+    if (pop.querySelector('.ppselect')) pop.querySelector('.ppselect input').checked = sel.has(id);
     document.querySelectorAll('.pin.active').forEach(p => p.classList.remove('active')); pin.classList.add('active');
     pop.hidden = false; place();
   }
@@ -141,7 +142,7 @@
     document.getElementById('pickregular').href = '/schedules/new?kind=default&' + q;
     document.querySelectorAll('.pin').forEach(p => p.classList.toggle('sel', sel.has(p.dataset.id)));
   }
-  pop.querySelector('.ppselect input').addEventListener('change', e => {
+  if (pop.querySelector('.ppselect')) pop.querySelector('.ppselect input').addEventListener('change', e => {
     const id = curPin.dataset.id; e.target.checked ? sel.add(id) : sel.delete(id); updateSel();
   });
 })();

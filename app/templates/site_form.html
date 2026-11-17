@@ -6,6 +6,7 @@
 <h1>{{ site.name if site else ('Connect your UniFi Access console' if not sites else 'Add a site') }}</h1>
 {% if not site and not sites %}
 <p class="muted">A site is one UniFi Access console. Enter its address and an API token, and OpnDoor will load its doors. You can add more consoles later.</p>
+<p class="muted small">Token permissions: <strong>Locations: Edit</strong> and <strong>Devices: View</strong>. To let people's doors follow their UniFi Access permissions, also allow <strong>Users: View</strong> and <strong>Access Policies: View</strong>.</p>
 {% endif %}
 {% if site and site.last_sync_status %}
 <p class="small {{ 'err' if site.last_sync_status.startswith('Error') else 'muted' }}">Last check: {{ site.last_sync_status }}</p>

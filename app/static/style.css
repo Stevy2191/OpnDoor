@@ -661,3 +661,20 @@ table.fp td { vertical-align: middle; }
 .fpsettings form { margin: 0; }
 .fpsettings input { width: auto; }
 .fpsettings form.btnrow { align-items: flex-end; }
+
+/* ================= open now / delete / openers ================= */
+.arowact { display: flex; align-items: center; gap: .6rem; }
+.arowact form { margin: 0; }
+.iconbtn { border: 0; background: none; padding: .25rem; color: var(--muted); border-radius: 6px; line-height: 0; }
+.iconbtn:hover { color: var(--err); background: var(--err-soft); }
+.openrow { display: flex; align-items: center; gap: .8rem; padding: .7rem .8rem; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--accent-soft); }
+.openrow button { white-space: nowrap; display: inline-flex; align-items: center; gap: .35rem; }
+.openrow .muted { line-height: 1.35; }
+#pick.viewonly .ball, #pick.viewonly input[name=door], #pick.viewonly .pickbar, #pick.viewonly ~ .pickbar { display: none !important; }
+.unifisrc { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .8rem; }
+#userform:has(input[name=role][value=admin]:checked) .only-door-people,
+#userform:has(input[name=role][value=site_admin]:checked) .only-door-people { display: none; }
+.for-unifi { display: none; margin-top: .6rem; }
+#userform:has(input[name=door_source][value=unifi]:checked) .for-unifi { display: block; }
+#userform:has(input[name=door_source][value=unifi]:checked):not(:has(input[name=role][value=site_admin]:checked)) .only-operator { display: none; }

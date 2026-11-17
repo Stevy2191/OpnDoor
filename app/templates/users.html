@@ -3,23 +3,27 @@
 {% block content %}
 <div class="head">
   <h1>People</h1>
-  <a class="button primary" href="/users/new">+ Add a person</a>
+  <div class="btnrow">
+    {% if any_unifi %}<form method="post" action="/users/unifi-check"><button title="OpnDoor also does this every few minutes">↻ Check UniFi Access now</button></form>{% endif %}
+    <a class="button primary" href="/users/new">+ Add a person</a>
+  </div>
 </div>
 <div class="roles-help">
   {% if user.is_admin %}<div><strong>Admin</strong> can do everything, at every site.</div>
   <div><strong>Site admin</strong> runs their own sites: all doors there, the door operators there, calendars and history.</div>{% endif %}
-  <div><strong>Door operator</strong> can see and schedule only the doors they're given.</div>
+  <div><strong>Door operator</strong> can see, open and schedule only the doors they're given.</div>
+  <div><strong>Door opener</strong> can open and unlock their doors, but can't make schedules.</div>
 </div>
 {% if not user.is_admin %}<p class="muted small">You can add and change door operators at your sites.</p>{% endif %}
 <div class="table card">
 <table>
-  <thead><tr><th>Name</th><th>Role</th><th>Can schedule</th><th>Signs in with</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Role</th><th>Doors</th><th>Signs in with</th><th></th></tr></thead>
   <tbody>
   {% for u in users %}
     <tr class="{{ '' if u.active else 'gone' }}">
       <td><strong>{{ u.name or '—' }}</strong><br><small class="muted">{{ u.email }}</small></td>
-      <td>{% if not u.active %}<span class="tag">Turned off</span>{% elif u.is_owner %}<span class="tag rep">★ Main admin</span>{% elif u.is_admin %}<span class="tag rep">Admin</span>{% elif u.is_site_admin %}<span class="tag cal">Site admin</span>{% else %}<span class="tag">Door operator</span>{% endif %}</td>
-      <td>{% if u.is_admin %}Everything{% if u.is_owner %} <small class="muted">· can't be changed by others</small>{% endif %}{% else %}{% if u.is_site_admin %}<small class="muted">Manages: </small>{% endif %}{% for n in access.get(u.id, []) %}<span class="tag {{ 'def' if n.startswith('All doors') else '' }}">{{ n.replace('All doors at ', '') if u.is_site_admin else n }}</span> {% else %}{% if u.id not in elsewhere %}<span class="muted">Nothing yet</span>{% endif %}{% endfor %}{% if u.id in elsewhere and not user.is_admin %}<small class="muted"> + other sites</small>{% endif %}{% endif %}</td>
+      <td>{% if not u.active %}<span class="tag">Turned off</span>{% elif u.is_owner %}<span class="tag rep">★ Main admin</span>{% elif u.is_admin %}<span class="tag rep">Admin</span>{% elif u.is_site_admin %}<span class="tag cal">Site admin</span>{% else %}<span class="tag">{{ u.role_name }}</span>{% endif %}</td>
+      <td>{% if u.is_admin %}Everything{% if u.is_owner %} <small class="muted">· can't be changed by others</small>{% endif %}{% else %}{% if u.follows_unifi %}<span class="tag def">From UniFi Access</span> <small class="muted">{{ unifi_counts.get(u.id, 0) }} door{{ '' if unifi_counts.get(u.id, 0) == 1 else 's' }}</small>{% else %}{% if u.is_site_admin %}<small class="muted">Manages: </small>{% endif %}{% for n in access.get(u.id, []) %}<span class="tag {{ 'def' if n.startswith('All doors') else '' }}">{{ n.replace('All doors at ', '') if u.is_site_admin else n }}</span> {% else %}{% if u.id not in elsewhere %}<span class="muted">Nothing yet</span>{% endif %}{% endfor %}{% if u.id in elsewhere and not user.is_admin %}<small class="muted"> + other sites</small>{% endif %}{% endif %}{% endif %}</td>
       <td>{{ 'Password' if u.password_hash else 'Microsoft' }}{% if u.last_login_at %}<br><small class="muted">last {{ (u.last_login_at|local)|day }}</small>{% endif %}</td>
       <td class="right">{% if u.id in editable %}<a class="small" href="/users/{{ u.id }}">Edit</a>{% endif %}</td>
     </tr>

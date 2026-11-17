@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_line, padlock %}
+{% from "_macros.html" import status_line, padlock, trash %}
 {% block content %}
 {% set hour = now_hour %}
 <div class="pagehead">
@@ -9,8 +9,8 @@
   </div>
   {% if doors %}
   <div class="btnrow">
-    <button type="button" class="button" onclick="document.getElementById('unlockdlg').showModal()">{{ padlock(True) }} Unlock a door now</button>
-    <a class="button primary" href="/schedules/new">+ New schedule</a>
+    <button type="button" class="button {{ 'primary' if not user.schedules }}" onclick="document.getElementById('unlockdlg').showModal()">{{ padlock(True) }} Open or unlock a door</button>
+    {% if user.schedules %}<a class="button primary" href="/schedules/new">+ New schedule</a>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -75,7 +75,11 @@
         <div><strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
         <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
       </div>
-      {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}
+      {% if r.editable %}<div class="arowact">
+        <a class="small" href="/schedules/{{ s.id }}">Edit</a>
+        <form method="post" action="/schedules/{{ s.id }}/delete" onsubmit="return confirm('Delete “{{ s.label|e }}”{{ ' and every time it repeats' if s.repeat_weekdays }}?')">
+          <input type="hidden" name="next" value="/"><button class="iconbtn" title="Delete" aria-label="Delete {{ s.label }}">{{ trash() }}</button></form>
+      </div>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -97,7 +101,11 @@
         <div><strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
         <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
       </div>
-      {% if r.editable %}<a class="small" href="/schedules/{{ s.id }}">Edit</a>{% endif %}
+      {% if r.editable %}<div class="arowact">
+        <a class="small" href="/schedules/{{ s.id }}">Edit</a>
+        <form method="post" action="/schedules/{{ s.id }}/delete" onsubmit="return confirm('Delete “{{ s.label|e }}”{{ ' and every time it repeats' if s.repeat_weekdays }}?')">
+          <input type="hidden" name="next" value="/"><button class="iconbtn" title="Delete" aria-label="Delete {{ s.label }}">{{ trash() }}</button></form>
+      </div>{% endif %}
     </div>
     {% endfor %}
     {% endfor %}
@@ -110,7 +118,7 @@
 <dialog id="unlockdlg" class="dlg">
   <form method="post" action="/quick-unlock" class="dlgform">
     <div class="dlghead">
-      <h2>Unlock now</h2>
+      <h2>Open or unlock</h2>
       <button type="button" class="link" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
     </div>
     <input type="search" class="doorsearch" placeholder="Search {{ doors|length }} doors or buildings…" autocomplete="off" aria-label="Search doors">
@@ -134,7 +142,11 @@
     </div>
     <div class="dlgfoot">
       <span class="muted small picked">Pick one or more doors</span>
-      <div class="durlabel small muted">Unlock for</div>
+      <div class="openrow">
+        <button name="mode" value="open" class="primary">Open now</button>
+        <span class="muted small">Unlocks for a few seconds, like tapping a badge, then locks by itself. For letting someone in or opening a bay door.</span>
+      </div>
+      <div class="durlabel small muted">Or keep it unlocked for</div>
       <div class="btnrow durs">
         {% for m, lbl in [(15,'15 min'),(30,'30 min'),(60,'1 hour'),(120,'2 hours'),(240,'4 hours')] %}
         <button name="minutes" value="{{ m }}">{{ lbl }}</button>

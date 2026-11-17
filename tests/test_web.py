@@ -29,7 +29,7 @@ def test_admin_flow_and_permissions(client, fake):
     setup_admin(client)
     # dashboard lists demo doors
     r = client.get("/")
-    assert "Front Entrance" in r.text and "Unlock now" in r.text
+    assert "Front Entrance" in r.text and "Open now" in r.text
 
     # create a user who may only use the side door
     r = client.post("/users", data={"name": "Bob", "email": "bob@example.com", "password": "password123",

@@ -10,8 +10,13 @@
     <div style="margin-top:.4rem">{{ status_line(status) }}</div>
   </div>
   <div class="btnrow">
+    <form method="post" action="/quick-unlock"><input type="hidden" name="door_ids" value="{{ door.id }}">
+      <input type="hidden" name="next" value="/doors/{{ door.id|urlencode }}">
+      <button name="mode" value="open" class="{{ 'primary' if not user.schedules }}" title="Unlocks for a few seconds, then locks by itself">Open now</button></form>
+    {% if user.schedules %}
     <a class="button" href="/schedules/new?kind=default&door={{ door.id|urlencode }}">Set regular hours</a>
     <a class="button primary" href="/schedules/new?door={{ door.id|urlencode }}">+ Add override</a>
+    {% endif %}
   </div>
 </div>
 

@@ -21,6 +21,9 @@ class User(SQLModel, table=True):
     Roles: Admin (is_admin): everything. Site admin (is_site_admin): manages the
     sites in their UserSite rows: those doors, door operators there, calendars
     and history for those sites. Door operator: schedules the doors they're given.
+    Door opener (can_schedule False): opens and unlocks their doors, no schedules.
+    Operators and openers get their doors either picked in OpnDoor (door_source
+    "opndoor") or copied from their UniFi Access policies ("unifi", see UnifiGrant).
     """
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -36,17 +39,37 @@ class User(SQLModel, table=True):
     ms_oid: Optional[str] = Field(default=None, index=True)  # Microsoft account id, bound on first sign-in
     last_login_at: Optional[datetime] = None
     theme: str = "auto"  # auto | light | dark
+    can_schedule: bool = True  # False = door opener: may open/unlock doors but not make schedules
+    door_source: str = "opndoor"  # opndoor | unifi (doors follow their UniFi Access permissions)
+    unifi_note: str = ""  # result of the last UniFi Access permission check, shown to admins
     created_at: datetime = Field(default_factory=utcnow)
 
     @property
     def role_name(self) -> str:
         if self.is_owner:
             return "Main admin"
-        return "Admin" if self.is_admin else "Site admin" if self.is_site_admin else "Door operator"
+        if self.is_admin:
+            return "Admin"
+        if self.is_site_admin:
+            return "Site admin"
+        return "Door operator" if self.can_schedule else "Door opener"
 
     @property
     def role(self) -> str:
-        return "admin" if self.is_admin else "site_admin" if self.is_site_admin else "operator"
+        if self.is_admin:
+            return "admin"
+        if self.is_site_admin:
+            return "site_admin"
+        return "operator" if self.can_schedule else "opener"
+
+    @property
+    def schedules(self) -> bool:
+        """May make and change schedules (everyone but door openers)."""
+        return self.is_admin or self.is_site_admin or self.can_schedule
+
+    @property
+    def follows_unifi(self) -> bool:
+        return not (self.is_admin or self.is_site_admin) and self.door_source == "unifi"
 
     @property
     def is_manager(self) -> bool:
@@ -116,6 +139,18 @@ class DoorPin(SQLModel, table=True):
     plan_id: int = Field(foreign_key="floorplan.id", index=True)
     x: float
     y: float
+
+
+class UnifiGrant(SQLModel, table=True):
+    """A door a person may use because of their UniFi Access policies (door_source "unifi").
+
+    hours: JSON {"monday": [["08:00", "17:00"], ...], ...} from the policy's schedule, or "" for any time.
+    """
+
+    user_id: int = Field(foreign_key="user.id", primary_key=True)
+    door_id: str = Field(foreign_key="door.id", primary_key=True)
+    hours: str = ""
+    policies: str = ""  # policy names, for showing where access came from
 
 
 class UserDoor(SQLModel, table=True):

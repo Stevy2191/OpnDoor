@@ -8,12 +8,12 @@
 <div class="pagehead">
   <div>
     <h1>{{ cur.name if cur else 'Doors' }}</h1>
-    <p class="muted">{{ usable|length }} door{{ '' if usable|length == 1 else 's' }} · tick doors, then set regular hours or add an override</p>
+    <p class="muted">{{ usable|length }} door{{ '' if usable|length == 1 else 's' }} · {{ 'tick doors, then set regular hours or add an override' if user.schedules else 'click a door to open it' }}</p>
   </div>
   <div class="btnrow">
     {% if user.is_manager and (cur or sites|length == 1) %}<a class="button" href="/sites/{{ (cur or (sites.values()|first)).id }}#buildings">🏢 Organize buildings</a>{% endif %}
     {% if user.is_admin %}<form method="post" action="/doors/sync"><button>↻ Reload from UniFi</button></form>{% endif %}
-    <a class="button primary" href="/schedules/new">+ New schedule</a>
+    {% if user.schedules %}<a class="button primary" href="/schedules/new">+ New schedule</a>{% endif %}
   </div>
 </div>
 
@@ -28,7 +28,7 @@
   </div>
 </div>
 
-<form id="pick" method="get" action="/schedules/new">
+<form id="pick" method="get" action="/schedules/new" class="{{ '' if user.schedules else 'viewonly' }}">
   <input type="hidden" name="kind" id="pickkind" value="override">
   {% for site_id, groups in door_tree(usable) %}
   <section class="card dlist">

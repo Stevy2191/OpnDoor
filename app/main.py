@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
-from . import history, maps, sso
+from . import access, history, maps, sso
 from .web import render, router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -26,6 +26,7 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(engine.safe(engine.sync_doors), "interval", minutes=config.DOOR_SYNC_MINUTES, id="doors", **opts)
     sched.add_job(engine.safe(calendars.sync_all), "interval", minutes=config.CALENDAR_SYNC_MINUTES,
                   id="calendars", **opts)
+    sched.add_job(engine.safe(access.sync_all), "interval", minutes=config.DOOR_SYNC_MINUTES, id="access", **opts)
     sched.start()
     return sched
 
