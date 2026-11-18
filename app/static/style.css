@@ -750,3 +750,6 @@ table.fp td { vertical-align: middle; }
 .camdlg > .camnote { margin: .45rem 1rem 0; }
 .doorlive { margin: 0; max-height: 60vh; }
 .camctl { margin-top: .6rem; }
+.dcam.nocam { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .3rem; cursor: default;
+  background: var(--bg); color: var(--muted); border-bottom: 1px solid var(--line); font-size: .9rem; }
+.dtiles { align-items: stretch; }

@@ -49,10 +49,9 @@ def helper(monkeypatch):
                                              "low": "rtsps://10.0.0.1:7441/LOW?enableSrtp"}, request=req)
         return httpx.Response(200, content=b"jpeg", headers={"content-type": "image/jpeg"}, request=req)
 
-    monkeypatch.setattr(live.httpx, "put", fake_put)
+    monkeypatch.setattr(httpx, "put", fake_put)
     monkeypatch.setattr(protect.httpx, "get", fake_get)
     monkeypatch.setattr(config, "LIVE_VIDEO_URL", f"http://127.0.0.1:{port}")
-    live._registered.clear()
     protect._streams.clear()
     yield seen
     server.shutdown()
@@ -74,9 +73,12 @@ def test_relay_streams_video_to_people_who_may_use_the_door(client, helper):
         assert json.loads(ws.receive_text())["value"].startswith("video/mp4")
         assert ws.receive_bytes().startswith(b"\x00\x00\x00\x18ftyp")
         assert ws.receive_bytes() == b"moof-1"
-    reg = helper["put"][0]
-    assert reg["src"] == "rtspx://10.0.0.1:7441/LOW"  # low quality, no SRTP, self-signed cert OK
-    assert reg["name"].startswith("door_") and helper["ws"][0] == f"/api/ws?src={reg['name']}"
+    from urllib.parse import parse_qs, urlsplit
+    q = parse_qs(urlsplit(helper["ws"][0]).query)
+    assert urlsplit(helper["ws"][0]).path == "/api/ws"
+    assert q["src"] == ["rtspx://10.0.0.1:7441/LOW"]  # low quality, no SRTP, self-signed cert OK
+    assert q["name"][0].startswith("door_")
+    assert not helper["put"]  # nothing written to go2rtc's config (it can stay read-only)
 
 
 def test_relay_refuses_others(client, helper):

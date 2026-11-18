@@ -136,20 +136,44 @@ def _norm(s: str) -> str:
 
 
 def match(session: Session, site: Site, cams: Optional[list[dict]] = None) -> int:
-    """Give doors without a camera the camera named like them. Returns how many were matched."""
+    """Give doors without a camera the right one. Returns how many were matched.
+
+    Best: the door's own reader. UniFi Access says which readers serve which door, and a
+    reader with a camera shows up in Protect under the reader's name (e.g. door
+    "EMS2-DORM-KIT-HUB", reader and camera "EMS2 - DORM KITCHEN"). That needs the
+    Access token's Device: View permission; without it, doors and cameras are matched
+    by name (exactly, or a camera named like "<door> - Entry").
+    """
+    from .unifi import UnifiError, get_client
     cams = cams if cams is not None else cameras(site)
     by_name: dict[str, list[dict]] = {}
     for c in cams:
         by_name.setdefault(_norm(c["name"]), []).append(c)
+    try:
+        readers = get_client(site).door_devices()
+    except (UnifiError, AttributeError) as e:
+        log.info("reader list at %s unavailable (%s); matching cameras by name", site.name, e)
+        readers = {}
     n = 0
     for d in session.exec(select(Door).where(Door.site_id == site.id)).all():
         if d.camera_id:
             continue
+        found: list[dict] = []
+        names = readers.get(d.remote_id, [])
+        # entry readers first: they face the person at the door
+        for dev in sorted(names, key=lambda x: (0 if "entry" in x.lower() else 1 if "exit" not in x.lower() else 2)):
+            found = by_name.get(_norm(dev), [])
+            if found:
+                break
         key = _norm(d.name)
-        found = by_name.get(key, [])
-        if not found:  # e.g. door "Front Door", camera "Front Door Reader"
-            found = [c for c in cams if key and key in _norm(c["name"])]
-        if len(found) == 1:
+        if not found:
+            found = by_name.get(key, [])
+        if not found:  # e.g. door "Front Door", camera "Front Door Reader" or "Front Door - Entry"
+            found = [c for c in cams if key and _norm(c["name"]).startswith(key)]
+            if len(found) > 1:
+                entry = [c for c in found if "entry" in c["name"].lower()]
+                found = entry or found
+        if found and (len(found) == 1 or names):
             d.camera_id = found[0]["id"]
             session.add(d)
             n += 1

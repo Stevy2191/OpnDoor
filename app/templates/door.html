@@ -21,7 +21,7 @@
 </div>
 
 {% if door.camera_id or cams or cam_error %}
-<section class="card doorcam">
+<section class="card doorcam" id="camera">
   {% if door.camera_id %}
   <div class="camwrap doorlive">
     <video id="doorvid" muted playsinline hidden></video>

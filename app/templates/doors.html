@@ -3,6 +3,7 @@
 {% block title %}Doors · OpnDoor{% endblock %}
 {% block content %}
 {% set usable = doors|selectattr('present')|list %}
+{% set cams_here = usable|selectattr('camera_id')|list|length > 0 %}
 {% set cur = sites.get(current_site) if current_site else none %}
 {% if multi_site %}<p class="crumbs small"><a href="/site?id=&next=/doors">All sites</a> › {{ cur.name if cur else '' }}</p>{% endif %}
 <div class="pagehead">
@@ -56,6 +57,11 @@
           <button type="button" class="dcam" data-cam="/doors/{{ d.id|urlencode }}/snapshot" data-name="{{ d.name }}" data-id="{{ d.id }}" aria-label="Bigger view of {{ d.name }}">
             <img alt="Camera at {{ d.name }}" loading="lazy" src="/doors/{{ d.id|urlencode }}/snapshot">
           </button>
+          {% elif cams_here %}
+          <div class="dcam nocam">
+            <span>No camera</span>
+            {% if user.is_manager %}<a class="small" href="/doors/{{ d.id|urlencode }}#camera">Pick a camera</a>{% endif %}
+          </div>
           {% endif %}
           <div class="dtbody">
             <div class="dttop">
