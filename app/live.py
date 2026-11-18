@@ -3,16 +3,14 @@
 Browsers can't play a camera's RTSPS stream, so a small helper container, go2rtc,
 turns it into fragmented MP4 that a <video> element plays (Media Source Extensions).
 go2rtc isn't reachable from outside: the browser talks only to OpnDoor, which checks
-that the person may use the door, tells go2rtc which stream to pull, and relays the
-WebSocket between the two.
+that the person may use the door, opens go2rtc's socket naming the camera's stream
+(go2rtc starts it on demand), and relays the WebSocket between the two.
 """
 import asyncio
 import hashlib
 import logging
-import time
 from urllib.parse import quote, urlsplit
 
-import httpx
 import websockets
 from fastapi import APIRouter, WebSocket
 from fastapi.concurrency import run_in_threadpool
@@ -35,25 +33,10 @@ def stream_name(door: Door) -> str:
     return "door_" + hashlib.sha1(f"{door.site_id}:{door.camera_id}".encode()).hexdigest()[:16]
 
 
-_registered: dict[str, tuple[float, str]] = {}
-
-
-def ensure_stream(site: Site, door: Door) -> str:
-    """Tell go2rtc where the door camera's stream is (idempotent). Returns the stream name."""
-    name = stream_name(door)
-    src = protect.rtsp_url(site, door.camera_id)
-    hit = _registered.get(name)
-    if hit and hit[1] == src and time.monotonic() - hit[0] < 300:
-        return name
-    try:
-        r = httpx.put(f"{config.LIVE_VIDEO_URL}/api/streams", params={"name": name, "src": src}, timeout=5.0)
-    except httpx.HTTPError as e:
-        log.warning("live video helper at %s: %s", config.LIVE_VIDEO_URL, e)
-        raise protect.ProtectError("Live video isn't available right now.") from e
-    if r.status_code >= 400:
-        raise protect.ProtectError(f"The live video helper refused the stream ({r.status_code})")
-    _registered[name] = (time.monotonic(), src)
-    return name
+def stream_query(site: Site, door: Door) -> str:
+    """The go2rtc socket query for a door camera. go2rtc starts the stream on demand from
+    src (kept in memory only, so its config file can stay read-only) and reuses it by name."""
+    return f"src={quote(protect.rtsp_url(site, door.camera_id), safe='')}&name={stream_name(door)}"
 
 
 def _same_origin(ws: WebSocket) -> bool:
@@ -79,7 +62,7 @@ async def live(ws: WebSocket, door_id: str):
         site = s.get(Site, door.site_id)
         s.expunge_all()
     try:
-        name = await run_in_threadpool(ensure_stream, site, door)
+        query = await run_in_threadpool(stream_query, site, door)
     except protect.ProtectError as e:
         await ws.accept()
         await ws.send_json({"type": "error", "value": str(e)})
@@ -87,7 +70,7 @@ async def live(ws: WebSocket, door_id: str):
         return
     up_url = config.LIVE_VIDEO_URL.replace("http://", "ws://", 1).replace("https://", "wss://", 1)
     try:
-        upstream = await websockets.connect(f"{up_url}/api/ws?src={quote(name)}", max_size=None, open_timeout=5)
+        upstream = await websockets.connect(f"{up_url}/api/ws?{query}", max_size=None, open_timeout=5)
     except Exception as e:  # noqa: BLE001
         log.warning("live video helper at %s: %s", config.LIVE_VIDEO_URL, e)
         await ws.accept()

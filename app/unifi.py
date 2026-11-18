@@ -100,6 +100,16 @@ class UnifiClient:
                 raise
             self._call("PUT", f"/doors/{door_id}/unlock")  # Access before 3.3.21 takes no actor
 
+    def door_devices(self) -> dict[str, list[str]]:
+        """{door id: [device names]} for readers and hubs bound to doors (needs Device: View)."""
+        data = self._call("GET", "/devices") or []
+        out: dict[str, list[str]] = {}
+        for group in data:
+            for dev in group if isinstance(group, list) else [group]:
+                if isinstance(dev, dict) and dev.get("location_id"):
+                    out.setdefault(dev["location_id"], []).append(dev.get("alias") or dev.get("name") or "")
+        return out
+
     # --- people and permissions (needs the token's Users and Access Policies "View" permissions) ---
 
     def list_users(self) -> list[dict]:
@@ -184,6 +194,9 @@ class FakeUnifiClient:
 
     def list_users(self) -> list[dict]:
         return list(self.users)
+
+    def door_devices(self) -> dict[str, list[str]]:
+        return dict(getattr(self, "devices", {}))
 
     def user_policies(self, user_id: str) -> list[dict]:
         return [self.policies[p] for p in self.user_policy_ids.get(user_id, []) if p in self.policies]

@@ -86,3 +86,27 @@ def test_bad_protect_key_message(monkeypatch):
     except protect.ProtectError as e:
         assert "Control Plane" in str(e)
     assert engine  # imported for side effects only
+
+
+def test_match_through_the_doors_readers(monkeypatch):
+    """Door names often differ from camera names; the reader bound to the door links them."""
+    from app import unifi
+
+    class Console:
+        def door_devices(self):
+            return {"kit": ["EMS2-DORM-KIT-EXIT", "EMS2 - DORM KITCHEN"], "o2": ["EMS2-O2RM-HUB - Exit", "EMS2-O2RM - Entry"]}
+    monkeypatch.setattr(unifi, "get_client", lambda site: Console())
+    cams = [{"id": "c-kit", "name": "EMS2 - DORM KITCHEN"}, {"id": "c-o2", "name": "EMS2-O2RM - Entry"},
+            {"id": "c-conf-in", "name": "EMS2-CONF-EXIT-HUB - Entry"}, {"id": "c-conf-out", "name": "EMS2-CONF-EXIT-HUB - Exit"},
+            {"id": "c-bay", "name": "Apparatus Bay"}]
+    with session_scope() as s:
+        site = Site(name="EMS 2", host="https://10.4.60.10:12445", token="t", protect_key="K")
+        s.add(site)
+        s.flush()
+        for rid, name in [("kit", "EMS2-DORM-KIT-HUB"), ("o2", "EMS2-O2RM-HUB"), ("conf", "EMS2-CONF-EXIT-HUB"),
+                          ("bay", "EMS2-BAY-DOOR1")]:
+            s.add(Door(id=f"{site.id}:{rid}", site_id=site.id, remote_id=rid, name=name))
+        s.flush()
+        assert protect.match(s, site, cams) == 3
+        got = {d.remote_id: d.camera_id for d in s.exec(select(Door).where(Door.site_id == site.id)).all()}
+        assert got == {"kit": "c-kit", "o2": "c-o2", "conf": "c-conf-in", "bay": ""}  # bay: pick by hand
