@@ -110,3 +110,30 @@ def test_match_through_the_doors_readers(monkeypatch):
         assert protect.match(s, site, cams) == 3
         got = {d.remote_id: d.camera_id for d in s.exec(select(Door).where(Door.site_id == site.id)).all()}
         assert got == {"kit": "c-kit", "o2": "c-o2", "conf": "c-conf-in", "bay": ""}  # bay: pick by hand
+
+
+def test_hide_and_show_a_door(client, fake):
+    setup_admin(client)
+    client.post("/users", data={"name": "Gus", "email": "gus@example.com", "password": "password123",
+                                "signin": "password", "role": "operator", "site_ids": ["1"]})
+    assert "Hide this door" in client.get("/doors/1:demo-side").text
+    r = client.post("/doors/1:demo-side/hide", data={"hide": "true"}, follow_redirects=True)
+    assert "Hid Side Door" in r.text
+    assert 'data-open="1:demo-side"' not in client.get("/doors").text
+    assert client.get("/doors/1:demo-side", follow_redirects=False).headers["location"] == "/doors"
+    site = client.get("/sites/1").text
+    assert "Hidden doors" in site and "Show again" in site
+
+    # nobody can use it: not the operator with the whole site, not even through the API
+    login(client, "gus@example.com")
+    assert "Side Door" not in client.get("/doors").text
+    client.post("/quick-unlock", data={"door_ids": "1:demo-side", "mode": "open"})
+    assert ("open", "demo-side") not in fake.calls
+    assert client.post("/doors/1:demo-side/hide", data={"hide": "false"}, follow_redirects=True).status_code == 200
+    with session_scope() as s:
+        assert s.get(Door, "1:demo-side").hidden  # operators can't un-hide
+
+    login(client, "ada@example.com")
+    client.post("/doors/1:demo-side/hide", data={"hide": "false"})
+    assert 'data-open="1:demo-side"' in client.get("/doors").text
+    assert "hid the door Side Door" in client.get("/history").text

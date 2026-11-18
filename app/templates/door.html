@@ -121,7 +121,13 @@
         {% if ch and e.action == 'schedule.update' %}<ul class="changes">{% for k, b, a in ch %}<li>{{ k }}: <del>{{ b or '—' }}</del> → <ins>{{ a or '—' }}</ins></li>{% endfor %}</ul>{% endif %}
       </div>
     {% else %}<p class="muted small">No changes recorded yet.</p>{% endfor %}
-    {% if can_history %}<p class="small"><a href="/history?door={{ door.id|urlencode }}">Full history for this door →</a></p>{% endif %}
+    {% if can_history %}<p class="small"><a href="/history?door={{ door.id|urlencode }}">Full history for this door →</a></p>
+    <form method="post" action="/doors/{{ door.id|urlencode }}/hide" class="hidedoor"
+          onsubmit="return confirm('Hide {{ door.name|e }}? Nobody will see or be able to open it in OpnDoor. Use this for doors nobody uses, like a gate hub\'s empty side door. You can show it again from the site\'s page.')">
+      <input type="hidden" name="hide" value="true">
+      <button class="small link danger">Hide this door</button>
+      <small class="muted">· for doors nobody uses, like a gate hub's empty side door</small>
+    </form>{% endif %}
   </section>
 </div>
 {% if door.camera_id and live_on() %}

@@ -131,6 +131,7 @@ class Door(SQLModel, table=True):
     lock_status: str = ""  # last seen relay status ("lock"/"unlock")
     position_status: str = ""  # last seen door position ("open"/"close")
     camera_id: str = ""  # UniFi Protect camera showing this door (see protect.py)
+    hidden: bool = False  # an admin hid it (e.g. a gate hub's unused side door): nobody sees or uses it
     updated_at: datetime = Field(default_factory=utcnow)
 
 

@@ -51,6 +51,11 @@ def allowed_door_ids(session: Session, user: User) -> set[str]:
     Admins: every door. Door operators: every door at their sites (including doors
     added later) plus any single doors they were given.
     """
+    hidden = set(session.exec(select(Door.id).where(Door.hidden == True)).all())  # noqa: E712
+    return _allowed(session, user) - hidden
+
+
+def _allowed(session: Session, user: User) -> set[str]:
     if user.is_admin:
         return set(session.exec(select(Door.id)).all())
     if user.follows_unifi:
