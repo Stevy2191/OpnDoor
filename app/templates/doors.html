@@ -226,7 +226,7 @@
   dlg.addEventListener('click', e => { if (e.target.closest('.camresume')) watch(cur, ''); });
   dlg.querySelector('.camclose').addEventListener('click', () => dlg.close());
   dlg.addEventListener('close', () => { stop(); stop = () => {}; });
-  document.querySelectorAll('.dcam').forEach(b => b.addEventListener('click', e => {
+  document.querySelectorAll('.dcam[data-cam]').forEach(b => b.addEventListener('click', e => {
     e.preventDefault(); watch({id: b.dataset.id, name: b.dataset.name, cam: b.dataset.cam}, '');
   }));
 
@@ -248,7 +248,7 @@
   }
   document.querySelectorAll('.dopen[data-open]').forEach(b => b.addEventListener('click', e => {
     e.preventDefault(); e.stopPropagation();
-    const tile = b.closest('[data-door]'), camBtn = tile && tile.querySelector('.dcam');
+    const tile = b.closest('[data-door]'), camBtn = tile && tile.querySelector('.dcam[data-cam]');
     openDoor(b, b.dataset.open, b.dataset.name, b.dataset.cam || (camBtn ? camBtn.dataset.cam : ''));
   }), true);
   openBtn.addEventListener('click', e => { e.stopPropagation(); openDoor(openBtn, cur.id, cur.name, cur.cam); });
