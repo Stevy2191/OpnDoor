@@ -37,6 +37,10 @@ SSO_ENABLED = bool(MS_CLIENT_ID and MS_CLIENT_SECRET and MS_TENANT_ID)
 # Microsoft redirect URL). If unset, it's taken from the incoming request.
 PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
 
+# Live camera video: the go2rtc helper container (blank = off; door cameras show refreshing stills)
+LIVE_VIDEO_URL = os.getenv("LIVE_VIDEO_URL", "").rstrip("/")
+LIVE_MAX_MINUTES = int(os.getenv("LIVE_MAX_MINUTES", "10"))  # a forgotten tab stops streaming after this
+
 RECONCILE_SECONDS = int(os.getenv("RECONCILE_SECONDS", "30"))
 DOOR_SYNC_MINUTES = int(os.getenv("DOOR_SYNC_MINUTES", "10"))
 CALENDAR_SYNC_MINUTES = int(os.getenv("CALENDAR_SYNC_MINUTES", "5"))

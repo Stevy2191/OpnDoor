@@ -89,6 +89,48 @@ def snapshot(site: Site, camera_id: str, door_name: str = "") -> tuple[bytes, st
     return body, ctype
 
 
+_streams: dict[tuple, tuple[float, str]] = {}
+STREAM_CACHE_SECONDS = 600
+
+
+def rtsp_url(site: Site, camera_id: str) -> str:
+    """The camera's low-quality RTSPS stream, turned on in Protect if it isn't yet."""
+    key = (site.id, camera_id)
+    hit = _streams.get(key)
+    if hit and time.monotonic() - hit[0] < STREAM_CACHE_SECONDS:
+        return hit[1]
+    if _demo(site) and not site.protect_key:
+        return f"demo://{camera_id}"  # pretend console: nothing real to stream
+    streams = _get(site, f"/v1/cameras/{camera_id}/rtsps-stream").json() or {}
+    url = _pick(streams)
+    if not url:
+        try:
+            r = httpx.post(f"{base_url(site)}/proxy/protect/integration/v1/cameras/{camera_id}/rtsps-stream",
+                           headers={"X-API-KEY": site.protect_key}, json={"qualities": ["low"]},
+                           verify=site.verify_tls, timeout=8.0)
+        except httpx.HTTPError as e:
+            raise ProtectError(f"Can't reach UniFi Protect at {base_url(site)}: {e}") from e
+        if r.status_code >= 400:
+            raise ProtectError(f"UniFi Protect couldn't start a stream for that camera ({r.status_code})")
+        url = _pick(r.json() or {})
+    if not url:
+        raise ProtectError("UniFi Protect has no live stream for that camera")
+    # go2rtc can't use Protect's SRTP variant, and "rtspx" means RTSPS without checking the
+    # console's self-signed certificate.
+    url = url.replace("?enableSrtp", "")
+    if url.startswith("rtsps://") and not site.verify_tls:
+        url = "rtspx://" + url[len("rtsps://"):]
+    _streams[key] = (time.monotonic(), url)
+    return url
+
+
+def _pick(streams: dict) -> str:
+    for q in ("low", "medium", "high"):
+        if isinstance(streams.get(q), str) and streams[q]:
+            return streams[q]
+    return ""
+
+
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
