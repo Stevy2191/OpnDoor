@@ -14,6 +14,7 @@ set -euo pipefail
 
 OPNDOOR_IMAGE="${OPNDOOR_IMAGE:-ghcr.io/stevy2191/opndoor:latest}"
 CADDY_IMAGE="${CADDY_IMAGE:-caddy:2}"
+GO2RTC_IMAGE="${GO2RTC_IMAGE:-alexxit/go2rtc:1.9.9}"
 INSTALL_DIR="${OPNDOOR_DIR:-/srv/docker/opndoor}"
 APP_UID=10001
 
@@ -439,6 +440,16 @@ main() {
     fi
   fi
 
+  # -------- live video
+  step "Live camera video (optional)"
+  say "  Lets people watch a door's UniFi Protect camera live in OpnDoor, for example a bay door"
+  say "  going up after they open it. Adds a small helper container (go2rtc). You also paste a"
+  say "  UniFi OS API key for Protect into each site in OpnDoor. Without this, cameras show a"
+  say "  picture that refreshes every second."
+  local def_live=N; [ -n "$(env_get LIVE_VIDEO_URL)" ] && def_live=Y
+  LIVE=""
+  if yes_no "  Turn on live video?" "$def_live"; then LIVE=1; fi
+
   # -------- write files
   step "Setting up $INSTALL_DIR"
   mkdir -p "$INSTALL_DIR/data"
@@ -472,6 +483,9 @@ MS_TENANT_ID=$MS_TENANT
 MS_CLIENT_ID=$MS_CLIENT
 MS_CLIENT_SECRET=$MS_SECRET
 
+# Live camera video through the go2rtc helper (blank = off)
+LIVE_VIDEO_URL=${LIVE:+http://go2rtc:1984}
+
 # Used by the installer
 INSTALL_MODE=$MODE
 INSTALL_ADDRESS=$ADDRESS
@@ -495,6 +509,14 @@ EOF
     if [ "$MODE" != caddy ]; then
       printf '    ports:\n      - "%s:%s:8080"\n' "$BIND" "$APP_PORT"
     fi
+    if [ -n "$LIVE" ]; then
+      printf '\n  go2rtc:\n'
+      printf '    image: %s\n' "$GO2RTC_IMAGE"
+      printf '    container_name: opndoor-go2rtc\n'
+      printf '    restart: unless-stopped\n'
+      printf '    # no ports: only OpnDoor talks to it, and it checks who may watch which door\n'
+      printf '    volumes:\n      - ./go2rtc.yaml:/config/go2rtc.yaml:ro\n'
+    fi
     if [ "$MODE" = caddy ]; then
       printf '\n  caddy:\n'
       printf '    image: %s\n' "$CADDY_IMAGE"
@@ -510,6 +532,24 @@ EOF
     fi
   } >"$INSTALL_DIR/docker-compose.yml"
   ok "Wrote docker-compose.yml"
+
+  if [ -n "$LIVE" ]; then
+    cat >"$INSTALL_DIR/go2rtc.yaml" <<'EOF2'
+# go2rtc, the live video helper for OpnDoor. Written by install.sh.
+# OpnDoor adds each door camera's stream when someone watches it.
+api:
+  listen: ":1984"
+rtsp:
+  listen: ""
+webrtc:
+  listen: ""
+log:
+  level: warn
+EOF2
+    ok "Wrote go2rtc.yaml (live video on)"
+  else
+    rm -f "$INSTALL_DIR/go2rtc.yaml"
+  fi
 
   if [ "$MODE" = caddy ]; then
     local sites="https://$ADDRESS"

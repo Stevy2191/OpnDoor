@@ -1,0 +1,10 @@
+# go2rtc, the live video helper for OpnDoor.
+# OpnDoor adds each door camera's stream when someone watches it.
+api:
+  listen: ":1984"
+rtsp:
+  listen: ""
+webrtc:
+  listen: ""
+log:
+  level: warn

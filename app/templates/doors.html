@@ -90,7 +90,7 @@
           </span>
           {% set ev = nextev.get(d.id) %}<span class="dnext {{ 'empty' if not ev }}">{% if ev %}{{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
           <span class="dact">
-            <button type="button" class="small dopen" data-open="{{ d.id }}" data-name="{{ d.name }}" title="Unlocks for a few seconds, then locks by itself">Open</button>
+            <button type="button" class="small dopen" data-open="{{ d.id }}" data-name="{{ d.name }}" {% if d.camera_id %}data-cam="/doors/{{ d.id|urlencode }}/snapshot"{% endif %} title="Unlocks for a few seconds, then locks by itself">Open</button>
             <a class="small dview" href="/doors/{{ d.id|urlencode }}" onclick="event.stopPropagation()">View →</a>
           </span>
         </label>
@@ -158,46 +158,94 @@
   <input type="hidden" name="door_ids"><input type="hidden" name="mode" value="open">
   <input type="hidden" name="next" value="/doors">
 </form>
-<script>
-document.querySelectorAll('.dopen').forEach(b => b.addEventListener('click', e => {
-  e.preventDefault(); e.stopPropagation();
-  const f = document.getElementById('openone');
-  f.door_ids.value = b.dataset.open; b.disabled = true; b.textContent = 'Opening ' + b.dataset.name + '…'; f.submit();
-}));
-</script>
 {% with doors = usable %}{% include "_unlockdlg.html" %}{% endwith %}
 <dialog id="camdlg" class="dlg camdlg">
   <div class="dlghead"><h2 class="camname"></h2>
-    <button type="button" class="link" onclick="this.closest('dialog').close()" aria-label="Close">✕</button></div>
-  <img class="camimg" alt="">
-  <p class="muted small camnote">Updates every second. From UniFi Protect.</p>
+    <button type="button" class="link camclose" aria-label="Close">✕</button></div>
+  <div class="camwrap">
+    <video class="camvideo" muted playsinline hidden></video>
+    <img class="camimg" alt="">
+    <span class="livebadge" hidden>● LIVE</span>
+  </div>
+  <p class="campop" hidden></p>
+  <p class="muted small camnote"></p>
   <button type="button" class="dopen big camopen">Open</button>
 </dialog>
+<script src="/static/live.js?v={{ asset_v }}"></script>
 <script>
 (function () {
+  const LIVE = {{ 'true' if live_on() else 'false' }};
   const imgs = [...document.querySelectorAll('.dcam img')];
-  const dlg = document.getElementById('camdlg'), big = dlg.querySelector('.camimg');
-  let bigUrl = null;
+  const dlg = document.getElementById('camdlg'), img = dlg.querySelector('.camimg'), vid = dlg.querySelector('.camvideo');
+  const note = dlg.querySelector('.camnote'), badge = dlg.querySelector('.livebadge'), pop = dlg.querySelector('.campop');
+  const openBtn = dlg.querySelector('.camopen');
+  let stop = () => {}, cur = null;
   const bust = u => u + (u.includes('?') ? '&' : '?') + 't=' + Date.now();
-  function refresh(img, url) {  // swap only once the new picture has loaded, so it never flickers
-    const n = new Image(); n.onload = () => { img.src = n.src; img.classList.remove('stale'); };
-    n.onerror = () => img.classList.add('stale'); n.src = bust(url);
-  }
+  // tiles: a fresh still every 5 seconds (only the ones on screen)
   setInterval(() => {
     if (document.hidden || dlg.open) return;
-    imgs.forEach(i => { const r = i.getBoundingClientRect(); if (r.bottom > 0 && r.top < innerHeight) refresh(i, i.closest('.dcam').dataset.cam); });
+    imgs.forEach(i => {
+      const r = i.getBoundingClientRect(); if (r.bottom < 0 || r.top > innerHeight) return;
+      const n = new Image(); n.onload = () => { i.src = n.src; i.classList.remove('stale'); };
+      n.onerror = () => i.classList.add('stale'); n.src = bust(i.closest('.dcam').dataset.cam);
+    });
   }, 5000);
-  setInterval(() => { if (dlg.open && !document.hidden) refresh(big, bigUrl); }, 1000);
+
+  function showStills(why) {
+    vid.hidden = true; img.hidden = false; badge.hidden = true;
+    note.textContent = (why ? why + ' ' : '') + 'Showing a new picture every second.';
+    stop = OpnLive.stills(img, cur.cam);
+  }
+  function watch(d, message) {
+    stop(); cur = d;
+    dlg.querySelector('.camname').textContent = d.name;
+    openBtn.dataset.open = d.id; openBtn.dataset.name = d.name; openBtn.disabled = false;
+    openBtn.innerHTML = ''; openBtn.append('Open ' + d.name);
+    pop.hidden = !message; pop.textContent = message || '';
+    img.src = bust(d.cam); img.hidden = false; img.alt = 'Camera at ' + d.name;
+    if (!dlg.open) dlg.showModal();
+    if (LIVE) {
+      note.textContent = 'Connecting to live video…';
+      stop = OpnLive.play(vid, '/doors/' + encodeURIComponent(d.id) + '/live', {
+        onstate: st => {
+          if (st === 'live') { vid.hidden = false; img.hidden = true; badge.hidden = false; note.textContent = 'Live from UniFi Protect.'; }
+          if (st === 'paused') { badge.hidden = true; note.innerHTML = 'Live view paused. <button type="button" class="link camresume">Keep watching</button>'; }
+        },
+        onfail: why => showStills(why),
+      });
+    } else {
+      showStills('');
+    }
+  }
+  dlg.addEventListener('click', e => { if (e.target.closest('.camresume')) watch(cur, ''); });
+  dlg.querySelector('.camclose').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('close', () => { stop(); stop = () => {}; });
   document.querySelectorAll('.dcam').forEach(b => b.addEventListener('click', e => {
-    e.preventDefault(); bigUrl = b.dataset.cam; big.src = bust(bigUrl); big.alt = 'Camera at ' + b.dataset.name;
-    dlg.querySelector('.camname').textContent = b.dataset.name;
-    const o = dlg.querySelector('.camopen'); o.dataset.open = b.dataset.id; o.textContent = 'Open ' + b.dataset.name;
-    dlg.showModal();
+    e.preventDefault(); watch({id: b.dataset.id, name: b.dataset.name, cam: b.dataset.cam}, '');
   }));
-  dlg.querySelector('.camopen').addEventListener('click', e => {
-    const f = document.getElementById('openone'); f.door_ids.value = e.target.dataset.open;
-    e.target.disabled = true; e.target.textContent = 'Opening…'; f.submit();
-  });
+
+  // Open: doors with a camera open without leaving the page and show the camera,
+  // so you can watch a bay door go up. Others just open.
+  async function openDoor(btn, id, name, cam) {
+    if (!cam) { const f = document.getElementById('openone'); f.door_ids.value = id; btn.disabled = true; f.submit(); return; }
+    btn.disabled = true; const label = btn.innerHTML; btn.textContent = 'Opening…';
+    const body = new URLSearchParams({door_ids: id, mode: 'open', next: '/doors'});
+    let res;
+    try {
+      const r = await fetch('/quick-unlock', {method: 'POST', body, headers: {'X-OpnDoor': 'fetch'}});
+      res = await r.json();
+    } catch (e) { res = {ok: false, message: 'Couldn\'t reach OpnDoor. Check your connection.'}; }
+    btn.disabled = false; btn.innerHTML = label;
+    if (!res.ok) { alert(res.message); return; }
+    if (dlg.open && cur && cur.id === id) { pop.hidden = false; pop.textContent = res.message; }
+    else watch({id, name, cam}, res.message);
+  }
+  document.querySelectorAll('.dopen[data-open]').forEach(b => b.addEventListener('click', e => {
+    e.preventDefault(); e.stopPropagation();
+    const tile = b.closest('[data-door]'), camBtn = tile && tile.querySelector('.dcam');
+    openDoor(b, b.dataset.open, b.dataset.name, b.dataset.cam || (camBtn ? camBtn.dataset.cam : ''));
+  }), true);
+  openBtn.addEventListener('click', e => { e.stopPropagation(); openDoor(openBtn, cur.id, cur.name, cur.cam); });
 })();
 </script>
 {% endif %}

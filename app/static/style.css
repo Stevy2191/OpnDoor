@@ -740,3 +740,13 @@ table.fp td { vertical-align: middle; }
 @media (max-width: 330px) { .dtiles { grid-template-columns: 1fr; } }
 .dopen.big > span { overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 760px) { .dtiles .dopname { display: none; } }
+/* live video */
+.camwrap { position: relative; margin: 0 1rem; border-radius: 10px; overflow: hidden; background: #111; aspect-ratio: 16 / 9; }
+.camwrap img, .camwrap video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; margin: 0; border-radius: 0; }
+.camwrap [hidden] { display: none; }
+.livebadge { position: absolute; top: .6rem; right: .6rem; background: #dc2626; color: #fff; font-size: .75rem; font-weight: 700;
+  padding: .15rem .5rem; border-radius: 6px; letter-spacing: .04em; }
+.campop { margin: .6rem 1rem 0; padding: .5rem .75rem; border-radius: 8px; background: var(--ok-soft, #dcfce7); color: var(--ok); font-weight: 600; }
+.camdlg > .camnote { margin: .45rem 1rem 0; }
+.doorlive { margin: 0; max-height: 60vh; }
+.camctl { margin-top: .6rem; }

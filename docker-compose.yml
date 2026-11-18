@@ -11,3 +11,16 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
+
+  # Live camera video (optional). To turn it on, put these two lines in .env:
+  #   COMPOSE_PROFILES=live
+  #   LIVE_VIDEO_URL=http://go2rtc:1984
+  # copy go2rtc.yaml next to this file, then: docker compose up -d
+  go2rtc:
+    image: alexxit/go2rtc:1.9.9
+    container_name: opndoor-go2rtc
+    restart: unless-stopped
+    profiles: ["live"]
+    # no ports: only OpnDoor talks to it, and OpnDoor checks who may watch which door
+    volumes:
+      - ./go2rtc.yaml:/config/go2rtc.yaml:ro

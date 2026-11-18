@@ -10,7 +10,7 @@
     <div style="margin-top:.4rem">{{ status_line(status) }}</div>
   </div>
   <div class="btnrow">
-    <form method="post" action="/quick-unlock"><input type="hidden" name="door_ids" value="{{ door.id }}">
+    <form method="post" action="/quick-unlock" id="openform"><input type="hidden" name="door_ids" value="{{ door.id }}">
       <input type="hidden" name="next" value="/doors/{{ door.id|urlencode }}">
       <button name="mode" value="open" class="{{ 'primary' if not user.schedules }}" title="Unlocks for a few seconds, then locks by itself">Open now</button></form>
     {% if user.schedules %}
@@ -23,8 +23,15 @@
 {% if door.camera_id or cams or cam_error %}
 <section class="card doorcam">
   {% if door.camera_id %}
-  <img id="doorcam" src="/doors/{{ door.id|urlencode }}/snapshot" alt="Camera at {{ door.name }}" data-src="/doors/{{ door.id|urlencode }}/snapshot">
-  <p class="muted small" style="margin:.4rem 0 0">Camera picture from UniFi Protect · updates every 2 seconds</p>
+  <div class="camwrap doorlive">
+    <video id="doorvid" muted playsinline hidden></video>
+    <img id="doorcam" src="/doors/{{ door.id|urlencode }}/snapshot" alt="Camera at {{ door.name }}" data-src="/doors/{{ door.id|urlencode }}/snapshot">
+    <span class="livebadge" hidden>● LIVE</span>
+  </div>
+  <div class="btnrow camctl">
+    {% if live_on() %}<button type="button" class="primary" id="watchlive">▶ Watch live</button>{% endif %}
+    <span class="muted small" id="camnote">Camera picture from UniFi Protect · updates every 2 seconds</span>
+  </div>
   {% endif %}
   {% if cams or cam_error %}
   <form method="post" action="/doors/{{ door.id|urlencode }}/camera" class="btnrow camform">
@@ -38,10 +45,30 @@
   </form>
   {% endif %}
 </section>
+<script src="/static/live.js?v={{ asset_v }}"></script>
 <script>
-(function () { const i = document.getElementById('doorcam'); if (!i) return;
-  setInterval(() => { if (document.hidden) return; const n = new Image();
-    n.onload = () => { i.src = n.src; }; n.src = i.dataset.src + '?t=' + Date.now(); }, 2000); })();
+(function () {
+  const i = document.getElementById('doorcam'); if (!i) return;
+  const v = document.getElementById('doorvid'), badge = document.querySelector('.doorlive .livebadge');
+  const note = document.getElementById('camnote'), btn = document.getElementById('watchlive');
+  let live = false, stop = () => {};
+  setInterval(() => { if (document.hidden || live) return; const n = new Image();
+    n.onload = () => { i.src = n.src; }; n.src = i.dataset.src + '?t=' + Date.now(); }, 2000);
+  function watch() {
+    if (live) return; live = true; if (btn) btn.hidden = true; note.textContent = 'Connecting to live video…';
+    stop = OpnLive.play(v, '/doors/{{ door.id|urlencode }}/live', {
+      onstate: st => {
+        if (st === 'live') { v.hidden = false; i.hidden = true; badge.hidden = false; note.textContent = 'Live from UniFi Protect.'; }
+        if (st === 'paused') { live = false; badge.hidden = true; if (btn) { btn.hidden = false; btn.textContent = '▶ Keep watching'; } note.textContent = 'Live view paused.'; }
+      },
+      onfail: why => { live = false; v.hidden = true; i.hidden = false; badge.hidden = true; if (btn) btn.hidden = false;
+        note.textContent = why + ' Showing a picture every 2 seconds.'; },
+    });
+  }
+  if (btn) btn.addEventListener('click', watch);
+  window.OpnDoorWatch = btn ? watch : null;
+  addEventListener('pagehide', () => stop());
+})();
 </script>
 {% endif %}
 
@@ -97,4 +124,23 @@
     {% if can_history %}<p class="small"><a href="/history?door={{ door.id|urlencode }}">Full history for this door →</a></p>{% endif %}
   </section>
 </div>
+{% if door.camera_id and live_on() %}
+<script>
+document.getElementById('openform').addEventListener('submit', async e => {
+  e.preventDefault();
+  const b = e.target.querySelector('button'); b.disabled = true; const t = b.textContent; b.textContent = 'Opening…';
+  let res;
+  try {
+    const r = await fetch('/quick-unlock', {method: 'POST', headers: {'X-OpnDoor': 'fetch'},
+      body: new URLSearchParams({door_ids: {{ door.id|tojson }}, mode: 'open'})});
+    res = await r.json();
+  } catch (err) { res = {ok: false, message: "Couldn't reach OpnDoor. Check your connection."}; }
+  b.disabled = false; b.textContent = t;
+  if (!res.ok) { alert(res.message); return; }
+  document.getElementById('camnote').textContent = res.message;
+  if (window.OpnDoorWatch) window.OpnDoorWatch();
+  document.querySelector('.doorcam').scrollIntoView({behavior: 'smooth', block: 'center'});
+});
+</script>
+{% endif %}
 {% endblock %}

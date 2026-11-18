@@ -117,6 +117,39 @@ Prefer to do it by hand? Copy `docker-compose.yml` and `.env.example` (as `.env`
 fill in `.env`, create `data/` owned by uid 10001 (`sudo chown 10001 data`), then
 `docker compose up -d`.
 
+## Cameras and live video
+
+Door cameras come from **UniFi Protect** (the UniFi Access API has no video).
+
+1. In UniFi OS: Settings → Control Plane → Integrations → **Create API Key**.
+2. In OpnDoor: Sites → your site → **Cameras (optional)** → paste the key. Fill in
+   "Protect console address" only if Protect runs on a different console.
+3. Click **Reload from UniFi** on the Doors page. Doors are matched to cameras by name;
+   admins can pick a different camera on a door's page.
+
+That gives each door a picture that refreshes every few seconds.
+
+**Live video** needs a small helper container, [go2rtc](https://github.com/AlexxIT/go2rtc),
+that turns the camera's stream into something browsers play. The installer asks about it.
+On a manual install, put `go2rtc.yaml` next to `docker-compose.yml` and add to `.env`:
+
+```
+COMPOSE_PROFILES=live
+LIVE_VIDEO_URL=http://go2rtc:1984
+```
+
+then run `docker compose up -d`. Tapping a camera picture shows live video, and opening a
+door that has a camera shows it live straight away (handy for watching a bay door go up).
+The helper has no published ports: browsers only talk to OpnDoor, which checks that the
+person may use the door. Live views stop after 10 minutes (`LIVE_MAX_MINUTES`) unless
+someone taps "Keep watching".
+
+- **Behind Nginx Proxy Manager**, turn on **Websockets Support** for the OpnDoor proxy host
+  (Caddy, from the installer, handles it automatically).
+- Browsers play H.264. If a camera uses Protect's **Enhanced** encoding (H.265), set it to
+  Standard, or that door shows refreshing pictures instead.
+- OpnDoor asks Protect for the camera's low-quality stream, turning it on if needed.
+
 ## Sign in with Microsoft
 
 Do this once, as someone who can register apps in your Microsoft 365 tenant.

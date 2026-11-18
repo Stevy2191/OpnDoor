@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from sqlmodel import Session, func, select
@@ -79,15 +79,19 @@ templates.env.globals["door_tree"] = door_tree
 
 
 def _asset_version() -> str:
-    """Fingerprint of the stylesheet, so browsers fetch the new one after an update."""
+    """Fingerprint of the stylesheet and scripts, so browsers fetch new ones after an update."""
     import hashlib
+    h = hashlib.sha256()
     try:
-        return hashlib.sha256((Path(__file__).parent / "static" / "style.css").read_bytes()).hexdigest()[:10]
+        for name in ("style.css", "live.js"):
+            h.update((Path(__file__).parent / "static" / name).read_bytes())
+        return h.hexdigest()[:10]
     except OSError:
         return config.VERSION
 
 
 templates.env.globals["asset_v"] = _asset_version()
+templates.env.globals["live_on"] = lambda: bool(config.LIVE_VIDEO_URL)
 
 def flash(request: Request, msg: str, kind: str = "ok") -> None:
     request.session.setdefault("flash", []).append([kind, msg])
@@ -517,15 +521,21 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
     if not door_ids:
         flash(request, "Pick at least one door.", "error")
         return redirect(safe_next(next))
+    as_json = request.headers.get("x-opndoor") == "fetch"  # the page opens a door and stays put
+    refused = []
     for did in list(door_ids):
         ok, why = open_hours_ok(session, user, session.get(Door, did))
         if not ok:
-            flash(request, why, "error")
+            refused.append(why)
             door_ids.remove(did)
+    if as_json and (refused or not door_ids):
+        return JSONResponse({"ok": False, "message": " ".join(refused) or "Pick at least one door."}, status_code=403)
+    for why in refused:
+        flash(request, why, "error")
     if not door_ids:
         return redirect(safe_next(next))
     if mode == "open":
-        return _open_doors(request, session, user, door_ids, next)
+        return _open_doors(request, session, user, door_ids, next, as_json)
     if minutes is None and not until.strip():
         flash(request, "Choose how long, or pick a time to unlock until.", "error")
         return redirect(safe_next(next))
@@ -559,7 +569,8 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
     return redirect(safe_next(next))
 
 
-def _open_doors(request: Request, session: Session, user: User, door_ids: list[str], next: str):
+def _open_doors(request: Request, session: Session, user: User, door_ids: list[str], next: str,
+                as_json: bool = False):
     """Momentary unlock: UniFi opens the lock for the door's own unlock time, then relocks."""
     opened, failed = [], []
     for did in door_ids:
@@ -570,11 +581,18 @@ def _open_doors(request: Request, session: Session, user: User, door_ids: list[s
             opened.append(did)
         except unifi.UnifiError as e:
             failed.append(f"{door.name}: {e}")
+    message = ""
     if opened:
         names = DoorNamer(session, [session.get(Door, d) for d in opened])(opened, limit=6)
         audit.record(session, "door.open", f"{user.display} opened {names}", user=user, door_ids=opened)
         session.commit()
-        flash(request, f"Opened {names}. It locks again by itself in a few seconds.")
+        message = f"Opened {names}. It locks again by itself in a few seconds."
+    if as_json:
+        return JSONResponse({"ok": bool(opened) and not failed,
+                             "message": " ".join([message] + [f"Couldn't open {f}" for f in failed]).strip()},
+                            status_code=200 if opened else 502)
+    if message:
+        flash(request, message)
     for f in failed:
         flash(request, f"Couldn't open {f}", "error")
     return redirect(safe_next(next))
