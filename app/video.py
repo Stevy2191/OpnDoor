@@ -51,3 +51,26 @@ def doors_view(request: Request, view: str = Form("tiles"), next: str = Form("/d
     session.add(user)
     session.commit()
     return redirect(safe_next(next))
+
+
+@router.post("/doors/{door_id}/hide")
+def door_hide(request: Request, door_id: str, hide: bool = Form(True), user: User = Depends(require_user),
+              session: Session = Depends(get_session)):
+    """Hide a door nobody uses (e.g. a gate hub's empty side door), or show it again."""
+    door = session.get(Door, door_id)
+    if not door or door.site_id not in managed_site_ids(session, user):
+        flash(request, "Only admins and site admins can hide doors.", "error")
+        return redirect("/doors")
+    if door.hidden != hide:
+        door.hidden = hide
+        session.add(door)
+        audit.record(session, "site.update", f"{user.display} {'hid' if hide else 'showed'} the door {door.name}",
+                     user=user, door_ids=[door.id], site_ids=[door.site_id],
+                     changes=[["Hidden", "No" if hide else "Yes", "Yes" if hide else "No"]])
+        session.commit()
+    if hide:
+        flash(request, f"Hid {door.name}. Nobody can see or use it in OpnDoor now. "
+                       f"Show it again from the site's page under Hidden doors.")
+        return redirect("/doors")
+    flash(request, f"{door.name} is showing again.")
+    return redirect(f"/sites/{door.site_id}#hidden")

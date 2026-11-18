@@ -107,7 +107,7 @@ def map_page(request: Request, plan: Optional[int] = None, user: User = Depends(
         nextev = next_events(session, doors)
         placed = {d.id for d in session.exec(select(Door).join(DoorPin, DoorPin.door_id == Door.id)).all()}
         unplaced = [d for d in session.exec(select(Door).where(Door.building_id == current.building_id,
-                                                               Door.present == True)).all()  # noqa: E712
+                                                               Door.present == True, Door.hidden == False)).all()  # noqa: E712
                     if d.id in allowed and d.id not in placed]
     return render(request, "map.html", user, site=site, plans=plans, current=current, bnames=bnames,
                   pins=pins, status=status, nextev=nextev, unplaced=unplaced, manager=manager, now=now_local())
@@ -170,7 +170,8 @@ def plan_edit(request: Request, pid: int, user: User = Depends(require_manager),
         return redirect("/sites")
     b = session.get(Building, plan.building_id)
     site = session.get(Site, b.site_id)
-    doors = list(session.exec(select(Door).where(Door.site_id == site.id, Door.present == True)).all())  # noqa: E712
+    doors = list(session.exec(select(Door).where(Door.site_id == site.id, Door.present == True,
+                                                 Door.hidden == False)).all())  # noqa: E712
     pins = {p.door_id: p for p in session.exec(select(DoorPin).where(DoorPin.door_id.in_([d.id for d in doors]))).all()}
     plan_names = {p.id: p.name for p in session.exec(select(FloorPlan)).all()}
     return render(request, "floorplan_edit.html", user, plan=plan, building=b, site=site, doors=doors, pins=pins,

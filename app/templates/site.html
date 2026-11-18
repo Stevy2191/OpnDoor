@@ -49,6 +49,20 @@
   {% endif %}
 </section>
 
+{% if hidden_doors %}
+<section class="card" id="hidden">
+  <h2>Hidden doors <small class="muted">{{ hidden_doors|length }}</small></h2>
+  <p class="muted small">Nobody sees or uses these in OpnDoor. They're still in UniFi Access.</p>
+  <ul class="hiddenlist">
+    {% for d in hidden_doors %}
+    <li><span>{{ d.name }}</span>
+      <form method="post" action="/doors/{{ d.id|urlencode }}/hide"><input type="hidden" name="hide" value="false">
+        <button class="small">Show again</button></form></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 {% if user.is_admin %}
 <section class="card" id="console">
   <h2>Console connection</h2>

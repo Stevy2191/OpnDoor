@@ -149,7 +149,7 @@ def doors_for(session: Session, user: User) -> list[Door]:
 
 def all_doors(session: Session) -> list[Door]:
     """Present doors, ordered by site then name (pickers group them by building with door_tree)."""
-    return list(session.exec(select(Door).where(Door.present == True)  # noqa: E712
+    return list(session.exec(select(Door).where(Door.present == True, Door.hidden == False)  # noqa: E712
                              .order_by(Door.site_id, Door.name)).all())
 
 
@@ -370,7 +370,8 @@ class DoorNamer:
         self.buildings = {b.id: b.name for b in session.exec(select(Building)).all()}
         self.totals: dict[int, int] = {}
         for bid, n in session.exec(select(Door.building_id, func.count()).where(
-                Door.building_id != None, Door.present == True).group_by(Door.building_id)).all():  # noqa: E711,E712
+                Door.building_id != None, Door.present == True, Door.hidden == False)  # noqa: E711,E712
+                .group_by(Door.building_id)).all():
             self.totals[bid] = n
 
     def __call__(self, ids, limit: int = 4) -> str:
@@ -887,7 +888,8 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
     if site_id is None and len(visible) > 1:
         return render(request, "doors_sites.html", user, summaries=site_summaries(session, user, visible))
     if user.is_admin:
-        doors = list(session.exec(select(Door).order_by(Door.site_id, Door.name)).all())
+        doors = list(session.exec(select(Door).where(Door.hidden == False)  # noqa: E712
+                                  .order_by(Door.site_id, Door.name)).all())
     else:
         doors = doors_for(session, user)
     doors = [d for d in doors if site_id is None or d.site_id == site_id]
@@ -965,7 +967,8 @@ def site_summaries(session: Session, user: User, site_ids) -> list[dict]:
     out = []
     allowed = allowed_door_ids(session, user)
     for site in session.exec(select(Site).where(Site.id.in_(list(site_ids))).order_by(Site.name)).all():
-        doors = [d for d in session.exec(select(Door).where(Door.site_id == site.id, Door.present == True)).all()  # noqa: E712
+        doors = [d for d in session.exec(select(Door).where(Door.site_id == site.id, Door.present == True,  # noqa: E712
+                                                            Door.hidden == False)).all()  # noqa: E712
                  if d.id in allowed]
         st = door_status(session, doors)
         blds = session.exec(select(Building).where(Building.site_id == site.id).order_by(Building.name)).all()
@@ -1003,7 +1006,7 @@ def site_page(request: Request, site_id: int, user: User = Depends(require_manag
         flash(request, "That site isn't available to you.", "error")
         return redirect("/sites")
     buildings = list(session.exec(select(Building).where(Building.site_id == site.id).order_by(Building.name)).all())
-    doors = list(session.exec(select(Door).where(Door.site_id == site.id, Door.present == True)  # noqa: E712
+    doors = list(session.exec(select(Door).where(Door.site_id == site.id, Door.present == True, Door.hidden == False)  # noqa: E712
                               .order_by(Door.name)).all())
     counts = {b.id: sum(1 for d in doors if d.building_id == b.id) for b in buildings}
     from .models import DoorPin, FloorPlan
@@ -1013,8 +1016,10 @@ def site_page(request: Request, site_id: int, user: User = Depends(require_manag
     for fp in plans:
         plans_by_b.setdefault(fp.building_id, []).append(fp)
     pin_counts = dict(session.exec(select(DoorPin.plan_id, func.count()).group_by(DoorPin.plan_id)).all())
+    hidden = list(session.exec(select(Door).where(Door.site_id == site.id, Door.hidden == True)  # noqa: E712
+                               .order_by(Door.name)).all())
     return render(request, "site.html", user, site=site, buildings=buildings, doors=doors, counts=counts,
-                  timezones=COMMON_TZ, plans_by_b=plans_by_b, pin_counts=pin_counts)
+                  timezones=COMMON_TZ, plans_by_b=plans_by_b, pin_counts=pin_counts, hidden_doors=hidden)
 
 
 @router.post("/sites")
