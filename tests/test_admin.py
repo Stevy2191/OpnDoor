@@ -22,6 +22,7 @@ def test_branding_logo_name_and_colours(client):
     r = client.post("/settings/branding", data={"name": "Station 2", "accent": "#aa0000", "nav": "#101010"},
                     files={"logo": ("logo.png", png(), "image/png")}, follow_redirects=True)
     assert "Branding saved" in r.text and "Station 2" in r.text and "--accent: #aa0000" in r.text
+    assert ":root:not(#_)" in r.text  # beats the dark-mode colours too
     assert client.get("/brand/logo").headers["content-type"] == "image/png"
     client.post("/logout")
     assert "/brand/logo" in client.get("/login").text  # the sign-in page shows it too
