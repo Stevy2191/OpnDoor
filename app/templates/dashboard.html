@@ -102,7 +102,7 @@
   <div class="head" style="margin-bottom:.3rem"><h2 style="margin:0">Busy hours <small class="muted">last 30 days</small></h2>
     <a href="/door-activity" class="small">All activity →</a></div>
   <p class="muted small">{{ '{:,}'.format(busy.granted) }} openings · busiest {{ busy.busiest }}{% if busy.denied %} · {{ busy.denied }} turned away{% endif %}</p>
-  {{ busy_grid(busy, True) }}
+  {{ busy_grid(busy, True, '/door-activity?days=30') }}
 </section>
 {% endif %}
 

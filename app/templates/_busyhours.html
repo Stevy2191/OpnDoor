@@ -1,11 +1,19 @@
-{# The busy-hours grid: one row per weekday, one square per hour, deeper amber = busier. #}
-{% macro busy_grid(stats, compact=False) %}
+{# The busy-hours grid: one row per weekday, one square per hour, deeper amber = busier.
+   With a link, each square opens the openings for that weekday and hour. #}
+{% macro busy_grid(stats, compact=False, link="", picked=None) %}
 <div class="busy {{ 'compact' if compact }}">
   <div class="busyrows">
     {% for row in stats.grid %}
     <div class="busyrow">
       <span class="busyday">{{ row.day }}</span>
-      {% for c in row.cells %}<span class="busycell" style="background: {{ c.c }}" title="{{ c.tip }}"{% if c.denied %} data-denied="1"{% endif %}></span>{% endfor %}
+      {% for c in row.cells %}
+      {%- set on = picked and picked.wd == row.wd and picked.hr == c.h -%}
+      {%- if link and (c.n or c.denied) -%}
+      <a class="busycell{{ ' on' if on }}" href="{{ link }}&wd={{ row.wd }}&hr={{ c.h }}#recent" style="background: {{ c.c }}" title="{{ c.tip }}" aria-label="{{ c.tip.split('\n')[0] }}"{% if c.denied %} data-denied="1"{% endif %}></a>
+      {%- else -%}
+      <span class="busycell{{ ' on' if on }}" style="background: {{ c.c }}" title="{{ c.tip }}"{% if c.denied %} data-denied="1"{% endif %}></span>
+      {%- endif %}
+      {% endfor %}
     </div>
     {% endfor %}
     <div class="busyrow busyhours" aria-hidden="true">
@@ -16,6 +24,7 @@
   <div class="busylegend small muted">
     <span>Quiet</span>{% for c in stats.legend %}<span class="busycell" style="background: {{ c }}"></span>{% endfor %}<span>Busy</span>
     <span class="busydot"></span><span>some turned away</span>
+    {% if link %}<span class="busyhint">Hover a square for its dates · click to see who</span>{% endif %}
   </div>
 </div>
 {% endmacro %}
