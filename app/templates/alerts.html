@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Alerts · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Alerts</h1>
+    <p class="muted">Emails to the people you pick when something happens. Nothing is sent until you add an alert and switch it on.</p>
+  </div>
+  <div class="btnrow"><a class="button primary" href="/alerts/new">+ New alert</a></div>
+</div>
+{% if not mail_ready %}<div class="flash info">Alerts are sent by email, and email isn't set up yet.{% if user.is_admin %} <a href="/settings/email">Set up email</a>.{% endif %}</div>{% endif %}
+
+{% if rules %}
+<section class="card">
+  <div class="rowlist">
+    {% for r in rules %}{% set k = kinds[r.kind] %}
+    <div class="rowitem alertrow {{ '' if r.enabled else 'off' }}">
+      <form method="post" action="/alerts/{{ r.id }}/toggle"><button class="switch {{ 'on' if r.enabled }}" role="switch" aria-checked="{{ 'true' if r.enabled else 'false' }}" aria-label="{{ 'Switch off' if r.enabled else 'Switch on' }} {{ r.name }}"><span></span></button></form>
+      <div class="ri-main">
+        <strong>{{ r.name }}</strong>
+        <span class="muted small">{{ k[0] }}{% for name, lbl, d, unit in k[3] %} · {{ lbl|lower }} {{ params(r)[name] }} {{ unit }}{% endfor %}
+          · {{ site_names.get(r.site_id, 'All your sites') }}{% if info[r.id].doors %} · {{ info[r.id].doors }}{% endif %}</span>
+        <span class="muted small">{{ describe_when(r) }} · to {{ info[r.id].to or 'nobody' }}</span>
+      </div>
+      <div class="btnrow">
+        <form method="post" action="/alerts/{{ r.id }}/test"><button class="small" {% if not mail_ready %}disabled{% endif %}>Send test</button></form>
+        <a class="button small" href="/alerts/{{ r.id }}">Edit</a>
+        <form method="post" action="/alerts/{{ r.id }}/delete" onsubmit="return confirm('Delete the alert {{ r.name|e }}?')"><button class="small danger">Delete</button></form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<section class="card">
+  <h2>What can OpnDoor tell you about?</h2>
+  <div class="kindgrid">
+    {% for key, k in kinds.items() %}
+    <a class="kindcard" href="/alerts/new?kind={{ key }}"><strong>{{ k[0] }}</strong><span class="muted small">{{ k[1] }}</span></a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if recent %}
+<section class="card">
+  <h2>Recently</h2>
+  <div class="tablewrap"><table class="list">
+    <thead><tr><th>When</th><th>Alert</th><th>What happened</th><th>Sent to</th></tr></thead>
+    <tbody>{% for a in recent %}
+      <tr><td class="nowrap">{{ a.at|local|day }} {{ a.at|local|time }}</td><td>{{ rule_names.get(a.rule_id, '') }}</td><td>{{ a.subject }}</td>
+        <td>{% if a.error %}<span class="muted small">{{ a.error }}</span>{% else %}<span class="small">{{ a.sent_to }}</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

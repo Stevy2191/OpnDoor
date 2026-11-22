@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_macros.html" import door_chips %}
+{% block title %}{{ 'Edit alert' if r.id else 'New alert' }} · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<p class="crumbs small"><a href="/alerts">Alerts</a> › {{ r.name or 'New alert' }}</p>
+<h1>{{ 'Edit alert' if r.id else 'New alert' }}</h1>
+
+<form method="post" action="/alerts/save" class="vform" id="alertform">
+  {% if r.id %}<input type="hidden" name="id" value="{{ r.id }}">{% endif %}
+  <section class="card">
+    <h2>Tell me when…</h2>
+    <div class="kindpick">
+      {% for key, k in kinds.items() %}
+      <label class="segopt"><input type="radio" name="kind" value="{{ key }}" data-doors="{{ 1 if k[2] else 0 }}" {% if r.kind == key %}checked{% endif %}>
+        <span><b>{{ k[0] }}</b><small class="muted">{{ k[1] }}</small></span></label>
+      {% endfor %}
+    </div>
+    {% for key, k in kinds.items() %}{% if k[3] %}
+    <div class="kparams" data-kind="{{ key }}">
+      {% for name, lbl, default, unit in k[3] %}
+      <label class="inline">{{ lbl }} <input name="{{ name }}" value="{{ prm[name] if r.kind == key else default }}" inputmode="numeric" style="width:5rem;display:inline-block;margin:0 .35rem"> {{ unit }}</label>
+      {% endfor %}
+    </div>
+    {% endif %}{% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Where</h2>
+    <label>Site <select name="site_id">
+      {% if sites|length > 1 %}<option value="">All my sites</option>{% endif %}
+      {% for s in sites %}<option value="{{ s.id }}" {% if r.site_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select></label>
+    <div class="doorpart mt">
+      <p class="muted small" style="margin:0 0 .5rem">Doors <span>· leave all unticked for every door</span></p>
+      {{ door_chips(doors, 'doors', picked_doors, site_map) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>When</h2>
+    <div class="daypick">
+      {% for d in range(7) %}<label class="daychip"><input type="checkbox" name="days" value="{{ d }}" {% if d|string in r.days %}checked{% endif %}><span>{{ ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d] }}</span></label>{% endfor %}
+    </div>
+    <label class="check mt"><input type="checkbox" name="allday" value="1" id="allday" {% if not r.start %}checked{% endif %}> All day</label>
+    <div class="fields2 mt" id="hours">
+      <label>From <input type="time" name="start" value="{{ r.start or '18:00' }}"></label>
+      <label>Until <input type="time" name="end" value="{{ r.end or '06:00' }}"></label>
+    </div>
+    <p class="hint">Outside these days and hours nothing is sent. A window like 6 PM to 6 AM runs overnight.</p>
+  </section>
+
+  <section class="card">
+    <h2>Who gets it</h2>
+    <div class="peoplepick">
+      {% for u in people %}<label class="chip"><input type="checkbox" name="users" value="{{ u.id }}" {% if u.id|string in picked_users %}checked{% endif %}><span>{{ u.display }} <small class="muted">{{ u.email }}</small></span></label>{% endfor %}
+    </div>
+    <label class="mt">Other email addresses <span class="muted small">· optional, separate with commas</span>
+      <input name="emails" value="{{ r.emails }}" placeholder="e.g. 5551234567@vtext.com for a text message"></label>
+    <p class="hint">To get a text message, use your carrier's email-to-text address (Verizon: number@vtext.com, AT&amp;T: number@txt.att.net, T-Mobile: number@tmomail.net).</p>
+  </section>
+
+  <section class="card">
+    <label>Name <span class="muted small">· optional</span><input name="name" value="{{ r.name }}" placeholder="e.g. Bay doors left open"></label>
+    <label class="check mt"><input type="checkbox" name="enabled" value="1" {% if r.enabled %}checked{% endif %}> Switch this alert on</label>
+    {% if not mail_ready %}<p class="hint">Email isn't set up yet, so nothing can be sent.{% if user.is_admin %} <a href="/settings/email">Set up email</a>.{% endif %}</p>{% endif %}
+  </section>
+  <div class="btnrow"><button class="primary">Save alert</button><a class="button" href="/alerts">Cancel</a></div>
+</form>
+<script>
+(function () {
+  const f = document.getElementById('alertform');
+  const sync = () => {
+    const k = f.querySelector('[name=kind]:checked');
+    f.querySelectorAll('.kparams').forEach(el => { el.hidden = !k || el.dataset.kind !== k.value; el.querySelectorAll('input').forEach(i => i.disabled = el.hidden); });
+    f.querySelector('.doorpart').hidden = !k || k.dataset.doors !== '1';
+    document.getElementById('hours').hidden = document.getElementById('allday').checked;
+  };
+  f.addEventListener('change', sync); sync();
+})();
+</script>
+{% endblock %}

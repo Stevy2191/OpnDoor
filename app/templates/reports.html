@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Reports · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Reports</h1>
+    <p class="muted">A summary by email, every day, week or month, for the people you pick.</p>
+  </div>
+  <div class="btnrow"><a class="button primary" href="/reports/new">+ New report</a></div>
+</div>
+{% if not mail_ready %}<div class="flash info">Reports are sent by email, and email isn't set up yet.{% if user.is_admin %} <a href="/settings/email">Set up email</a>.{% endif %} You can still preview them.</div>{% endif %}
+{% if reps %}
+<section class="card">
+  <div class="rowlist">
+    {% for r in reps %}
+    <div class="rowitem alertrow {{ '' if r.enabled else 'off' }}">
+      <div class="ri-main">
+        <strong>{{ r.name }}{% if not r.enabled %} <span class="pill closed">Paused</span>{% endif %}</strong>
+        <span class="muted small">{{ when_text(r) }} · {{ site_names.get(r.site_id, 'All your sites') }} · {{ r.sections.split(',')|map('replace', 'activity', 'Door activity')|map('replace', 'upcoming', 'Coming up')|map('capitalize')|join(', ') }}</span>
+        <span class="muted small">To {{ info[r.id] or 'nobody' }}{% if r.last_sent_at %} · last sent {{ r.last_sent_at|local|day }} {{ r.last_sent_at|local|time }}{% endif %}{% if r.last_error %} · <span class="err">{{ r.last_error }}</span>{% endif %}</span>
+      </div>
+      <div class="btnrow">
+        <a class="button small" href="/reports/{{ r.id }}/preview" target="_blank" rel="noopener">Preview</a>
+        <form method="post" action="/reports/{{ r.id }}/send"><button class="small" {% if not mail_ready %}disabled{% endif %}>Send now</button></form>
+        <a class="button small" href="/reports/{{ r.id }}">Edit</a>
+        <form method="post" action="/reports/{{ r.id }}/delete" onsubmit="return confirm('Delete the report {{ r.name|e }}?')"><button class="small danger">Delete</button></form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<section class="card"><p class="muted empty">No reports yet. A weekly report on Monday mornings is a good start: door activity, visitors, alerts, offline devices, what changed and what's coming up.</p></section>
+{% endif %}
+{% endblock %}

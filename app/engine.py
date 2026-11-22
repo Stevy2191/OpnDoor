@@ -227,6 +227,8 @@ def refresh_states() -> None:
             for door in s.exec(select(Door).where(Door.site_id == site.id)).all():
                 rd = remote.get(door.remote_id)
                 if rd and (rd.lock_status, rd.position_status) != (door.lock_status, door.position_status):
+                    if rd.position_status != door.position_status:
+                        door.position_since = utcnow()
                     door.lock_status, door.position_status = rd.lock_status, rd.position_status
                     s.add(door)
             if mode != site.emergency:
