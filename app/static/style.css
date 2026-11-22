@@ -866,3 +866,49 @@ body.app { background: linear-gradient(to right, var(--nav) 236px, var(--bg) 236
 .dtstate { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .dtstate small { flex-basis: 100%; }
 .dtstate small.muted:not(.dtnext) { flex-basis: auto; }
+.holtag { font-size: .75rem; font-weight: 600; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: .15rem .45rem; margin: .2rem 0 .3rem; }
+.usgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .35rem 1rem; }
+.holhours { margin-top: .6rem; }
+#holform:not(:has(input[name=mode][value=hours]:checked)) .holhours { display: none; }
+.grid2.wide-left { grid-template-columns: 1.4fr 1fr; }
+@media (max-width: 860px) { .grid2.wide-left { grid-template-columns: 1fr; } }
+
+.perdaybox { margin-top: .7rem; }
+.perday { display: flex; flex-direction: column; gap: .35rem; margin: .5rem 0 .2rem; }
+.perday[hidden] { display: none; }
+.pdrow { display: grid; grid-template-columns: 5.5rem minmax(0, 8rem) auto minmax(0, 8rem); gap: .5rem; align-items: center; }
+.pdrow input[type=time] { margin: 0; }
+form.perdaymode .whenrow label:not(.w-date), form.perdaymode .chips.days, form.perdaymode .dayshead { display: none; }
+.holcheck { margin-top: .7rem; }
+
+.approvals { border-color: #e7c27a; background: linear-gradient(var(--warn-soft), var(--warn-soft)) top / 100% 4px no-repeat, var(--card); }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+@media (max-width: 700px) { .grid3 { grid-template-columns: 1fr; } }
+.inline { display: inline-flex; align-items: center; gap: .4rem; }
+.inline input { width: 6rem; }
+.skippedlist { list-style: none; padding: 0; margin: .6rem 0 0; display: flex; flex-direction: column; gap: .4rem; }
+.skippedlist li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+
+/* floor plan editing: crop */
+.fptools { margin-left: auto; }
+.fptools form { margin: 0; }
+.cropbar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: 0 0 .6rem; padding: .55rem .8rem;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--accent-soft); }
+.cropbar[hidden] { display: none; }
+.cropbar .small:first-child { flex: 1 1 260px; }
+.mapwrap.cropping .mapinner { cursor: crosshair; }
+.mapwrap.cropping .pin { pointer-events: none; opacity: .5; }
+.cropbox { position: absolute; border: 2px dashed var(--accent); background: rgba(45, 212, 191, .12);
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, .45); z-index: 5; pointer-events: none; }
+
+/* door pins: a small door instead of a dot */
+.pin { width: 16px; height: 22px; border-radius: 3px 3px 1px 1px; border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.5); transform: translate(-50%, -100%); }
+.pin::before { content: ""; position: absolute; right: 2px; top: 50%; width: 3px; height: 3px; border-radius: 50%;
+  background: #fff; transform: translateY(-50%); }
+.pin:hover, .pin.active { transform: translate(-50%, -100%) scale(1.3); }
+.pin .pinlbl { top: 100%; }
+.pin.open::after { inset: -6px -5px; border-radius: 6px; }
+.pdot { width: 9px; height: 12px; border-radius: 2px 2px 1px 1px; }
+.pdrow { grid-template-columns: 5.5rem 9.5rem auto 9.5rem; justify-content: start; }
+.pill { white-space: nowrap; }

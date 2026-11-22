@@ -205,19 +205,19 @@ def test_schedules_page_week_list_filters(client):
                                     "day": today, "start": "08:00", "end": "17:00", "weekdays": [str(i) for i in range(7)]})
     client.post("/schedules", data={"kind": "override", "event_type": "rental", "label": "Gym rental", "contact": "Coach Lee",
                                     "door_ids": ["1:demo-hall", "1:demo-side"], "day": today, "start": "23:00", "end": "23:30"})
-    client.post("/schedules", data={"kind": "override", "action": "lock", "label": "Holiday", "door_ids": ["1:demo-office"],
+    client.post("/schedules", data={"kind": "override", "action": "lock", "label": "Christmas closure", "door_ids": ["1:demo-office"],
                                     "day": "2030-12-25", "start": "00:00", "end": "23:59"})
     week = client.get("/schedules?view=week").text
-    assert "Office hours" not in week and "Gym rental" in week and "Holiday" not in week and "Today" in week
+    assert "Office hours" not in week and "Gym rental" in week and "Christmas closure" not in week and "Today" in week
     assert "Office hours" in client.get("/schedules?view=week&type=all").text
     nxt = client.get("/schedules?view=week&week=2030-12-23").text
-    assert "Holiday" in nxt and "Gym rental" not in nxt
+    assert "Christmas closure" in nxt and "Gym rental" not in nxt
 
     lst = client.get("/schedules?view=list").text
-    assert "Holiday" in lst and "Next" in lst and "Coach Lee" in lst
+    assert "Christmas closure" in lst and "Next" in lst and "Coach Lee" in lst
     # the choice of view is remembered
-    assert "Holiday" in client.get("/schedules").text
-    assert "Holiday" not in client.get("/schedules?type=unlock").text
+    assert "Christmas closure" in client.get("/schedules").text
+    assert "Christmas closure" not in client.get("/schedules?type=unlock").text
     assert "Gym rental" in client.get("/schedules?q=coach").text
     assert "Office hours" not in client.get("/schedules?q=coach&type=all").text
     assert "Fellowship Hall" in client.get("/schedules?q=fellowship").text  # door names are searchable

@@ -8,3 +8,5 @@ python-multipart==0.0.32
 itsdangerous==2.2.0
 icalendar==7.3.0
 recurring-ical-events==3.8.2
+pypdfium2==5.13.0
+pillow==12.3.0

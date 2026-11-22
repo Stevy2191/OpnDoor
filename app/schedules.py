@@ -93,8 +93,12 @@ class Occurrence:
     end: datetime  # naive wall-clock
 
 
-def occurrences(s: Schedule, range_start: datetime, range_end: datetime) -> list[Occurrence]:
-    """Occurrences of s overlapping [range_start, range_end) (naive wall-clock)."""
+def occurrences(s: Schedule, range_start: datetime, range_end: datetime,
+                holidays: Optional[dict] = None) -> list[Occurrence]:
+    """Occurrences of s overlapping [range_start, range_end) (naive wall-clock).
+
+    holidays: {date: Holiday}. A repeating schedule that follows holidays doesn't run on
+    one; regular hours run the holiday's shorter hours instead, if it has some."""
     dur = timedelta(minutes=s.duration_minutes)
     days = weekdays_of(s)
     if not days:
@@ -107,20 +111,29 @@ def occurrences(s: Schedule, range_start: datetime, range_end: datetime) -> list
     last = min(series_last_date(s), range_end.date())
     t: time = s.start_local.time()
     d = first
+    follows = bool(holidays) and s.on_holidays != "run"
     while d <= last:
         if d.weekday() in days:
             start = datetime.combine(d, t)
             end = start + dur
+            hol = holidays.get(d) if follows else None
+            if hol is not None:
+                hours = hol.hours_range() if s.kind == "default" else None
+                if not hours:
+                    d += timedelta(days=1)
+                    continue  # closed: this day's occurrence doesn't happen
+                start, end = datetime.combine(d, hours[0]), datetime.combine(d, hours[1])
             if start < range_end and end > range_start:
                 out.append(Occurrence(s, start, end))
         d += timedelta(days=1)
     return out
 
 
-def expand(schedules: Iterable[Schedule], range_start: datetime, range_end: datetime) -> list[Occurrence]:
+def expand(schedules: Iterable[Schedule], range_start: datetime, range_end: datetime,
+           holidays: Optional[dict] = None) -> list[Occurrence]:
     out = []
     for s in schedules:
-        out.extend(occurrences(s, range_start, range_end))
+        out.extend(occurrences(s, range_start, range_end, holidays))
     out.sort(key=lambda o: (o.start, o.end))
     return out
 
@@ -144,11 +157,12 @@ def _decide(active: list[tuple[datetime, datetime, Schedule]]) -> tuple[Optional
     return None, None
 
 
-def timeline(schedules: Iterable[Schedule], lo: datetime, hi: datetime, tz: tzinfo) -> list[Segment]:
+def timeline(schedules: Iterable[Schedule], lo: datetime, hi: datetime, tz: tzinfo,
+             holidays: Optional[dict] = None) -> list[Segment]:
     """A door's state from lo to hi (naive UTC), as consecutive segments."""
     pad = timedelta(days=2)
     occ = [(to_utc(o.start, tz), to_utc(o.end, tz), o.schedule)
-           for o in expand(schedules, to_local(lo, tz) - pad, to_local(hi, tz) + pad)]
+           for o in expand(schedules, to_local(lo, tz) - pad, to_local(hi, tz) + pad, holidays)]
     occ = [(s, e, sch) for s, e, sch in occ if s < hi and e > lo]
     cuts = sorted({lo, hi} | {t for s, e, _ in occ for t in (s, e) if lo < t < hi})
     segs: list[Segment] = []

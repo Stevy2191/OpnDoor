@@ -124,6 +124,32 @@ def plan_feed(session: Session, feed: CalendarFeed, ics: bytes) -> list[Booking]
     return [b for b in bookings if feed.include_all_day or not b.all_day]
 
 
+def approval_reasons(feed: CalendarFeed, start: datetime, end: datetime, new_or_changed: bool) -> list[str]:
+    """Why an event should wait for a person to approve it (empty = it goes in right away)."""
+    why = []
+    hours = (end - start).total_seconds() / 3600
+    if feed.approve_over_hours and hours > feed.approve_over_hours:
+        why.append(f"longer than {feed.approve_over_hours} h")
+    if feed.approve_before and start.strftime("%H:%M") < feed.approve_before:
+        why.append(f"starts before {_t12(feed.approve_before)}")
+    if feed.approve_after and (end.date() > start.date() or end.strftime("%H:%M") > feed.approve_after):
+        why.append(f"ends after {_t12(feed.approve_after)}")
+    if feed.approve_new and new_or_changed and not why:
+        why.append("new or changed event")
+    return why
+
+
+def _first_up(s: str) -> str:
+    return s[:1].upper() + s[1:]
+
+
+def _t12(hhmm: str) -> str:
+    try:
+        return datetime.strptime(hhmm, "%H:%M").strftime("%-I:%M %p").replace(":00 ", " ")
+    except ValueError:
+        return hhmm
+
+
 def apply_feed(session: Session, feed: CalendarFeed, bookings: list[Booking]) -> dict:
     existing = {
         s.source_uid: s
@@ -147,9 +173,11 @@ def apply_feed(session: Session, feed: CalendarFeed, bookings: list[Booking]) ->
             label = b.title + (f" · {b.location}" if b.location else "")
             sched = existing.get(uid)
             if sched is None:
+                why = approval_reasons(feed, b_start, b_end, True)
                 sched = Schedule(label=label, kind="override", action="unlock", event_type="event", start_local=start,
                                  duration_minutes=duration, source="calendar", feed_id=feed.id, source_uid=uid,
-                                 notes=f"From calendar “{feed.name}”")
+                                 notes=f"From calendar “{feed.name}”", status="pending" if why else "",
+                                 status_note=_first_up("; ".join(why)))
                 session.add(sched)
                 session.flush()
                 set_schedule_doors(session, sched.id, door_ids)
@@ -162,6 +190,10 @@ def apply_feed(session: Session, feed: CalendarFeed, bookings: list[Booking]) ->
                 changed = True
             if set_schedule_doors(session, sched.id, door_ids):
                 changed = True
+            if changed:  # moved or renamed: ask again if the calendar wants that
+                why = approval_reasons(feed, b_start, b_end, True)
+                sched.status, sched.status_note = ("pending", _first_up("; ".join(why))) if why else ("", "")
+                session.add(sched)
             updated += changed
 
     # Bookings that vanished from the calendar (cancelled/moved): drop unless already over.

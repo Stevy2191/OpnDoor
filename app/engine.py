@@ -96,7 +96,8 @@ def sync_doors() -> None:
 
 
 def door_schedules(session: Session, door_ids: Optional[list[str]] = None) -> dict[str, list[Schedule]]:
-    q = select(Schedule, ScheduleDoor.door_id).join(ScheduleDoor, ScheduleDoor.schedule_id == Schedule.id)
+    q = (select(Schedule, ScheduleDoor.door_id).join(ScheduleDoor, ScheduleDoor.schedule_id == Schedule.id)
+         .where(Schedule.status == ""))  # waiting-for-approval and skipped calendar events don't count
     if door_ids is not None:
         q = q.where(ScheduleDoor.door_id.in_(door_ids))
     out: dict[str, list[Schedule]] = {}
@@ -105,22 +106,41 @@ def door_schedules(session: Session, door_ids: Optional[list[str]] = None) -> di
     return out
 
 
+def holidays_for(session: Session, site_id: Optional[int]) -> dict:
+    """{date: Holiday} for a site: its own holidays plus the ones for every site."""
+    from .models import Holiday
+    q = select(Holiday)
+    q = q.where((Holiday.site_id == None) | (Holiday.site_id == site_id)) if site_id else q.where(Holiday.site_id == None)  # noqa: E711
+    out: dict = {}
+    for h in sorted(session.exec(q).all(), key=lambda h: h.site_id is not None):  # a site's own wins
+        d = h.start_date
+        while d <= h.end_date:
+            out[d] = h
+            d += timedelta(days=1)
+    return out
+
+
 def door_timeline(session: Session, door: Door, lo: datetime, hi: datetime,
-                  scheds: Optional[list[Schedule]] = None) -> list[Segment]:
+                  scheds: Optional[list[Schedule]] = None, holidays: Optional[dict] = None) -> list[Segment]:
     if scheds is None:
         scheds = door_schedules(session, [door.id]).get(door.id, [])
-    return timeline(scheds, lo, hi, site_tz(session.get(Site, door.site_id)))
+    if holidays is None:
+        holidays = holidays_for(session, door.site_id)
+    return timeline(scheds, lo, hi, site_tz(session.get(Site, door.site_id)), holidays)
 
 
 def desired_state(session: Session, now_utc: datetime) -> dict[str, Segment]:
     """door_id -> what the door should be doing right now (doors on their normal rule are omitted)."""
     out = {}
     doors = {d.id: d for d in session.exec(select(Door)).all()}
+    hols: dict = {}
     for door_id, scheds in door_schedules(session).items():
         door = doors.get(door_id)
         if not door:
             continue
-        plan = current_plan(door_timeline(session, door, now_utc, now_utc + HORIZON, scheds))
+        if door.site_id not in hols:
+            hols[door.site_id] = holidays_for(session, door.site_id)
+        plan = current_plan(door_timeline(session, door, now_utc, now_utc + HORIZON, scheds, hols[door.site_id]))
         if plan:
             out[door_id] = plan
     return out

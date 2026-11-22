@@ -211,6 +211,33 @@ class Schedule(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
     updated_by: Optional[int] = Field(default=None, foreign_key="user.id")
     updated_at: Optional[datetime] = None
+    # "" = in effect; "pending" = a calendar event waiting for approval; "skipped" = an admin said no
+    status: str = Field(default="", index=True)
+    status_note: str = ""  # why it waits, e.g. "outside 6 AM to 10 PM"
+    on_holidays: str = "skip"  # repeating schedules: "skip" = follow holidays, "run" = as usual
+
+
+class Holiday(SQLModel, table=True):
+    """A day (or days) when repeating schedules that follow holidays don't run.
+
+    hours "" = closed all day; "HH:MM-HH:MM" = regular hours are replaced by these
+    shorter hours. site_id None = every site."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    site_id: Optional[int] = Field(default=None, foreign_key="site.id", index=True)
+    name: str
+    start_date: date = Field(index=True)
+    end_date: date
+    hours: str = ""
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+
+    def hours_range(self):
+        if not self.hours or "-" not in self.hours:
+            return None
+        a, b = self.hours.split("-", 1)
+        from datetime import time as _t
+        return _t.fromisoformat(a), _t.fromisoformat(b)
 
 
 class ScheduleDoor(SQLModel, table=True):
@@ -239,6 +266,11 @@ class CalendarFeed(SQLModel, table=True):
     lead_minutes: int = 15  # unlock this long before the event starts
     lag_minutes: int = 15  # lock this long after it ends
     include_all_day: bool = False
+    # Approval: new and changed events wait for a person, and/or only unusual ones do.
+    approve_new: bool = False
+    approve_over_hours: int = 0  # 0 = no limit; longer events wait
+    approve_before: str = ""  # "HH:MM": events starting earlier wait
+    approve_after: str = ""  # "HH:MM": events ending later wait
     last_sync_at: Optional[datetime] = None
     last_sync_status: str = ""
     created_at: datetime = Field(default_factory=utcnow)

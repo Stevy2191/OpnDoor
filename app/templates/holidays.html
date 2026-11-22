@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Holidays · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Holidays</h1>
+    <p class="muted">On a holiday, regular hours and weekly events that follow holidays don't run, so doors stay locked.
+      Give a holiday shorter hours to open for part of the day instead. One-time events always run.</p>
+  </div>
+</div>
+
+<div class="grid2 wide-left">
+  <section class="card">
+    <h2>Coming up</h2>
+    {% if upcoming %}
+    <table class="list">
+      <thead><tr><th>Holiday</th><th>When</th><th>Doors</th><th>Where</th><th></th></tr></thead>
+      <tbody>
+      {% for h in upcoming %}
+        <tr>
+          <td><strong>{{ h.name }}</strong></td>
+          <td>{{ h.start_date.strftime('%a, %b %-d, %Y') }}{% if h.end_date != h.start_date %} – {{ h.end_date.strftime('%a, %b %-d') }}{% endif %}</td>
+          <td>{% if h.hours %}<span class="pill ok">Open {{ h.hours.replace('-', '–') }}</span>{% else %}<span class="pill locked">Closed all day</span>{% endif %}</td>
+          <td class="muted">{{ hsites[h.site_id].name if h.site_id and h.site_id in hsites else 'Every site' }}</td>
+          <td class="right">
+            {% if h.site_id or user.is_admin %}
+            <form method="post" action="/holidays/{{ h.id }}/delete" onsubmit="return confirm('Remove {{ h.name|e }}?')"><button class="small danger">Remove</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">No holidays yet. Add your closures, or add the US holidays below in one go.</p>{% endif %}
+    {% if past %}<details class="small"><summary class="muted">Recent ({{ past|length }})</summary>
+      <ul>{% for h in past %}<li>{{ h.name }} · {{ h.start_date.strftime('%b %-d, %Y') }}</li>{% endfor %}</ul></details>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Add a closure or holiday</h2>
+    <form method="post" action="/holidays" class="stack" id="holform">
+      <label>Name <input name="name" placeholder="e.g. Staff training day" required></label>
+      <div class="grid2">
+        <label>Date <input type="date" name="start" required value="{{ today.isoformat() }}"></label>
+        <label>Until <small class="muted">(optional, for several days)</small><input type="date" name="end"></label>
+      </div>
+      <fieldset>
+        <legend>Doors that day</legend>
+        <div class="seg">
+          <label><input type="radio" name="mode" value="closed" checked><span>Closed all day</span></label>
+          <label><input type="radio" name="mode" value="hours"><span>Shorter hours</span></label>
+        </div>
+        <div class="grid2 holhours">
+          <label>Open from <input type="time" name="open_from" value="10:00"></label>
+          <label>to <input type="time" name="open_to" value="14:00"></label>
+        </div>
+      </fieldset>
+      {% if hsites|length > 1 or user.is_admin %}
+      <label>Where
+        <select name="site">
+          {% if user.is_admin %}<option value="">Every site</option>{% endif %}
+          {% for x in hsites.values() %}<option value="{{ x.id }}">{{ x.name }}</option>{% endfor %}
+        </select></label>
+      {% else %}<input type="hidden" name="site" value="{{ (hsites.values()|first).id if hsites }}">{% endif %}
+      <button class="primary">Add</button>
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <div class="head" style="margin-bottom:.4rem">
+    <h2 style="margin:0">US holidays for {{ year }}</h2>
+    <div class="btnrow small"><a href="/holidays?year={{ year - 1 }}">← {{ year - 1 }}</a> <a href="/holidays?year={{ year + 1 }}">{{ year + 1 }} →</a></div>
+  </div>
+  <p class="muted small">Tick the ones you're closed for. Doors stay locked all day; change one to shorter hours by adding it yourself instead.</p>
+  <form method="post" action="/holidays/us">
+    <input type="hidden" name="year" value="{{ year }}">
+    <div class="usgrid">
+      {% for n, d, have in us %}
+      <label class="check {{ 'muted' if have }}"><input type="checkbox" name="names" value="{{ n }}" {% if have %}disabled checked{% elif n in us_default %}checked{% endif %}>
+        <span><strong>{{ n }}</strong> <small class="muted">{{ d.strftime('%a, %b %-d') }}{% if have %} · added{% endif %}</small></span></label>
+      {% endfor %}
+    </div>
+    <div class="btnrow" style="margin-top:.8rem">
+      {% if hsites|length > 1 or user.is_admin %}
+      <select name="site" style="width:auto">
+        {% if user.is_admin %}<option value="">Every site</option>{% endif %}
+        {% for x in hsites.values() %}<option value="{{ x.id }}">{{ x.name }}</option>{% endfor %}
+      </select>
+      {% else %}<input type="hidden" name="site" value="{{ (hsites.values()|first).id if hsites }}">{% endif %}
+      <button class="primary">Add ticked holidays</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

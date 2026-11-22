@@ -35,6 +35,8 @@ ACTIONS = {
     "site.emergency": ("site", "Lockdown or evacuation"),
     "building.update": ("site", "Changed buildings"),
     "floorplan.update": ("site", "Changed a floor plan"),
+    "holiday.update": ("schedule", "Changed holidays"),
+    "calendar.approve": ("calendar", "Approved or skipped a calendar event"),
     "calendar.create": ("calendar", "Connected a calendar"),
     "calendar.update": ("calendar", "Changed a calendar"),
     "calendar.delete": ("calendar", "Disconnected a calendar"),
@@ -113,6 +115,7 @@ def schedule_snapshot(session: Session, s: Schedule) -> dict:
         "Doors": ", ".join(sorted(f"{d.name} ({sites.get(d.site_id, '')})" if multi else d.name for d in doors)),
         "When": when + (f", starting {s.start_local:%b %-d, %Y}" if s.repeat_weekdays else ""),
         "Time": _span(s.start_local, end),
+        "On holidays": ("Skips them" if s.on_holidays != "run" else "Runs as usual") if s.repeat_weekdays else "",
         "Contact": s.contact,
         "Notes": s.notes,
     }

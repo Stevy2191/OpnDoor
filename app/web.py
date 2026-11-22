@@ -109,7 +109,9 @@ def render(request: Request, name: str, user: Optional[User], **ctx) -> HTMLResp
             mine = visible_site_ids(s, user)
             sites = {k: v for k, v in sites.items() if k in mine}
         managed_ids = managed_site_ids(s, user) if user else set()
-        nav_unlocked = 0
+        nav_unlocked = nav_pending = 0
+        if user and user.is_manager:
+            nav_pending = len(s.exec(select(Schedule.id).where(Schedule.status == "pending")).all())
         if user:
             allowed = allowed_door_ids(s, user)
             now = utcnow()
@@ -119,6 +121,7 @@ def render(request: Request, name: str, user: Optional[User], **ctx) -> HTMLResp
     ctx.setdefault("emergencies", [x for x in sites.values() if x.emergency])
     ctx.setdefault("managed_ids", managed_ids)
     ctx.setdefault("nav_unlocked", nav_unlocked)
+    ctx.setdefault("nav_pending", nav_pending)
     ctx.setdefault("sites", sites)
     ctx.setdefault("nav_sites", sites)
     ctx.setdefault("current_site", request.session.get("site") if request.session.get("site") in sites else None)
@@ -193,13 +196,13 @@ def schedule_doors(session: Session, ids: list[int]) -> dict[int, list[str]]:
 
 def visible_schedules(session: Session, user: User) -> list[Schedule]:
     if user.is_admin:
-        return list(session.exec(select(Schedule)).all())
+        return list(session.exec(select(Schedule).where(Schedule.status == "")).all())
     allowed = allowed_door_ids(session, user)
     if not allowed:
         return []
     return list(session.exec(
         select(Schedule).join(ScheduleDoor, ScheduleDoor.schedule_id == Schedule.id)
-        .where(ScheduleDoor.door_id.in_(allowed)).distinct()
+        .where(ScheduleDoor.door_id.in_(allowed), Schedule.status == "").distinct()
     ).all())
 
 
@@ -441,7 +444,8 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
     sd = schedule_doors(session, [x.id for x in scheds])
     namer = DoorNamer(session, doors)
     agenda_today, agenda_week = [], {}
-    for o in expand(scheds, now.replace(hour=0, minute=0, second=0, microsecond=0), now + timedelta(days=7)):
+    hols = engine.holidays_for(session, site_id)
+    for o in expand(scheds, now.replace(hour=0, minute=0, second=0, microsecond=0), now + timedelta(days=7), hols):
         ids = [d for d in sd[o.schedule.id] if d in in_view]
         if not ids:
             continue
@@ -730,13 +734,14 @@ def schedules_list(request: Request, view: str = "", week: str = "", q: str = ""
         days = [start + timedelta(days=k) for k in range(7)]
         lo = datetime.combine(start, datetime.min.time())
         by_day: dict[date, list] = {d: [] for d in days}
-        for o in expand(scheds, lo, lo + timedelta(days=7)):
+        hols = engine.holidays_for(session, current_site_id(request, session, user))
+        for o in expand(scheds, lo, lo + timedelta(days=7), hols):
             day = max(o.start.date(), start)
             if day in by_day:
                 by_day[day].append(card(o.schedule, o))
         for d in days:
             by_day[d].sort(key=lambda c: (c["s"].kind != "default", c["o"].start))
-        ctx.update(days=days, by_day=by_day, week_start=start, today=today,
+        ctx.update(days=days, by_day=by_day, week_start=start, today=today, holidays=hols,
                    prev_week=(start - timedelta(days=7)).isoformat(), next_week=(start + timedelta(days=7)).isoformat(),
                    is_this_week=start <= today < start + timedelta(days=7))
     else:
@@ -864,6 +869,41 @@ def _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays,
                 repeat_weekdays=",".join(map(str, days)), repeat_until=until_d), errors
 
 
+def _save_perday(request, bg, session, user, label, door_ids, day, until, allowed, pd_on, pd_start, pd_end,
+                 on_holidays, notes):
+    """Regular hours that differ by day: one schedule per distinct time range."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for d in pd_on:
+        if d.isdigit() and int(d) < len(pd_start) and int(d) < len(pd_end):
+            groups.setdefault((pd_start[int(d)], pd_end[int(d)]), []).append(d)
+    if not groups:
+        flash(request, "Tick at least one day.", "error")
+        return redirect("/schedules/new?kind=default")
+    parsed = []
+    for (s, e), wd in groups.items():
+        data, errors = _parse_schedule(request, label, door_ids, day, s, e, "weekly", wd, until, allowed, "default")
+        if errors:
+            for x in errors:
+                flash(request, x, "error")
+            return redirect("/schedules/new?kind=default")
+        parsed.append(data)
+    for data in parsed:
+        ids = data.pop("door_ids")
+        sched = Schedule(**data, on_holidays=on_holidays, notes=notes.strip(), created_by=user.id)
+        session.add(sched)
+        session.flush()
+        calendars.set_schedule_doors(session, sched.id, ids)
+        session.flush()
+        after = audit.schedule_snapshot(session, sched)
+        audit.record(session, "schedule.create", f"{user.display} added regular hours “{sched.label}”: "
+                     f"{after['Doors']}, {after['When']}, {after['Time']}", user=user,
+                     changes=audit.diff({}, after), door_ids=ids, schedule_id=sched.id)
+    session.commit()
+    kick_reconcile(bg)
+    flash(request, f"Saved “{label.strip()}” ({len(parsed)} set{'' if len(parsed) == 1 else 's'} of hours).")
+    return redirect("/")
+
+
 @router.post("/schedules")
 @router.post("/schedules/{sid}")
 def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = None,
@@ -871,8 +911,10 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
                   start: str = Form(...), end: str = Form(...), repeat: str = Form("none"),
                   weekdays: list[str] = Form([]), until: str = Form(""), notes: str = Form(""),
                   kind: str = Form("override"), action: str = Form("unlock"), event_type: str = Form("event"),
-                  contact: str = Form(""), mode: str = Form(""), user: User = Depends(require_scheduler),
-                  session: Session = Depends(get_session)):
+                  contact: str = Form(""), mode: str = Form(""), holidays_field: str = Form(""),
+                  follow_holidays: str = Form(""), perday: str = Form(""), pd_on: list[str] = Form([]),
+                  pd_start: list[str] = Form([]), pd_end: list[str] = Form([]),
+                  user: User = Depends(require_scheduler), session: Session = Depends(get_session)):
     # The form asks one question, "what do you want to do?": unlock / lock / default (regular hours)
     if mode in ("unlock", "lock"):
         kind, action = "override", mode
@@ -886,6 +928,10 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
         if not sched or not can_edit(session, user, sched, schedule_doors(session, [sid])[sid]):
             flash(request, "You can't edit that schedule.", "error")
             return redirect("/schedules")
+    on_holidays = ("skip" if follow_holidays else "run") if holidays_field else (sched.on_holidays if sched else "skip")
+    if perday and kind == "default" and sched is None:
+        return _save_perday(request, bg, session, user, label, door_ids, day, until, allowed, pd_on, pd_start, pd_end,
+                            on_holidays, notes)
     data, errors = _parse_schedule(request, label, door_ids, day, start, end, repeat, weekdays, until, allowed,
                                    kind, action, event_type, contact)
     if errors:
@@ -893,6 +939,7 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
             flash(request, e, "error")
         return redirect(f"/schedules/{sid}" if sid else "/schedules/new")
     ids = data.pop("door_ids")
+    data["on_holidays"] = on_holidays
     before = audit.schedule_snapshot(session, sched) if sched else {}
     if sched is None:
         sched = Schedule(**data, notes=notes.strip(), created_by=user.id)
@@ -1540,7 +1587,40 @@ def calendars_page(request: Request, user: User = Depends(require_manager), sess
              if can_manage_feed(session, user, f)]
     counts = dict(session.exec(select(Schedule.feed_id, func.count()).where(Schedule.feed_id != None)  # noqa: E711
                                .group_by(Schedule.feed_id)).all())
-    return render(request, "calendars.html", user, feeds=feeds, counts=counts)
+    mine = {f.id: f for f in feeds}
+    waiting = [x for x in session.exec(select(Schedule).where(Schedule.status.in_(["pending", "skipped"]))
+                                       .order_by(Schedule.start_local)).all()
+               if x.feed_id in mine and x.start_local + timedelta(minutes=x.duration_minutes) > now_local()]
+    sd = schedule_doors(session, [x.id for x in waiting])
+    namer = DoorNamer(session, all_doors(session))
+    rows = [{"s": x, "feed": mine[x.feed_id], "doors": namer(sd.get(x.id, []), limit=4)} for x in waiting]
+    return render(request, "calendars.html", user, feeds=feeds, counts=counts,
+                  pending=[r for r in rows if r["s"].status == "pending"],
+                  skipped=[r for r in rows if r["s"].status == "skipped"])
+
+
+@router.post("/calendars/approve")
+def calendars_approve(request: Request, bg: BackgroundTasks, ids: list[int] = Form([]), action: str = Form("approve"),
+                      user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    """Approve calendar events that are waiting (they start unlocking doors) or skip them."""
+    done = []
+    for sid in ids:
+        s = session.get(Schedule, sid)
+        feed = session.get(CalendarFeed, s.feed_id) if s and s.feed_id else None
+        if not s or not feed or not can_manage_feed(session, user, feed) or s.status not in ("pending", "skipped"):
+            continue
+        s.status = "" if action == "approve" else "skipped"
+        session.add(s)
+        done.append(s.label)
+    if done:
+        verb = "approved" if action == "approve" else "skipped"
+        audit.record(session, "calendar.approve", f"{user.display} {verb} {len(done)} calendar event"
+                     f"{'' if len(done) == 1 else 's'}: " + ", ".join(done[:5]) + (" …" if len(done) > 5 else ""),
+                     user=user)
+        session.commit()
+        kick_reconcile(bg)
+        flash(request, f"{verb.capitalize()} {len(done)} event{'' if len(done) == 1 else 's'}.")
+    return redirect("/calendars")
 
 
 @router.get("/calendars/{fid}")
@@ -1596,6 +1676,13 @@ async def calendar_save(request: Request, fid: Optional[int] = None, user: User 
     feed.name, feed.url = name, url
     feed.enabled = form.get("enabled") == "on"
     feed.include_all_day = form.get("include_all_day") == "on"
+    feed.approve_new = form.get("approve_new") == "on"
+    try:
+        feed.approve_over_hours = max(0, int(form.get("approve_over_hours") or 0))
+    except ValueError:
+        feed.approve_over_hours = 0
+    feed.approve_before = str(form.get("approve_before") or "")[:5]
+    feed.approve_after = str(form.get("approve_after") or "")[:5]
     feed.default_door_ids = ",".join(str(d) for d in form.getlist("default_doors") if str(d) in mine)
     try:
         feed.lead_minutes = max(0, int(form.get("lead_minutes") or 0))
