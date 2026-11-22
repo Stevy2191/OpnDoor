@@ -29,15 +29,23 @@
 </div>
 {% else %}
 
+{% include "_emergency.html" %}
+
 <section class="tiles">
-  <a class="tile {{ 'hot ok' if tiles.unlocked }}" href="#now"><span class="num">{{ tiles.unlocked }}</span><span class="lbl">{{ padlock(True) }} Unlocked now</span></a>
-  <a class="tile {{ 'hot lock' if tiles.locked }}" href="#now"><span class="num">{{ tiles.locked }}</span><span class="lbl">{{ padlock(False) }} Kept locked</span></a>
-  <a class="tile {{ 'hot bad' if tiles.problems }}" href="#now"><span class="num">{{ tiles.problems }}</span><span class="lbl">⚠️ Problems</span></a>
-  <a class="tile" href="#today"><span class="num">{{ tiles.events }}</span><span class="lbl">📅 Events left today</span></a>
+  <a class="tile {{ 'hot ok' if tiles.unlocked }}" href="#now"><span class="num">{{ tiles.unlocked }}</span><span class="lbl">Unlocked right now</span></a>
+  <a class="tile {{ 'hot open' if tiles.open }}" href="#now"><span class="num">{{ tiles.open }}</span><span class="lbl">Standing open</span></a>
+  <a class="tile {{ 'hot lock' if tiles.locked }}" href="#now"><span class="num">{{ tiles.locked }}</span><span class="lbl">Kept locked</span></a>
+  {% if tiles.problems %}<a class="tile hot bad" href="#now"><span class="num">{{ tiles.problems }}</span><span class="lbl">Problems</span></a>
+  {% else %}<a class="tile" href="#today"><span class="num">{{ tiles.events }}</span><span class="lbl">Events left today</span></a>{% endif %}
 </section>
 
 <section class="card" id="now">
   <h2>Right now</h2>
+  {% if standing_open %}
+  <ul class="openlist">
+    {% for d in standing_open %}<li><span class="pill open">Standing open</span> <a href="/doors/{{ d.id|urlencode }}"><strong>{{ d.name }}</strong></a> <small class="muted">the door sensor says it's open</small></li>{% endfor %}
+  </ul>
+  {% endif %}
   {% if right_now %}
   <table class="list">
     <thead><tr><th>Door</th>{% if sites|length > 1 and not current_site %}<th>Site</th>{% endif %}<th>Status</th><th>Because of</th><th></th></tr></thead>
@@ -48,7 +56,7 @@
         {% if sites|length > 1 and not current_site %}<td class="muted">{{ r.site.name if r.site }}</td>{% endif %}
         <td>
           {% if st.error %}<span class="pill bad">⚠️ Problem</span>
-          {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">until {{ st.until|time }}</small>
+          {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">{{ 'until set back' if st.held else 'until ' ~ (st.until|time) }}</small>
           {% else %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ '' if (st.until|day) == 'Today' else (st.until|day) ~ ' ' }}{{ st.until|time }}</small>{% endif %}{% endif %}
         </td>
         <td>{% if st.error %}<small class="err">{{ st.error }}</small>{% else %}{{ st.label or '—' }}{% endif %}</td>
@@ -70,7 +78,7 @@
   <div class="agenda">
     {% for r in agenda_today %}{% set s = r.o.schedule %}
     <div class="arow {{ 'live' if r.live }} {{ 'past' if r.past }} {{ 'lockov' if s.action == 'lock' }}">
-      <div class="atime">{{ span(r.o.start, r.o.end) }}{% if r.live %}<span class="livedot">now</span>{% endif %}</div>
+      <div class="atime">{% if s.duration_minutes >= 525600 %}{{ r.o.start|time }} · until set back{% else %}{{ span(r.o.start, r.o.end) }}{% endif %}{% if r.live %}<span class="livedot">now</span>{% endif %}</div>
       <div class="awhat">
         <div><strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
         <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>
@@ -96,7 +104,7 @@
     <div class="aday">{{ day|day }}</div>
     {% for r in rows %}{% set s = r.o.schedule %}
     <div class="arow {{ 'lockov' if s.action == 'lock' }}">
-      <div class="atime">{{ span(r.o.start, r.o.end) }}</div>
+      <div class="atime">{% if s.duration_minutes >= 525600 %}{{ r.o.start|time }} · until set back{% else %}{{ span(r.o.start, r.o.end) }}{% endif %}</div>
       <div class="awhat">
         <div><strong>{{ s.label }}</strong>{% if s.action == 'lock' %} <span class="pill lock">Kept locked</span>{% endif %}</div>
         <small class="muted">{{ r.doors }}{% if s.contact %} · {{ s.contact }}{% endif %}</small>

@@ -142,8 +142,8 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
                 door = doors.get(door_id)
                 site = sites.get(door.site_id) if door else None
                 st = states.get(door_id) or DoorState(door_id=door_id)
-                if not door or not site or not site.enabled or not door.present:
-                    continue
+                if not door or not site or not site.enabled or not door.present or site.emergency:
+                    continue  # during a lockdown or evacuation UniFi holds every door; schedules wait
                 tz = site_tz(site)
                 want = desired.get(door_id)
                 active = st.mode == "lock" or (st.mode == "unlock" and st.until and st.until > now)
@@ -151,8 +151,12 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
                 client = unifi.get_client(site)
                 try:
                     if want and want.state == "unlock":
-                        if not active or st.mode != "unlock" or abs(want.end - st.until) > TOLERANCE:
-                            client.unlock_for(door.remote_id, (want.end - now).total_seconds())
+                        held = (want.end - now > HOLD_AFTER and st.until is not None and st.until - now > HOLD_AFTER)
+                        if not active or st.mode != "unlock" or (abs(want.end - st.until) > TOLERANCE and not held):
+                            if want.end - now > HOLD_AFTER:
+                                client.keep_unlock(door.remote_id)  # long or open-ended: until set back
+                            else:
+                                client.unlock_for(door.remote_id, (want.end - now).total_seconds())
                             audit(s, "door.unlock", f"{door.name} unlocked until "
                                   f"{to_local(want.end, tz):%a %b %-d %-I:%M %p} ({label})", door_ids=[door.id])
                             st.mode, st.applied_at = "unlock", now
@@ -183,6 +187,50 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
             s.commit()
     finally:
         _lock.release()
+
+
+HOLD_AFTER = timedelta(hours=24)
+
+
+def refresh_states() -> None:
+    """Every few seconds: each door's lock and door-sensor state, and whether the console is in
+    lockdown or evacuation (also when someone started it in the UniFi Access app)."""
+    with session_scope() as s:
+        for site in s.exec(select(Site).where(Site.enabled == True)).all():  # noqa: E712
+            client = unifi.get_client(site)
+            try:
+                remote = {rd.id: rd for rd in client.list_doors()}
+                mode = client.get_emergency()
+            except unifi.UnifiError as e:
+                log.debug("status at %s: %s", site.name, e)
+                continue
+            for door in s.exec(select(Door).where(Door.site_id == site.id)).all():
+                rd = remote.get(door.remote_id)
+                if rd and (rd.lock_status, rd.position_status) != (door.lock_status, door.position_status):
+                    door.lock_status, door.position_status = rd.lock_status, rd.position_status
+                    s.add(door)
+            if mode != site.emergency:
+                was = site.emergency
+                site.emergency = mode
+                if mode:  # started outside OpnDoor
+                    site.emergency_by, site.emergency_at = "the UniFi Access app", utcnow()
+                    audit(s, "site.emergency", f"{mode.capitalize()} started at {site.name} in the UniFi Access app",
+                          site_ids=[site.id])
+                else:
+                    audit(s, "site.emergency", f"{was.capitalize()} ended at {site.name} in the UniFi Access app",
+                          site_ids=[site.id])
+                    forget_states(s, site.id)
+                s.add(site)
+        s.commit()
+
+
+def forget_states(session: Session, site_id: int) -> None:
+    """After an emergency UniFi's door rules may have changed: re-apply every schedule."""
+    ids = set(session.exec(select(Door.id).where(Door.site_id == site_id)).all())
+    for st in session.exec(select(DoorState)).all():
+        if st.door_id in ids:
+            st.mode, st.until, st.schedule_id = "", None, None
+            session.add(st)
 
 
 def safe(fn, *args):

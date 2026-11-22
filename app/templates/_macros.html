@@ -39,7 +39,8 @@
 
 {# One-line status for a door from door_status(). #}
 {% macro status_line(st) %}
-  {% if st.mode == 'unlock' %}<span class="dot open"></span> Unlocked until {{ st.until|time }}{% if st.label %} <span class="muted">· {{ st.label }}</span>{% endif %}
+  {% if st.mode == 'unlock' and st.held %}<span class="dot open"></span> Kept unlocked until someone sets it back
+  {% elif st.mode == 'unlock' %}<span class="dot open"></span> Unlocked until {{ st.until|time }}{% if st.label %} <span class="muted">· {{ st.label }}</span>{% endif %}
   {% elif st.mode == 'lock' %}<span class="dot held"></span> Kept locked{% if st.until %} until {{ st.until|day }} {{ st.until|time }}{% endif %}{% if st.label %} <span class="muted">· {{ st.label }}</span>{% endif %}
   {% else %}<span class="dot closed"></span> Locked{% endif %}
   {% if st.error %}<small class="err">⚠ {{ st.error }}</small>{% endif %}

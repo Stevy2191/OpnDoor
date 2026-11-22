@@ -4,8 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}OpnDoor{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='5' y='2' width='14' height='20' rx='2' fill='%232563eb'/><circle cx='15' cy='12' r='1.6' fill='white'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='5' y='2' width='14' height='20' rx='2' fill='%230f766e'/><circle cx='15' cy='12' r='1.6' fill='white'/></svg>">
 </head>
 <body class="{{ 'app' if user else 'bare' }}">
 {% macro icon(name) -%}
@@ -46,7 +49,7 @@
   {% set p = request.url.path %}
   <nav class="navgroup">
     <a href="/home" class="{{ 'on' if p in ('/', '/home') }}">{{ icon('home') }}Home</a>
-    <a href="/doors" class="{{ 'on' if p.startswith('/doors') }}">{{ icon('door') }}Doors</a>
+    <a href="/doors" class="{{ 'on' if p.startswith('/doors') }}">{{ icon('door') }}Doors{% if nav_unlocked %}<span class="navbadge">{{ nav_unlocked }} unlocked</span>{% endif %}</a>
     <a href="/map" class="{{ 'on' if p.startswith('/map') or p.startswith('/floorplans') }}">{{ icon('map') }}Map</a>
     {% if user.schedules %}<a href="/schedules" class="{{ 'on' if p.startswith('/schedules') }}">{{ icon('list') }}Schedules</a>{% endif %}
     {% if user.is_manager %}<a href="/calendars" class="{{ 'on' if p.startswith('/calendars') }}">{{ icon('cal') }}Calendars</a>{% endif %}
@@ -75,6 +78,15 @@
 {% endif %}
 
 <div class="content">
+{% for e in emergencies or [] %}
+<div class="ebanner {{ 'evac' if e.emergency == 'evacuation' else '' }}" role="status">
+  <strong>{{ 'Lockdown' if e.emergency == 'lockdown' else 'Evacuation' }} is on at {{ e.name }}.</strong>
+  <span class="etext">{{ 'Every door is held locked.' if e.emergency == 'lockdown' else 'Every door is held unlocked.' }}{% if e.emergency_by %} Started by {{ e.emergency_by }}{% if e.emergency_at %} at {{ (e.emergency_at|local)|time }}{% endif %}.{% endif %}</span>
+  {% if e.id in managed_ids %}<form method="post" action="/sites/{{ e.id }}/emergency" onsubmit="return confirm('End {{ e.emergency }} at {{ e.name|e }}? Doors go back to their schedules.')">
+    <input type="hidden" name="mode" value="normal"><input type="hidden" name="next" value="{{ request.url.path }}">
+    <button>End {{ e.emergency }}</button></form>{% endif %}
+</div>
+{% endfor %}
 {% if demo and user %}
 <div class="banner">Demo mode: {% if config.DRY_RUN %}DRY_RUN is on{% else %}a demo site is set up{% endif %}, so its doors are examples and nothing is really unlocked.{% if user.is_admin %} <a href="/sites">Add your UniFi Access consoles →</a>{% endif %}</div>
 {% endif %}

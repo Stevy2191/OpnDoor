@@ -102,6 +102,9 @@ class Site(SQLModel, table=True):
     enabled: bool = True
     last_sync_at: Optional[datetime] = None
     last_sync_status: str = ""
+    emergency: str = ""  # "lockdown" | "evacuation" | "" (normal), as UniFi Access reports it
+    emergency_by: str = ""
+    emergency_at: Optional[datetime] = None
     protect_key: str = ""  # UniFi OS API key for UniFi Protect (camera pictures); optional
     protect_host: str = ""  # Protect console address if not the same console as Access
     created_at: datetime = Field(default_factory=utcnow)
