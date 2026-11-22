@@ -13,6 +13,8 @@ def _bool(name: str, default: bool) -> bool:
 
 
 VERSION = os.getenv("APP_VERSION", "dev")
+COMMIT = os.getenv("APP_COMMIT", "")
+UPDATE_REPO = os.getenv("UPDATE_REPO", "Stevy2191/OpnDoor")  # where "Update" checks for news; empty = never
 TZ_NAME = os.getenv("TZ", "America/Chicago")
 TZ = ZoneInfo(TZ_NAME)
 

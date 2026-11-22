@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Restarting · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<section class="card" style="text-align:center;padding:2.5rem 1.5rem">
+  <h1>{{ what }}…</h1>
+  <p class="muted">{{ note or 'OpnDoor is restarting. This page reloads by itself when it is back.' }}</p>
+  <p class="muted small" id="waitmsg">Waiting for OpnDoor…</p>
+</section>
+<script>
+(function () {
+  let down = false, tries = 0;
+  const t = setInterval(async () => {
+    tries++;
+    try {
+      const r = await fetch('/health', { cache: 'no-store' });
+      if (r.ok && (down || tries > 40)) { clearInterval(t); location.href = {{ (back or '/home')|tojson }}; }
+      if (!r.ok) down = true;
+    } catch (e) { down = true; document.getElementById('waitmsg').textContent = 'Restarting…'; }
+  }, 3000);
+})();
+</script>
+{% endblock %}

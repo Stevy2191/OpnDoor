@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Devices · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Devices</h1>
+    <p class="muted">{% if offline %}<b style="color:var(--err)">{{ offline }} offline</b> · {% endif %}{{ total }} reader{{ '' if total == 1 else 's' }}, hubs and cameras{% if not offline and total %} · all online{% endif %}</p>
+  </div>
+  <div class="btnrow"><a class="button" href="/devices?refresh=1">↻ Check again</a></div>
+</div>
+{% for r in rows %}
+<section class="card devsite">
+  <h2>{{ r.site.name }}
+    {% if r.console_ok %}<span class="pill locked">Console connected</span>{% else %}<span class="pill bad">Can't reach the console</span>{% endif %}
+    {% if r.bad %}<span class="pill bad">{{ r.bad }} offline</span>{% endif %}</h2>
+  {% for e in r.errors %}<p class="err small">{{ e }}</p>{% endfor %}
+  {% if r.devs %}
+  <div class="devgrid">
+    {% for i in r.devs %}
+    <div class="dev {{ 'off' if i.online is false }}">
+      <span class="dot {{ 'closed' if i.online is none else ('open' if i.online else 'bad') }}" title="{{ 'Unknown' if i.online is none else ('Online' if i.online else 'Offline') }}"></span>
+      <span><span class="dn">{{ i.name }}</span>
+        <small>{{ i.kind }}{% if i.where %} · {% if i.door_id %}<a href="/doors/{{ i.door_id|urlencode }}">{{ i.where }}</a>{% else %}{{ i.where }}{% endif %}{% endif %}{% if i.online is false %} · <b style="color:var(--err)">offline</b>{% endif %}{% if i.firmware %} · {{ i.firmware }}{% endif %}</small></span>
+    </div>
+    {% endfor %}
+  </div>
+  {% elif r.console_ok %}<p class="muted">No devices reported. The API token needs <b>Device: View</b>.</p>{% endif %}
+</section>
+{% else %}
+<p class="muted">No sites yet.</p>
+{% endfor %}
+{% endblock %}

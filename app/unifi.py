@@ -185,6 +185,22 @@ class UnifiClient:
                 raise
             self._call("PUT", f"/doors/{door_id}/unlock")  # Access before 3.3.21 takes no actor
 
+    def list_devices(self) -> list[dict]:
+        """Every Access device: {id, name, type, door_id, online (True/False/None), firmware}."""
+        data = self._call("GET", "/devices") or []
+        out = []
+        for group in data:
+            for dev in group if isinstance(group, list) else [group]:
+                if not isinstance(dev, dict):
+                    continue
+                online = dev.get("is_online", dev.get("online"))
+                if online is None and isinstance(dev.get("state"), str):
+                    online = dev["state"].lower() in ("online", "connected", "adopted")
+                out.append({"id": dev.get("id", ""), "name": dev.get("alias") or dev.get("name") or dev.get("id", ""),
+                            "type": dev.get("type") or dev.get("device_type") or "", "door_id": dev.get("location_id") or "",
+                            "online": online, "firmware": dev.get("firmware") or dev.get("version") or ""})
+        return out
+
     def door_devices(self) -> dict[str, list[str]]:
         """{door id: [device names]} for readers and hubs bound to doors (needs Device: View)."""
         data = self._call("GET", "/devices") or []
@@ -209,6 +225,22 @@ class UnifiClient:
 
     def user_policies(self, user_id: str) -> list[dict]:
         return self._call("GET", f"/users/{user_id}/access_policies") or []
+
+    def set_user_pin(self, user_id: str, pin: str) -> None:
+        try:
+            self._call("PUT", f"/users/{user_id}/pin_codes", json={"pin_code": pin})
+        except UnifiError as e:
+            if "403" in str(e) or "permission" in str(e).lower():
+                raise UnifiError("The API token can't change PINs. Set Credentials and People & Groups to Edit.") from e
+            self._call("PUT", f"/users/{user_id}/pin_code", json={"pin_code": pin})  # older Access versions
+
+    def set_user_active(self, user_id: str, active: bool) -> None:
+        try:
+            self._call("PUT", f"/users/{user_id}", json={"status": "ACTIVE" if active else "DEACTIVATED"})
+        except UnifiError as e:
+            if "403" in str(e) or "permission" in str(e).lower():
+                raise UnifiError("The API token can't change people. Set People & Groups to Edit.") from e
+            raise
 
     def list_policies(self) -> list[dict]:
         return self._call("GET", "/access_policies") or []
@@ -327,8 +359,28 @@ class FakeUnifiClient:
     def list_users(self) -> list[dict]:
         return list(self.users)
 
+    def set_user_pin(self, user_id: str, pin: str) -> None:
+        for u in self.users:
+            if u["id"] == user_id:
+                u["pin_code"] = {"token": pin}
+        self.calls.append(("user_pin", user_id))
+
+    def set_user_active(self, user_id: str, active: bool) -> None:
+        for u in self.users:
+            if u["id"] == user_id:
+                u["status"] = "ACTIVE" if active else "DEACTIVATED"
+        self.calls.append(("user_active", user_id, active))
+
     def door_devices(self) -> dict[str, list[str]]:
         return dict(getattr(self, "devices", {}))
+
+    def list_devices(self) -> list[dict]:
+        out = [{"id": "demo-hub", "name": "Access Hub", "type": "UAH", "door_id": "", "online": True,
+                "firmware": "1.24.5"}]
+        for i, d in enumerate(self.doors):
+            out.append({"id": f"rdr-{d.id}", "name": f"{d.name} Reader", "type": "UA-G2-Pro", "door_id": d.id,
+                        "online": i != 1, "firmware": "2.3.11"})
+        return out
 
     def user_policies(self, user_id: str) -> list[dict]:
         return [self.policies[p] for p in self.user_policy_ids.get(user_id, []) if p in self.policies]

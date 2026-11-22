@@ -28,7 +28,7 @@
 <body>
   <div class="top">
     <div>
-      <div class="brand">{{ d.site.name }}</div>
+      {% set b = brand() %}<div class="brand">{% if b.logo %}<img class="slogo" src="/brand/logo" alt="">{% endif %}{{ d.site.name }}</div>
       <h1 class="welcome">Welcome</h1>
       {% if sc.message %}<p class="msg">{{ sc.message }}</p>{% elif d.people and sc.checkin %}<p class="msg">Expecting you? Tap your name to check in.</p>{% endif %}
     </div>

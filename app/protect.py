@@ -66,11 +66,11 @@ def cameras(site: Site) -> list[dict]:
     """[{id, name}] for the site's Protect cameras."""
     if _demo(site) and not site.protect_key:
         from .unifi import get_client
-        return [{"id": f"cam-{d.id}", "name": d.name} for d in get_client(site).list_doors()]
+        return [{"id": f"cam-{d.id}", "name": d.name, "state": "CONNECTED"} for d in get_client(site).list_doors()]
     data = _get(site, "/v1/cameras").json()
     if isinstance(data, dict):
         data = data.get("data") or []
-    return [{"id": c["id"], "name": c.get("name") or c["id"]} for c in data if c.get("id")]
+    return [{"id": c["id"], "name": c.get("name") or c["id"], "state": c.get("state") or ""} for c in data if c.get("id")]
 
 
 def snapshot(site: Site, camera_id: str, door_name: str = "") -> tuple[bytes, str]:

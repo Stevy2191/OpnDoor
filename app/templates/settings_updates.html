@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Updates · Settings · OpnDoor{% endblock %}
+{% block content %}
+{% include "_settingstabs.html" %}
+<section class="card">
+  <h2>Updates</h2>
+  <dl class="kv">
+    <dt>Running</dt><dd>{{ commit or config.VERSION }}{% if not commit %} <span class="muted small">(built before version numbers were added)</span>{% endif %}</dd>
+    {% if new %}<dt>Newest</dt><dd>{{ new.sha[:7] }} · {{ new.date }} <span class="muted">· {{ new.message }}</span>
+      {% if behind %}<span class="pill ok">Update available</span>{% elif commit %}<span class="pill locked">Up to date</span>{% endif %}</dd>{% endif %}
+    {% if status.state %}<dt>Last update</dt><dd>{{ {'current': 'Already up to date', 'updated': 'Updated', 'running': 'Running now…', 'failed': "Didn't work"}.get(status.state, status.state) }} <span class="muted small">{{ status.when }}</span></dd>{% endif %}
+  </dl>
+  {% if status.state == 'failed' and status.detail %}<pre class="out">{{ status.detail }}</pre>{% endif %}
+
+  {% if ready %}
+  <form method="post" action="/settings/updates/now" onsubmit="return confirm('Update OpnDoor now? It makes a backup, downloads the newest version and restarts. That takes a minute or two, and nobody can use OpnDoor while it restarts. Doors keep their schedules in UniFi Access.')">
+    <button class="primary" {% if pending %}disabled{% endif %}>{{ 'Update requested…' if pending else 'Update now' }}</button>
+  </form>
+  <form method="post" action="/settings/updates" class="mt">
+    <label class="check"><input type="checkbox" name="auto" value="true" {% if auto %}checked{% endif %} onchange="this.form.submit()"> Install updates automatically at night (3:41 AM)</label>
+  </form>
+  {% else %}
+  <div class="flash info">The Update button needs a small helper next to OpnDoor that's allowed to restart it. To turn it on, run the installer again on the server and pick <b>Change settings</b>, then answer <b>Yes</b> to “Turn on the Update button”.</div>
+  <p class="muted">Until then, update from the server:</p>
+  <pre class="out">cd /srv/docker/opndoor
+sudo docker compose pull opndoor && sudo docker compose up -d --force-recreate</pre>
+  {% endif %}
+</section>
+{% endblock %}

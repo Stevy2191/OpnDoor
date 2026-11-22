@@ -15,6 +15,7 @@ set -euo pipefail
 OPNDOOR_IMAGE="${OPNDOOR_IMAGE:-ghcr.io/stevy2191/opndoor:latest}"
 CADDY_IMAGE="${CADDY_IMAGE:-caddy:2}"
 GO2RTC_IMAGE="${GO2RTC_IMAGE:-alexxit/go2rtc:1.9.9}"
+UPDATER_IMAGE="${UPDATER_IMAGE:-docker:27-cli}"
 INSTALL_DIR="${OPNDOOR_DIR:-/srv/docker/opndoor}"
 APP_UID=10001
 
@@ -450,6 +451,14 @@ main() {
   LIVE=""
   if yes_no "  Turn on live video?" "$def_live"; then LIVE=1; fi
 
+  # -------- update button
+  step "Update button (recommended)"
+  say "  Adds an Update now button to OpnDoor (Settings → Updates), so you don't need this server"
+  say "  to update. A small helper container is allowed to restart OpnDoor; it only ever updates OpnDoor."
+  local def_upd=Y; [ -f "$INSTALL_DIR/docker-compose.yml" ] && ! grep -q 'opndoor-updater' "$INSTALL_DIR/docker-compose.yml" && def_upd=N
+  UPDATER=""
+  if yes_no "  Turn on the Update button?" "$def_upd"; then UPDATER=1; fi
+
   # -------- write files
   step "Setting up $INSTALL_DIR"
   mkdir -p "$INSTALL_DIR/data"
@@ -530,8 +539,60 @@ EOF
       printf '      - ./caddy/data:/data\n'
       printf '      - ./caddy/config:/config\n'
     fi
+    if [ -n "$UPDATER" ]; then
+      printf '\n  updater:\n'
+      printf '    image: %s\n' "$UPDATER_IMAGE"
+      printf '    container_name: opndoor-updater\n'
+      printf '    restart: unless-stopped\n'
+      printf '    # waits for the Update button in OpnDoor, then pulls the newest OpnDoor and restarts it\n'
+      printf '    working_dir: %s\n' "$INSTALL_DIR"
+      printf '    entrypoint: ["sh", "%s/updater.sh"]\n' "$INSTALL_DIR"
+      printf '    volumes:\n'
+      printf '      - /var/run/docker.sock:/var/run/docker.sock\n'
+      printf '      - %s:%s\n' "$INSTALL_DIR" "$INSTALL_DIR"
+    fi
   } >"$INSTALL_DIR/docker-compose.yml"
   ok "Wrote docker-compose.yml"
+
+  if [ -n "$UPDATER" ]; then
+    cat >"$INSTALL_DIR/updater.sh" <<'EOF3'
+#!/bin/sh
+# OpnDoor's update helper. It waits for the Update button in OpnDoor (which leaves
+# data/update.request), then downloads the newest OpnDoor and restarts it.
+# install.sh sets it up as the "updater" service; it needs the Docker socket.
+cd "$(dirname "$0")" || exit 1
+project=$(docker inspect opndoor --format '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null)
+dc() { docker compose ${project:+-p "$project"} "$@"; }
+stamp() { date '+%Y-%m-%d %H:%M'; }
+while :; do
+  touch data/updater.alive
+  if [ -f data/update.request ]; then
+    rm -f data/update.request
+    echo "running $(stamp)" >data/update.status
+    image=$(dc config --images opndoor 2>/dev/null | head -n 1)
+    before=$(docker image inspect -f '{{.Id}}' "$image" 2>/dev/null)
+    if out=$(dc pull opndoor 2>&1); then
+      after=$(docker image inspect -f '{{.Id}}' "$image" 2>/dev/null)
+      if [ -n "$before" ] && [ "$before" = "$after" ]; then
+        echo "current $(stamp)" >data/update.status
+      elif out=$(dc up -d --no-deps opndoor 2>&1); then
+        echo "updated $(stamp)" >data/update.status
+      else
+        printf 'failed %s\n%s\n' "$(stamp)" "$out" >data/update.status
+      fi
+    else
+      printf 'failed %s\n%s\n' "$(stamp)" "$out" >data/update.status
+    fi
+    chmod 644 data/update.status
+  fi
+  sleep 10
+done
+EOF3
+    chmod 755 "$INSTALL_DIR/updater.sh"
+    ok "Wrote updater.sh (Update button on)"
+  else
+    rm -f "$INSTALL_DIR/updater.sh"
+  fi
 
   if [ -n "$LIVE" ]; then
     cat >"$INSTALL_DIR/go2rtc.yaml" <<'EOF2'

@@ -1058,3 +1058,31 @@ details.help ul { margin: 0; padding-left: 1.2rem; display: flex; flex-direction
   .vrow { grid-template-columns: 8rem 1.6fr 1fr 4rem auto; }
 }
 details.help.mt { margin-top: 1.25rem; }
+
+/* branding, settings, devices, UniFi people */
+.brandlogo { max-height: 44px; max-width: 190px; object-fit: contain; border-radius: 4px; }
+.brandlogo.big { max-height: 56px; max-width: 220px; }
+.settingtabs { margin-bottom: 1.25rem; }
+.swatchrow { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; }
+.swatchrow label { display: flex; flex-direction: column; gap: .35rem; }
+.swatchrow input[type=color] { width: 64px; height: 40px; padding: 2px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); }
+.logoprev { display: flex; align-items: center; gap: 1rem; padding: .8rem 1rem; border-radius: 10px; background: var(--nav); color: #fff; font-weight: 700; width: fit-content; }
+.logoprev img { max-height: 36px; max-width: 160px; }
+.kv { display: grid; grid-template-columns: 10rem 1fr; gap: .5rem 1rem; margin: 0 0 1rem; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; }
+pre.out { background: var(--bg); border-radius: 8px; padding: .7rem .9rem; font-size: .8rem; white-space: pre-wrap; max-height: 16rem; overflow: auto; }
+.devsite h2 { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.devgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .6rem; }
+.dev { display: flex; gap: .7rem; align-items: center; padding: .7rem .85rem; border: 1px solid var(--line); border-radius: 10px; }
+.dev.off { border-color: var(--err); background: var(--err-soft); }
+.dev .dot { flex: none; }
+.dev .dn { font-weight: 600; display: block; }
+.dev small { color: var(--muted); }
+.devsum { display: flex; gap: 1rem; flex-wrap: wrap; }
+.pinbox { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+.pinbox .passpin { margin: 0; }
+.uprow { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 7rem auto; gap: 1rem; align-items: center; padding: .7rem 1rem; }
+.uprow + .uprow { border-top: 1px solid var(--line); }
+.uprow.off { opacity: .65; }
+.uprow form { margin: 0; }
+@media (max-width: 760px) { .uprow { grid-template-columns: 1fr auto; } .uprow .upemail, .uprow .upcred { display: none; } }

@@ -52,6 +52,12 @@ ACTIONS = {
     "screen.delete": ("site", "Removed a lobby or room screen"),
     "screen.newlink": ("site", "Made a new screen link"),
     "settings.email": ("site", "Changed email settings"),
+    "settings.branding": ("site", "Changed the branding"),
+    "settings.backup": ("site", "Made a backup"),
+    "settings.restore": ("site", "Restored a backup"),
+    "settings.update": ("site", "Started an update"),
+    "unifi.pin": ("access", "Gave someone a new PIN in UniFi Access"),
+    "unifi.active": ("access", "Turned someone's UniFi Access on or off"),
 }
 
 CATEGORIES = [
