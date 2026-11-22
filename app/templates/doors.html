@@ -12,6 +12,12 @@
     <p class="muted">{{ usable|length }} door{{ '' if usable|length == 1 else 's' }} · {{ 'tick doors, then set regular hours or add an override' if user.schedules else 'tap Open to let someone in' }}</p>
   </div>
   <div class="btnrow">
+    {% if em_sites|length == 1 and not em_sites[0].emergency %}{% set x = em_sites[0] %}
+    <form method="post" action="/sites/{{ x.id }}/emergency" onsubmit="return confirm('Start LOCKDOWN at {{ x.name|e }}? Every door is held locked, and badges won\'t open them, until you end it.')">
+      <input type="hidden" name="mode" value="lockdown"><input type="hidden" name="next" value="/doors"><button class="outline-red">Start lockdown</button></form>
+    <form method="post" action="/sites/{{ x.id }}/emergency" onsubmit="return confirm('Start EVACUATION at {{ x.name|e }}? Every door is held unlocked until you end it.')">
+      <input type="hidden" name="mode" value="evacuation"><input type="hidden" name="next" value="/doors"><button class="outline-green">Start evacuation</button></form>
+    {% endif %}
     {% if user.is_manager and (cur or sites|length == 1) %}<a class="button" href="/sites/{{ (cur or (sites.values()|first)).id }}#buildings">🏢 Organize buildings</a>{% endif %}
     {% if user.is_admin %}<form method="post" action="/doors/sync"><button>↻ Reload from UniFi</button></form>{% endif %}
     {% if usable %}<button type="button" class="button {{ 'primary' if not user.schedules }}" onclick="document.getElementById('unlockdlg').showModal()">Open or unlock</button>{% endif %}
@@ -25,6 +31,7 @@
   <div class="fchips" role="group" aria-label="Show">
     <button type="button" data-f="" class="on">All <span>{{ usable|length }}</span></button>
     <button type="button" data-f="unlock">Unlocked <span>{{ counts.unlock }}</span></button>
+    <button type="button" data-f="open">Standing open <span>{{ counts.open }}</span></button>
     <button type="button" data-f="lock">Kept locked <span>{{ counts.lock }}</span></button>
     {% if counts.error %}<button type="button" data-f="error" class="bad">Problems <span>{{ counts.error }}</span></button>{% endif %}
   </div>
@@ -51,7 +58,7 @@
       {% if view == 'tiles' %}
       <div class="dtiles">
         {% for d in group %}{% set st = status.get(d.id, {}) %}{% set ev = nextev.get(d.id) %}
-        <div class="dtile st-{{ state[d.id] }}" data-door data-state="{{ state[d.id] }}"
+        <div class="dtile st-{{ state[d.id] }}{{ ' st-open' if d.position_status == 'open' }}" data-door data-state="{{ state[d.id] }}" data-open="{{ '1' if d.position_status == 'open' else '0' }}"
              data-find="{{ (d.name ~ ' ' ~ (b.name if b else '') ~ ' ' ~ d.full_name)|lower }}">
           {% if d.camera_id %}
           <button type="button" class="dcam" data-cam="/doors/{{ d.id|urlencode }}/snapshot" data-name="{{ d.name }}" data-id="{{ d.id }}" aria-label="Bigger view of {{ d.name }}">
@@ -70,9 +77,10 @@
             </div>
             <div class="dtstate">
               {% if st.error %}<span class="pill bad">⚠️ Problem</span>
-              {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">until {{ st.until|time }}</small>
+              {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">{{ 'until set back' if st.held else 'until ' ~ (st.until|time) }}</small>
               {% elif st.mode == 'lock' %}<span class="pill lock">Kept locked</span>
-              {% else %}<span class="muted">Locked</span>{% endif %}
+              {% else %}<span class="pill locked">Locked</span>{% endif %}
+              {% if d.position_status == 'open' %}<span class="pill open">Standing open</span>{% elif d.position_status == 'close' %}<span class="pill closed">Closed</span>{% endif %}
               {% if ev %}<small class="muted dtnext">Next: {{ ev.schedule.label }} · {{ ev.start|day }} {{ ev.start|time }}</small>{% endif %}
             </div>
           </div>
@@ -84,15 +92,16 @@
       <div class="drows">
         <div class="drow dhdr" aria-hidden="true"><span></span><span>Door</span><span>Right now</span><span>Next event</span><span></span></div>
         {% for d in group %}{% set st = status.get(d.id, {}) %}
-        <label class="drow" data-door data-state="{{ state[d.id] }}"
+        <label class="drow" data-door data-state="{{ state[d.id] }}" data-open="{{ '1' if d.position_status == 'open' else '0' }}"
                data-find="{{ (d.name ~ ' ' ~ (b.name if b else '') ~ ' ' ~ d.full_name)|lower }}">
           <input type="checkbox" name="door" value="{{ d.id }}" aria-label="Select {{ d.name }}">
           <span class="dname">{{ d.name }}</span>
           <span class="dstate">
             {% if st.error %}<span class="pill bad">⚠️ Problem</span>
-            {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">until {{ st.until|time }}</small>
+            {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">{{ 'until set back' if st.held else 'until ' ~ (st.until|time) }}</small>
             {% elif st.mode == 'lock' %}<span class="pill lock">Kept locked</span>{% if st.until %} <small class="muted">until {{ '' if (st.until|day) == 'Today' else (st.until|day) ~ ' ' }}{{ st.until|time }}</small>{% endif %}
-            {% else %}<span class="muted">Locked</span>{% endif %}
+            {% else %}<span class="pill locked">Locked</span>{% endif %}
+              {% if d.position_status == 'open' %}<span class="pill open">Standing open</span>{% elif d.position_status == 'close' %}<span class="pill closed">Closed</span>{% endif %}
           </span>
           {% set ev = nextev.get(d.id) %}<span class="dnext {{ 'empty' if not ev }}">{% if ev %}{{ ev.schedule.label }} <small class="muted">· {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}</small>{% else %}<span class="muted">—</span>{% endif %}</span>
           <span class="dact">
@@ -145,7 +154,7 @@
   function filter() {
     const t = q.value.trim().toLowerCase(); let shown = 0;
     rows.forEach(r => {
-      const okF = !f || r.dataset.state === f;
+      const okF = !f || (f === 'open' ? r.dataset.open === '1' : r.dataset.state === f);
       const hit = okF && (!t || r.dataset.find.includes(t));
       r.hidden = !hit; shown += hit;
     });

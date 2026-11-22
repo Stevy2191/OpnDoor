@@ -57,7 +57,7 @@
     {% set state = 'bad' if st.error else ('open' if st.mode == 'unlock' else ('held' if st.mode == 'lock' else 'normal')) %}
     <button type="button" class="pin {{ state }}" style="left: {{ pin.x }}%; top: {{ pin.y }}%"
       data-id="{{ d.id }}" data-name="{{ d.name }}" data-state="{{ state }}"
-      data-status="{% if st.error %}Problem: {{ st.error }}{% elif st.mode == 'unlock' %}Unlocked until {{ st.until|time }}{% if st.label %} · {{ st.label }}{% endif %}{% elif st.mode == 'lock' %}Kept locked{% if st.until %} until {{ st.until|day }} {{ st.until|time }}{% endif %}{% if st.label %} · {{ st.label }}{% endif %}{% else %}Locked{% endif %}"
+      data-status="{% if st.error %}Problem: {{ st.error }}{% elif st.mode == 'unlock' %}{{ 'Kept unlocked until set back' if st.held else 'Unlocked until ' ~ (st.until|time) }}{% if st.label %} · {{ st.label }}{% endif %}{% elif st.mode == 'lock' %}Kept locked{% if st.until %} until {{ st.until|day }} {{ st.until|time }}{% endif %}{% if st.label %} · {{ st.label }}{% endif %}{% else %}Locked{% endif %}"
       data-next="{% if ev %}{{ ev.schedule.label }}, {{ 'now' if ev.start <= now else (ev.start|day ~ ' ' ~ ev.start|time) }}{% endif %}"
       aria-label="{{ d.name }}">
       <span class="pinlbl">{{ d.name }}</span>

@@ -7,12 +7,21 @@
   <div>
     <h1 style="margin-bottom:.2rem">{{ door.name }}</h1>
     <div class="muted small">{% if sites|length > 1 %}{{ site.name }} · {% endif %}times in {{ site.timezone }}</div>
-    <div style="margin-top:.4rem">{{ status_line(status) }}</div>
+    <div style="margin-top:.4rem">{% if site.emergency %}<span class="pill {{ 'lock' if site.emergency == 'lockdown' else 'ok' }}">{{ 'Held locked (lockdown)' if site.emergency == 'lockdown' else 'Held unlocked (evacuation)' }}</span>{% else %}{{ status_line(status) }}{% endif %}
+      {% if door.position_status == 'open' %}<span class="pill open">Standing open</span>{% elif door.position_status == 'close' %}<span class="pill closed">Closed</span>{% endif %}</div>
   </div>
   <div class="btnrow">
     <form method="post" action="/quick-unlock" id="openform"><input type="hidden" name="door_ids" value="{{ door.id }}">
       <input type="hidden" name="next" value="/doors/{{ door.id|urlencode }}">
-      <button name="mode" value="open" class="{{ 'primary' if not user.schedules }}" title="Unlocks for a few seconds, then locks by itself">Open now</button></form>
+      <button name="mode" value="open" {{ 'disabled' if site.emergency }} class="{{ 'primary' if not user.schedules }}" title="Unlocks for a few seconds, then locks by itself">Open now</button></form>
+    {% if status.mode == 'unlock' %}
+    <form method="post" action="/doors/{{ door.id|urlencode }}/lock-now"><input type="hidden" name="next" value="/doors/{{ door.id|urlencode }}">
+      <button {{ 'disabled' if site.emergency }}>{{ 'Set back to normal' if status.held else 'Lock now' }}</button></form>
+    {% else %}
+    <form method="post" action="/quick-unlock" onsubmit="return confirm('Keep {{ door.name|e }} unlocked until someone sets it back to normal?')"><input type="hidden" name="door_ids" value="{{ door.id }}">
+      <input type="hidden" name="next" value="/doors/{{ door.id|urlencode }}">
+      <button name="mode" value="hold" {{ 'disabled' if site.emergency }} title="Stays unlocked until someone presses Set back to normal">Keep unlocked</button></form>
+    {% endif %}
     {% if user.schedules %}
     <a class="button" href="/schedules/new?kind=default&door={{ door.id|urlencode }}">Set regular hours</a>
     <a class="button primary" href="/schedules/new?door={{ door.id|urlencode }}">+ Add override</a>

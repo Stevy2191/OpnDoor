@@ -108,7 +108,17 @@ def render(request: Request, name: str, user: Optional[User], **ctx) -> HTMLResp
         if user and not user.is_admin:  # door operators only ever see their own sites
             mine = visible_site_ids(s, user)
             sites = {k: v for k, v in sites.items() if k in mine}
+        managed_ids = managed_site_ids(s, user) if user else set()
+        nav_unlocked = 0
+        if user:
+            allowed = allowed_door_ids(s, user)
+            now = utcnow()
+            nav_unlocked = sum(1 for st in s.exec(select(DoorState)).all()
+                               if st.door_id in allowed and st.mode == "unlock" and st.until and st.until > now)
     demo = config.DRY_RUN or any(x.is_demo for x in sites.values())
+    ctx.setdefault("emergencies", [x for x in sites.values() if x.emergency])
+    ctx.setdefault("managed_ids", managed_ids)
+    ctx.setdefault("nav_unlocked", nav_unlocked)
     ctx.setdefault("sites", sites)
     ctx.setdefault("nav_sites", sites)
     ctx.setdefault("current_site", request.session.get("site") if request.session.get("site") in sites else None)
@@ -167,6 +177,7 @@ def door_status(session: Session, doors: list[Door]) -> dict[str, dict]:
         if st.mode == "lock" or (st.mode == "unlock" and st.until and st.until > now):
             sched = session.get(Schedule, st.schedule_id) if st.schedule_id else None
             info.update(mode=st.mode, label=sched.label if sched else "",
+                        held=bool(st.until and st.until - now > engine.HOLD_AFTER),
                         until=to_local(st.until, engine.site_tz(sites.get(d.site_id))) if st.until else None)
         out[d.id] = info
     return out
@@ -447,8 +458,14 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
         "locked": sum(1 for r in right_now if r["st"].get("mode") == "lock"),
         "problems": sum(1 for r in right_now if r["st"].get("error")),
         "events": sum(1 for r in agenda_today if not r["past"]),
+        "open": sum(1 for d in doors if d.position_status == "open"),
     }
+    managed = managed_site_ids(session, user)
+    em_sites = [x for x in session.exec(select(Site).order_by(Site.name)).all()
+                if x.id in managed and (site_id is None or x.id == site_id)]
+    standing_open = [d for d in doors if d.position_status == "open"]
     return render(request, "dashboard.html", user, doors=doors, right_now=right_now, tiles=tiles,
+                  em_sites=em_sites, standing_open=standing_open,
                   agenda_today=agenda_today, agenda_week=agenda_week, site_id=site_id,
                   today_label=now.strftime("%A, %B %-d"), default_until=_default_until(now))
 
@@ -474,7 +491,25 @@ def lock_now(request: Request, door_id: str, bg: BackgroundTasks, next: str = Fo
     if not plan or plan.state != "unlock":
         flash(request, f"{door.name} is already locked.")
         return redirect(safe_next(next))
-    tz = engine.site_tz(session.get(Site, door.site_id))
+    site = session.get(Site, door.site_id)
+    if site and site.emergency:
+        flash(request, f"{site.emergency.capitalize()} is on at {site.name}, so doors can't be changed until it ends.", "error")
+        return redirect(safe_next(next))
+    tz = engine.site_tz(site)
+    if plan.schedule and plan.schedule.source == "quick":
+        # an "unlock now" or "keep unlocked": just end it here
+        q = plan.schedule
+        q.duration_minutes = max(0, int((now_local(tz) - q.start_local).total_seconds() // 60))
+        if q.duration_minutes <= 0:
+            calendars.delete_schedule(session, q)
+        else:
+            session.add(q)
+        audit.record(session, "schedule.locknow", f"{user.display} set {door.name} back to normal (ended “{q.label}”)",
+                     user=user, door_ids=[door.id])
+        session.commit()
+        kick_reconcile(bg)
+        flash(request, f"{door.name} is back to normal and locks now.")
+        return redirect(safe_next(next))
     minutes = max(1, int((plan.end - now_utc).total_seconds() // 60) + 1)
     why = plan.schedule.label if plan.schedule else "its schedule"
     sched = Schedule(label=f"Locked early by {user.display}", kind="override", action="lock", event_type="other",
@@ -525,6 +560,11 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
     as_json = request.headers.get("x-opndoor") == "fetch"  # the page opens a door and stays put
     refused = []
     for did in list(door_ids):
+        st = session.get(Site, session.get(Door, did).site_id)
+        if st and st.emergency:
+            refused.append(f"{st.emergency.capitalize()} is on at {st.name}, so its doors can't be opened or unlocked from OpnDoor.")
+            door_ids.remove(did)
+    for did in list(door_ids):
         ok, why = open_hours_ok(session, user, session.get(Door, did))
         if not ok:
             refused.append(why)
@@ -537,6 +577,8 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
         return redirect(safe_next(next))
     if mode == "open":
         return _open_doors(request, session, user, door_ids, next, as_json)
+    if mode == "hold":
+        return _hold_doors(request, bg, session, user, door_ids, next)
     if minutes is None and not until.strip():
         flash(request, "Choose how long, or pick a time to unlock until.", "error")
         return redirect(safe_next(next))
@@ -568,6 +610,28 @@ def quick_unlock(request: Request, bg: BackgroundTasks, door_ids: list[str] = Fo
     kick_reconcile(bg)
     flash(request, f"Unlocking {names} {how}.")
     return redirect(safe_next(next))
+
+
+def _hold_doors(request: Request, bg: BackgroundTasks, session: Session, user: User, door_ids: list[str], next: str):
+    """Keep doors unlocked until someone sets them back (Lock now / Set back to normal)."""
+    for site_id, ids in group_by_site(session, door_ids).items():
+        tz = engine.site_tz(session.get(Site, site_id))
+        sched = Schedule(label=f"Kept unlocked by {user.display}", kind="override", action="unlock", event_type="other",
+                         start_local=now_local(tz).replace(second=0, microsecond=0), duration_minutes=HOLD_MINUTES,
+                         source="quick", created_by=user.id, notes="Until someone sets it back to normal")
+        session.add(sched)
+        session.flush()
+        calendars.set_schedule_doors(session, sched.id, ids)
+    names = DoorNamer(session, [session.get(Door, d) for d in door_ids])(door_ids, limit=6)
+    audit.record(session, "schedule.quick", f"{user.display} kept {names} unlocked until set back", user=user,
+                 door_ids=door_ids)
+    session.commit()
+    kick_reconcile(bg)
+    flash(request, f"{names} stays unlocked until someone sets it back to normal (Lock now).")
+    return redirect(safe_next(next))
+
+
+HOLD_MINUTES = 365 * 24 * 60
 
 
 def _open_doors(request: Request, session: Session, user: User, door_ids: list[str], next: str,
@@ -910,8 +974,12 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
         "unlock": sum(1 for d in usable if state[d.id] == "unlock"),
         "lock": sum(1 for d in usable if state[d.id] == "lock"),
         "error": sum(1 for d in usable if state[d.id] == "error"),
+        "open": sum(1 for d in usable if d.position_status == "open"),
     }
-    return render(request, "doors.html", user, doors=doors, status=status, state=state,
+    managed = managed_site_ids(session, user)
+    em_sites = [x for x in session.exec(select(Site).order_by(Site.name)).all()
+                if x.id in managed and (site_id is None or x.id == site_id)]
+    return render(request, "doors.html", user, doors=doors, status=status, state=state, em_sites=em_sites,
                   counts=counts, nextev=nextev, now=now, site_id=site_id,
                   multi_site=len(visible) > 1, default_until=_default_until(now),
                   view=user.door_view or ("list" if user.schedules else "tiles"))
@@ -1069,6 +1137,38 @@ def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = No
     kick_reconcile(bg)
     flash(request, f"Saved {site.name}. {status}", "error" if status.startswith("Error") else "ok")
     return redirect(f"/sites/{site.id}")
+
+
+@router.post("/sites/{site_id}/emergency")
+def site_emergency(request: Request, site_id: int, bg: BackgroundTasks, mode: str = Form(...), next: str = Form("/"),
+                   user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    """Lockdown (every door held locked), evacuation (every door held unlocked) or back to normal."""
+    site = session.get(Site, site_id)
+    if not site or site_id not in managed_site_ids(session, user) or mode not in {"lockdown", "evacuation", "normal"}:
+        flash(request, "Only admins and site admins can do that.", "error")
+        return redirect(safe_next(next))
+    try:
+        unifi.get_client(site).set_emergency(mode)
+    except unifi.UnifiError as e:
+        flash(request, f"UniFi Access didn't accept it: {e}", "error")
+        return redirect(safe_next(next))
+    was = site.emergency
+    site.emergency = "" if mode == "normal" else mode
+    site.emergency_by, site.emergency_at = (user.display, utcnow()) if site.emergency else ("", None)
+    session.add(site)
+    if mode == "normal":
+        engine.forget_states(session, site.id)
+        msg = f"{user.display} ended {was or 'the emergency'} at {site.name}"
+    else:
+        msg = f"{user.display} started {mode} at {site.name}"
+    audit.record(session, "site.emergency", msg, user=user, site_ids=[site.id])
+    session.commit()
+    kick_reconcile(bg)
+    flash(request, {"lockdown": f"Lockdown started at {site.name}. Every door is held locked until you end it.",
+                    "evacuation": f"Evacuation started at {site.name}. Every door is held unlocked until you end it.",
+                    "normal": f"{(was or 'Emergency').capitalize()} ended at {site.name}. Doors are back on their schedules."}[mode],
+          "error" if mode != "normal" else "ok")
+    return redirect(safe_next(next))
 
 
 @router.post("/sites/{site_id}/delete")

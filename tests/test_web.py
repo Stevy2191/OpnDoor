@@ -183,9 +183,9 @@ def test_home_lock_now_and_site_switcher(client, fake):
     assert "Right now" in home and "Lock now" in home and "1%3Ademo-side/lock-now" in home
 
     r = client.post("/doors/1:demo-side/lock-now")
-    assert "Locking Side Door" in r.text
-    assert fake.calls[-1] == ("lock", "demo-side")
-    assert "locked Side Door early" in client.get("/history").text
+    assert "Side Door is back to normal" in r.text  # a quick unlock just ends
+    assert fake.calls[-1] == ("reset", "demo-side")
+    assert "set Side Door back to normal" in client.get("/history").text
     assert "already locked" in client.post("/doors/1:demo-front/lock-now").text
 
     # site switcher filters Home to one site

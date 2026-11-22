@@ -91,6 +91,19 @@ class UnifiClient:
     def reset(self, door_id: str) -> None:
         self._rule(door_id, {"type": "reset"})
 
+    def keep_unlock(self, door_id: str) -> None:
+        """Hold unlocked until reset (used for "keep unlocked until I set it back")."""
+        self._rule(door_id, {"type": "keep_unlock"})
+
+    def set_emergency(self, mode: str) -> None:
+        """Site-wide: "lockdown" holds every door locked, "evacuation" every door unlocked, "normal" ends both."""
+        self._call("PUT", "/doors/settings/emergency",
+                   json={"lockdown": mode == "lockdown", "evacuation": mode == "evacuation"})
+
+    def get_emergency(self) -> str:
+        data = self._call("GET", "/doors/settings/emergency") or {}
+        return "lockdown" if data.get("lockdown") else "evacuation" if data.get("evacuation") else ""
+
     def open_door(self, door_id: str, actor_id: str, actor_name: str) -> None:
         """Momentary unlock; UniFi relocks after the door's own unlock time."""
         try:
@@ -187,6 +200,18 @@ class FakeUnifiClient:
     def reset(self, door_id: str) -> None:
         self.calls.append(("reset", door_id))
         log.info("[demo] reset %s", door_id)
+
+    def keep_unlock(self, door_id: str) -> None:
+        self.calls.append(("hold", door_id))
+
+    emergency = ""
+
+    def set_emergency(self, mode: str) -> None:
+        self.calls.append(("emergency", mode))
+        self.emergency = "" if mode == "normal" else mode
+
+    def get_emergency(self) -> str:
+        return self.emergency
 
     def open_door(self, door_id: str, actor_id: str, actor_name: str) -> None:
         self.calls.append(("open", door_id))

@@ -26,6 +26,7 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(engine.safe(engine.sync_doors), "interval", minutes=config.DOOR_SYNC_MINUTES, id="doors", **opts)
     sched.add_job(engine.safe(calendars.sync_all), "interval", minutes=config.CALENDAR_SYNC_MINUTES,
                   id="calendars", **opts)
+    sched.add_job(engine.safe(engine.refresh_states), "interval", seconds=config.RECONCILE_SECONDS, id="states", **opts)
     sched.add_job(engine.safe(access.sync_all), "interval", minutes=config.DOOR_SYNC_MINUTES, id="access", **opts)
     sched.start()
     return sched

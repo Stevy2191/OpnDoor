@@ -1,0 +1,14 @@
+{# Lockdown / evacuation buttons for the sites this person manages (Home and Doors pages). #}
+{% for x in em_sites or [] %}{% if not x.emergency %}
+<section class="card emergency">
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#c42b2b" stroke-width="2" aria-hidden="true"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>
+  <div class="etext"><strong>Emergency{% if em_sites|length > 1 %} · {{ x.name }}{% endif %}</strong>
+    <div class="muted small">Lockdown keeps every door {{ 'at ' ~ x.name if em_sites|length > 1 else 'here' }} locked. Evacuation keeps every door unlocked. Both stay on until you end them.</div></div>
+  <form method="post" action="/sites/{{ x.id }}/emergency" onsubmit="return confirm('Start LOCKDOWN at {{ x.name|e }}? Every door is held locked, and badges won\'t open them, until you end it.')">
+    <input type="hidden" name="mode" value="lockdown"><input type="hidden" name="next" value="{{ request.url.path }}">
+    <button class="red">Start lockdown</button></form>
+  <form method="post" action="/sites/{{ x.id }}/emergency" onsubmit="return confirm('Start EVACUATION at {{ x.name|e }}? Every door is held unlocked until you end it.')">
+    <input type="hidden" name="mode" value="evacuation"><input type="hidden" name="next" value="{{ request.url.path }}">
+    <button class="green">Start evacuation</button></form>
+</section>
+{% endif %}{% endfor %}
