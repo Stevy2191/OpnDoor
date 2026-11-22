@@ -52,7 +52,7 @@
 
 <div class="mapwrap names" id="mapwrap">
   <div class="mapinner" id="mapinner">
-    <img src="/floorplans/{{ current.id }}/image" alt="Floor plan: {{ bnames.get(current.building_id, '') }}, {{ current.name }}" draggable="false">
+    <img src="/floorplans/{{ current.id }}/image?v={{ current.filename[:12] }}" alt="Floor plan: {{ bnames.get(current.building_id, '') }}, {{ current.name }}" draggable="false">
     {% for pin, d in pins %}{% set st = status.get(d.id, {}) %}{% set ev = nextev.get(d.id) %}
     {% set state = 'bad' if st.error else ('open' if st.mode == 'unlock' else ('held' if st.mode == 'lock' else 'normal')) %}
     <button type="button" class="pin {{ state }}" style="left: {{ pin.x }}%; top: {{ pin.y }}%"
