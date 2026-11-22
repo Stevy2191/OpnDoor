@@ -105,7 +105,7 @@ def build(session: Session, rep: Report, today: Optional[date] = None) -> dict:
             info = site_devices(s)
             if not info.get("console_ok"):
                 down.append((s.name, "UniFi Access console"))
-            down += [(s.name, d["name"]) for d in info["access"] if d["online"] is False]
+            down += [(s.name, d["name"]) for d in info["access"] if d["online"] is False and d.get("adopted", True)]
             down += [(s.name, c["name"]) for c in info["cameras"] if (c.get("state") or "").upper() not in ("", "CONNECTED")]
         out["devices"] = {"down": down}
     if "changes" in secs:
