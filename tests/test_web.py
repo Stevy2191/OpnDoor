@@ -270,7 +270,7 @@ def test_stylesheet_link_changes_with_its_content(client):
     import app.web
     setup_admin(client)
     static = Path(app.web.__file__).parent / "static"
-    want = hashlib.sha256((static / "style.css").read_bytes() + (static / "live.js").read_bytes()).hexdigest()[:10]
+    want = hashlib.sha256(b"".join((static / n).read_bytes() for n in ("style.css", "live.js", "planzoom.js"))).hexdigest()[:10]
     assert f'/static/style.css?v={want}' in client.get("/").text
     assert client.get(f"/static/style.css?v={want}").status_code == 200
 
