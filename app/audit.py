@@ -45,6 +45,13 @@ ACTIONS = {
     "signin.ok": ("signin", "Signed in"),
     "signin.fail": ("signin", "Sign-in refused"),
     "account.update": ("access", "Changed own account"),
+    "visitor.create": ("visitor", "Made a visitor pass"),
+    "visitor.send": ("visitor", "Emailed a visitor pass"),
+    "visitor.cancel": ("visitor", "Cancelled a visitor pass"),
+    "screen.create": ("site", "Added a lobby or room screen"),
+    "screen.delete": ("site", "Removed a lobby or room screen"),
+    "screen.newlink": ("site", "Made a new screen link"),
+    "settings.email": ("site", "Changed email settings"),
 }
 
 CATEGORIES = [
@@ -52,6 +59,7 @@ CATEGORIES = [
     ("access", "People and access"),
     ("site", "Sites"),
     ("calendar", "Calendars"),
+    ("visitor", "Visitors"),
     ("signin", "Sign-ins"),
     ("door", "Automatic door actions"),
 ]

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Email · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<h1>Email</h1>
+<p class="muted">The account OpnDoor sends visitor passes and check-in alerts from.</p>
+
+<form method="post" action="/settings/email" class="connform card">
+  <fieldset class="group">
+    <legend>Email service</legend>
+    <div class="segpick">
+      {% for val, lbl in [('m365', 'Microsoft 365'), ('gmail', 'Gmail / Google Workspace'), ('', 'Other mail server')] %}
+      <label class="segopt"><input type="radio" name="preset" value="{{ val }}"
+        {% if (val == 'm365' and mail.host == 'smtp.office365.com') or (val == 'gmail' and mail.host == 'smtp.gmail.com') or (val == '' and mail.host not in ('smtp.office365.com', 'smtp.gmail.com')) %}checked{% endif %}><span><b>{{ lbl }}</b></span></label>
+      {% endfor %}
+    </div>
+    <div class="otherserver">
+      <div class="fields3">
+        <label>Server <input name="host" value="{{ mail.host }}" placeholder="mail.example.com"></label>
+        <label>Port <input name="port" value="{{ mail.port }}" inputmode="numeric"></label>
+        <label>Security <select name="security">
+          {% for val, lbl in [('starttls', 'STARTTLS (587)'), ('ssl', 'SSL/TLS (465)'), ('none', 'None (25)')] %}<option value="{{ val }}" {% if mail.security == val %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+        </select></label>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="group">
+    <legend>Account</legend>
+    <div class="fields2">
+      <label>Sign-in name <input name="username" value="{{ mail.username }}" placeholder="usually the email address" autocomplete="off"></label>
+      <label>Password <input type="password" name="password" autocomplete="new-password"
+        placeholder="{{ 'Saved · leave blank to keep it' if mail.password else 'Password or app password' }}"></label>
+      <label>Send from <input type="email" name="sender" value="{{ mail.sender }}" placeholder="doors@example.com"></label>
+      <label>Name people see <input name="sender_name" value="{{ mail.sender_name }}" placeholder="OpnDoor"></label>
+    </div>
+    {% if mail.password %}<label class="check small"><input type="checkbox" name="clear_password" value="true"> Remove the saved password</label>{% endif %}
+    <details class="help">
+      <summary>Which password do I use?</summary>
+      <ul>
+        <li><strong>Microsoft 365:</strong> the mailbox needs <em>Authenticated SMTP</em> turned on (Microsoft 365 admin center → Users → the user → Mail → Manage email apps). If the account uses multi-factor sign-in, make an app password.</li>
+        <li><strong>Gmail:</strong> turn on 2-step verification, then make an app password at myaccount.google.com/apppasswords and use that here.</li>
+        <li><strong>Your own server:</strong> whatever your mail admin gives you. Leave the sign-in blank if the server lets OpnDoor send without one.</li>
+      </ul>
+    </details>
+  </fieldset>
+
+  <label>Send a test to <span class="muted small">· optional</span>
+    <input type="email" name="test_to" placeholder="you@example.com" value="{{ user.email if '@' in user.email else '' }}"></label>
+  <div class="btnrow"><button class="primary">Save</button></div>
+</form>
+<script>
+(function () {
+  const other = document.querySelector('.otherserver');
+  const sync = () => { other.hidden = document.querySelector('[name=preset]:checked')?.value !== ''; };
+  document.querySelectorAll('[name=preset]').forEach(r => r.addEventListener('change', sync)); sync();
+})();
+</script>
+{% endblock %}

@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
-from . import access, activity, history, holidays, live, maps, sso, video
+from . import access, activity, history, holidays, live, mailer, maps, screens, sso, video, visitors
 from .web import render, router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -62,6 +62,9 @@ app.include_router(video.router)
 app.include_router(live.router)
 app.include_router(holidays.router)
 app.include_router(activity.router)
+app.include_router(visitors.router)
+app.include_router(screens.router)
+app.include_router(mailer.router)
 
 
 @app.exception_handler(LoginRequired)

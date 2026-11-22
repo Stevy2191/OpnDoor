@@ -302,6 +302,71 @@ class DoorEvent(SQLModel, table=True):
     message: str = ""
 
 
+class Visitor(SQLModel, table=True):
+    """A visitor pass: a PIN and/or QR code in UniFi Access for some doors, for a set time."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    site_id: int = Field(foreign_key="site.id", index=True)
+    first_name: str
+    last_name: str = ""
+    email: str = ""
+    phone: str = ""
+    company: str = ""
+    reason: str = ""  # free text shown to staff ("Interview", "Board meeting")
+    host_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    host_name: str = ""
+    start: datetime = Field(index=True)  # naive UTC
+    end: datetime = Field(index=True)  # naive UTC
+    door_ids: str = ""  # comma separated
+    use_pin: bool = True
+    use_qr: bool = True
+    unifi_id: str = ""  # the visitor on the console
+    pin: str = ""
+    status: str = ""  # "" active | "cancelled"
+    error: str = ""  # why UniFi Access refused it
+    emailed_at: Optional[datetime] = None
+    checked_in_at: Optional[datetime] = None
+    checked_out_at: Optional[datetime] = None
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+
+    @property
+    def name(self) -> str:
+        return f"{self.first_name} {self.last_name}".strip()
+
+    @property
+    def short_name(self) -> str:
+        """"Jane S." for screens anyone can see."""
+        return self.first_name + (f" {self.last_name[0]}." if self.last_name else "")
+
+    @property
+    def doors(self) -> list[str]:
+        return [d for d in self.door_ids.split(",") if d]
+
+
+class Screen(SQLModel, table=True):
+    """A lobby or room screen: a page on a private link for a tablet or TV, no sign-in."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    site_id: int = Field(foreign_key="site.id", index=True)
+    kind: str = "lobby"  # lobby | room
+    door_id: Optional[str] = None  # room screens: the room's door
+    token: str = Field(index=True, unique=True)
+    message: str = ""  # lobby: welcome line
+    checkin: bool = True  # lobby: visitors can tap their name to check in
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    last_seen: Optional[datetime] = None
+
+
+class Setting(SQLModel, table=True):
+    """Simple app-wide settings (email server, ...)."""
+
+    key: str = Field(primary_key=True)
+    value: str = ""
+
+
 class AuditLog(SQLModel, table=True):
     """History: who did what, when. Written by app/audit.py."""
 

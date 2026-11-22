@@ -1,0 +1,52 @@
+{% include "_screenhead.html" %}
+<title>{{ sc.name }}</title>
+<style>
+  body { transition: background .4s; }
+  body.free { --state: var(--ok); }
+  body.busy { --state: var(--busy); }
+  .room { font-size: clamp(28px, 4.5vw, 60px); font-weight: 800; line-height: 1.05; }
+  .status { flex: 1; display: flex; flex-direction: column; justify-content: center; border-radius: 28px; padding: clamp(24px, 4vw, 56px);
+    background: color-mix(in srgb, var(--state) 16%, var(--card)); border: 3px solid var(--state); }
+  .status .word { font-family: Outfit, sans-serif; font-size: clamp(56px, 11vw, 160px); font-weight: 800; line-height: .95; color: var(--state); }
+  .status .what { font-size: clamp(22px, 3vw, 40px); font-weight: 700; margin-top: clamp(10px, 1.5vw, 20px); }
+  .status .until { font-size: clamp(18px, 2.2vw, 30px); color: var(--muted); margin-top: .3rem; }
+  .next h2 { font-size: clamp(16px, 1.6vw, 20px); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .7rem; }
+  .next ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .next li { display: flex; gap: 1.2rem; align-items: baseline; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; font-size: clamp(17px, 1.8vw, 24px); }
+  .next li .tm { color: var(--muted); min-width: 9.5em; font-variant-numeric: tabular-nums; }
+  .next li b { font-weight: 600; }
+  .none { color: var(--muted); font-size: clamp(16px, 1.6vw, 22px); }
+</style>
+</head>
+<body class="{{ 'busy' if d.current else 'free' }}">
+  <div class="top">
+    <div><div class="brand">{{ d.site.name }}</div><h1 class="room">{{ sc.name }}</h1></div>
+    <div class="clock"><div class="t" id="clk">{{ d.now|time }}</div><div class="d">{{ d.now.strftime('%A, %B') }} {{ d.now.day }}</div></div>
+  </div>
+
+  <div class="status">
+    {% if d.current %}
+      <div class="word">In use</div>
+      <div class="what">{{ d.current.title }}</div>
+      <div class="until">until {{ d.current.end|time }}{% if d.current.contact %} · {{ d.current.contact }}{% endif %}</div>
+    {% elif not d.door %}
+      <div class="word" style="color:var(--muted)">—</div><div class="until">This room's door was removed from OpnDoor.</div>
+    {% else %}
+      <div class="word">Available</div>
+      <div class="until">{% if d.free_until %}until {{ d.free_until|time }}{% else %}for the rest of the day{% endif %}</div>
+    {% endif %}
+  </div>
+
+  <div class="next">
+    <h2>Later today</h2>
+    {% if d.upcoming %}
+    <ul>{% for m in d.upcoming[:4] %}<li><span class="tm">{{ m.start|time }} – {{ m.end|time }}</span><b>{{ m.title }}</b></li>{% endfor %}</ul>
+    {% else %}<p class="none">Nothing else booked today.</p>{% endif %}
+  </div>
+<script>
+  const clk = document.getElementById('clk');
+  setInterval(() => { clk.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }, 10000);
+  setInterval(() => location.replace(location.pathname), 30000);
+</script>
+</body>
+</html>

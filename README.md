@@ -40,6 +40,8 @@ Runs as a single Docker container (FastAPI + SQLite). Images are built by GitHub
   lock-late padding. Moved or cancelled bookings update automatically. **Preview** shows what a
   calendar will do before it does it.
 - **Activity log** of every schedule change, unlock, lock and error.
+- **Visitor passes** with a PIN or QR code for chosen doors and times, emailed to the visitor, plus
+  **lobby and room screens** for a tablet (see below).
 
 ## How door control works
 
@@ -149,6 +151,29 @@ someone taps "Keep watching".
 - Browsers play H.264. If a camera uses Protect's **Enhanced** encoding (H.265), set it to
   Standard, or that door shows refreshing pictures instead.
 - OpnDoor asks Protect for the camera's low-quality stream, turning it on if needed.
+
+## Visitor passes and screens
+
+**Visitors** (left menu) makes a pass for someone coming in: pick the doors and the time, and UniFi
+Access gives them a PIN and/or QR code that only works on those doors during the visit. OpnDoor can
+email it to them. The Visitors page lists today's visitors as expected, here or gone, and you can
+print it. Cancelling a pass removes it from UniFi Access straight away.
+
+- The Access API token needs **Visitor: Edit**. QR codes need UniFi Access 3.3.10 or later.
+- To email passes, an admin sets up an email account under **Manage → Email** (Microsoft 365, Gmail
+  or any mail server; Microsoft 365 needs Authenticated SMTP turned on for that mailbox, and
+  accounts with multi-factor sign-in need an app password).
+
+**Screens** (Manage → Screens) are pages for a tablet or TV on a private link, with no sign-in. They
+can't open doors.
+
+- **Lobby screen:** welcomes today's visitors by first name and last initial. A visitor taps their
+  name to check in, and whoever they're seeing gets an email.
+- **Room screen:** for outside a meeting room. Shows **Available** or **In use** with the meeting's
+  name and end time, plus the rest of today's meetings, from the schedules and calendars on that
+  room's door.
+
+If a screen's link gets out, use **New link** and the old one stops working.
 
 ## Sign in with Microsoft
 
