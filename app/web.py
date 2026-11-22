@@ -1146,7 +1146,9 @@ def site_page(request: Request, site_id: int, user: User = Depends(require_manag
 def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = None, name: str = Form(...),
               host: str = Form(""), token: str = Form(""), timezone: str = Form("America/Chicago"),
               verify_tls: bool = Form(False), enabled: bool = Form(False), protect_key: str = Form(""),
-              protect_host: str = Form(""), protect_clear: bool = Form(False), user: User = Depends(require_admin),
+              protect_host: str = Form(""), protect_clear: bool = Form(False), network_key: str = Form(""),
+              network_host: str = Form(""), network_clear: bool = Form(False), network_on: bool = Form(False),
+              user: User = Depends(require_admin),
               session: Session = Depends(get_session)):
     from zoneinfo import ZoneInfo
     back = f"/sites/{site_id}" if site_id else "/sites/new"
@@ -1172,13 +1174,23 @@ def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = No
         site.protect_key = ""
     elif protect_key.strip():
         site.protect_key = protect_key.strip()
+    site.network_host = network_host.strip().rstrip("/")
+    site.network_on = network_on
+    if network_clear:
+        site.network_key = ""
+    elif network_key.strip():
+        site.network_key = network_key.strip()
     session.add(site)
     session.flush()
+    from . import network
+    network.forget(site.id)
     changed = audit.diff(before, audit.site_snapshot(site))
     if token.strip() and site_id:
         changed.append(["API token", "(hidden)", "(new token)"])
     if protect_key.strip() or protect_clear:
         changed.append(["UniFi Protect key", "(hidden)", "(removed)" if protect_clear else "(new key)"])
+    if network_key.strip() or network_clear:
+        changed.append(["UniFi Network key", "(hidden)", "(removed)" if network_clear else "(new key)"])
     if changed or not site_id:
         audit.record(session, "site.update" if site_id else "site.create",
                      f"{user.display} {'changed' if site_id else 'added'} site “{site.name}”",

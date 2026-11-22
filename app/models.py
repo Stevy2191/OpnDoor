@@ -108,6 +108,9 @@ class Site(SQLModel, table=True):
     log_until: Optional[datetime] = None  # door log copied up to here (naive UTC)
     log_status: str = ""  # "" or why the door log can't be read
     protect_key: str = ""  # UniFi OS API key for UniFi Protect (camera pictures); optional
+    network_host: str = ""  # console running UniFi Network, if not the Access console; optional
+    network_key: str = ""  # UniFi OS API key for UniFi Network (device online check); optional
+    network_on: bool = False  # ask UniFi Network whether Access devices are online
     protect_host: str = ""  # Protect console address if not the same console as Access
     created_at: datetime = Field(default_factory=utcnow)
 

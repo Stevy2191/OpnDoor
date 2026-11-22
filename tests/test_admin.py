@@ -130,3 +130,41 @@ def test_devices_use_door_names_and_skip_not_adopted(client, fake, monkeypatch):
     assert "Front Entrance · G2 Mini reader" in page and "UA-G2-7075" in page
     assert "Status not available from UniFi" in page and "offline</b>" not in page
     assert "isn&#39;t adopted" not in page
+
+
+def test_unifi_network_decides_online(client, fake, monkeypatch):
+    """Access's API calls an adopted, online viewer offline; UniFi Network sees it connected, so it's online."""
+    import httpx
+    from app import devices, network, unifi
+    raw = [[{"alias": "ATS-106-SHOLLIS_VIEWER", "id": "58d61f29f9b5", "is_adopted": False, "is_online": False,
+             "location_id": "x", "name": "UA Intercom Viewer f9b5", "type": "UA-Int-Viewer"}],
+           [{"alias": "UA Int Viewer CECC", "id": "74fa29bececc", "is_adopted": True, "is_online": True,
+             "location_id": "x", "name": "UA-Int-Viewer-CECC", "type": "UA-Int-Viewer"}]]
+    real = unifi.UnifiClient.__new__(unifi.UnifiClient)
+    real._call = lambda method, path, **kw: raw
+    monkeypatch.setattr(fake, "list_devices", real.list_devices)
+    seen = []
+
+    def fake_get(url, params=None, headers=None, **kw):
+        seen.append((url, headers.get("X-API-KEY")))
+        if url.endswith("/sites"):
+            body = {"data": [{"id": "s1", "name": "Default"}]}
+        else:
+            body = {"data": [{"macAddress": "58:d6:1f:29:f9:b5", "ipAddress": "10.245.20.49", "name": "viewer"}],
+                    "totalCount": 1}
+        return httpx.Response(200, json=body, request=httpx.Request("GET", url))
+    monkeypatch.setattr(network.httpx, "get", fake_get)
+    setup_admin(client)
+    with session_scope() as s:
+        site = s.get(Site, 1)
+        site.network_on, site.network_key, site.network_host = True, "netkey", "10.245.10.1"
+        s.add(site)
+        s.commit()
+    devices._cache.clear()
+    network._cache.clear()
+    page = client.get("/devices").text
+    assert "Checked with UniFi Network" in page and "10.245.20.49" in page
+    sholl = page.split("ATS-106-SHOLLIS_VIEWER")[1].split("</div>")[0]
+    cecc = page.split("UA Int Viewer CECC")[1].split("</div>")[0]
+    assert "offline" not in sholl and "offline" in cecc
+    assert seen[0] == ("https://10.245.10.1/proxy/network/integration/v1/sites", "netkey")
