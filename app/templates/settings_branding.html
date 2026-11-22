@@ -1,5 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Branding · Settings · OpnDoor{% endblock %}
+{% block title %}Branding · Settings · OpnDoor<script>
+(function () {
+  const root = document.documentElement;
+  const ok = v => /^#[0-9a-f]{6}$/i.test(v);
+  function apply(box, v) {
+    box.querySelectorAll('.sw').forEach(b => { const on = b.dataset.c.toLowerCase() === v.toLowerCase(); b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    if (!ok(v)) return;
+    if (box.dataset.var === 'accent') { root.style.setProperty('--accent', v); root.style.setProperty('--accent-ink', v); }
+    else { root.style.setProperty('--nav', v); }
+  }
+  document.querySelectorAll('.colorpick').forEach(box => {
+    const input = box.querySelector('input');
+    box.querySelectorAll('.sw').forEach(b => b.addEventListener('click', () => { input.value = b.dataset.c; apply(box, input.value); }));
+    input.addEventListener('input', () => { let v = input.value.trim(); if (/^[0-9a-f]{6}$/i.test(v)) { v = '#' + v; input.value = v; } apply(box, v); });
+    apply(box, input.value);
+  });
+})();
+</script>
+{% endblock %}
 {% block content %}
 {% include "_settingstabs.html" %}
 <form method="post" action="/settings/branding" enctype="multipart/form-data" class="card connform">
@@ -14,12 +32,36 @@
   </fieldset>
   <fieldset class="group">
     <legend>Colours</legend>
-    <div class="swatchrow">
-      <label>Buttons and links <input type="color" name="accent" value="{{ b.accent or '#0f766e' }}"></label>
-      <label>Side menu <input type="color" name="nav" value="{{ b.nav or '#142b52' }}"></label>
+    {% set palette = ['#0f766e', '#2563eb', '#4f46e5', '#7c3aed', '#be185d', '#c41e3a', '#8b1a1a', '#c2410c', '#b45309', '#15803d', '#142b52', '#1f2937', '#334155', '#000000'] %}
+    {% for field, label, current, default in [('accent', 'Buttons and links', b.accent, '#0f766e'), ('nav', 'Side menu', b.nav, '#142b52')] %}
+    <div class="colorpick" data-var="{{ field }}">
+      <span class="cpl">{{ label }}</span>
+      <div class="swatches" role="radiogroup" aria-label="{{ label }}">
+        {% for c in palette %}<button type="button" class="sw" style="background: {{ c }}" data-c="{{ c }}" aria-label="{{ c }}" role="radio"></button>{% endfor %}
+      </div>
+      <label class="cphex">Colour code <input name="{{ field }}" value="{{ current or default }}" maxlength="7" pattern="#[0-9a-fA-F]{6}" spellcheck="false" autocomplete="off"></label>
     </div>
+    {% endfor %}
     <label class="check small"><input type="checkbox" name="reset_colors" value="true"> Go back to OpnDoor's colours</label>
   </fieldset>
   <div class="btnrow"><button class="primary">Save</button></div>
 </form>
+<script>
+(function () {
+  const root = document.documentElement;
+  const ok = v => /^#[0-9a-f]{6}$/i.test(v);
+  function apply(box, v) {
+    box.querySelectorAll('.sw').forEach(b => { const on = b.dataset.c.toLowerCase() === v.toLowerCase(); b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    if (!ok(v)) return;
+    if (box.dataset.var === 'accent') { root.style.setProperty('--accent', v); root.style.setProperty('--accent-ink', v); }
+    else { root.style.setProperty('--nav', v); }
+  }
+  document.querySelectorAll('.colorpick').forEach(box => {
+    const input = box.querySelector('input');
+    box.querySelectorAll('.sw').forEach(b => b.addEventListener('click', () => { input.value = b.dataset.c; apply(box, input.value); }));
+    input.addEventListener('input', () => { let v = input.value.trim(); if (/^[0-9a-f]{6}$/i.test(v)) { v = '#' + v; input.value = v; } apply(box, v); });
+    apply(box, input.value);
+  });
+})();
+</script>
 {% endblock %}
