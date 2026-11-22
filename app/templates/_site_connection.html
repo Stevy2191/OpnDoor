@@ -55,6 +55,27 @@
     {% if site and site.protect_key %}<label class="check"><input type="checkbox" name="protect_clear" value="true"> Remove the saved Protect key</label>{% endif %}
   </fieldset>
 
+  <fieldset class="group">
+    <legend>UniFi Network <span class="muted">· optional</span></legend>
+    <p class="muted small" style="margin:0">UniFi Access sometimes reports a device's online state wrong. With this, the
+      Devices page, alerts and reports ask UniFi Network instead (it knows what's connected, and shows each device's IP).</p>
+    <label class="check"><input type="checkbox" name="network_on" value="true" {% if site and site.network_on %}checked{% endif %}> Check whether devices are online with UniFi Network</label>
+    <label>UniFi Network console address <span class="muted small">· leave blank if UniFi Network runs on the Access console</span>
+      <input name="network_host" value="{{ site.network_host if site else '' }}" placeholder="https://10.245.10.1"></label>
+    <label>API key <span class="muted small">· leave blank to use the Protect key{% if site and site.network_key %} · a key is saved{% endif %}</span>
+      <input type="text" name="network_key" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
+        placeholder="{{ 'Saved · leave blank to keep it' if site and site.network_key else 'Paste a UniFi OS API key' }}"></label>
+    <details class="help">
+      <summary>How do I get a key?</summary>
+      <ol>
+        <li>On the console that runs <strong>UniFi Network</strong> (often your gateway), open UniFi OS: Settings → Control Plane → Integrations → Create API Key.</li>
+        <li>Paste it here. OpnDoor only reads the list of connected devices with it.</li>
+      </ol>
+      <p class="muted small">If that console is also where UniFi Protect runs and you already pasted a Protect key, you can leave this blank.</p>
+    </details>
+    {% if site and site.network_key %}<label class="check"><input type="checkbox" name="network_clear" value="true"> Remove the saved Network key</label>{% endif %}
+  </fieldset>
+
   {% if site %}
   <label class="check"><input type="checkbox" name="enabled" value="true" {% if site.enabled %}checked{% endif %}> Site is active</label>
   {% endif %}

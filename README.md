@@ -201,7 +201,10 @@ them) and what's coming up. **Preview** shows it in the browser; **Send now** se
 ## Admin tools
 
 - **Devices** (Manage → Devices): every console, reader, hub and Protect camera per site, with
-  anything offline shown first in red. Needs the token's **Device: View**.
+  anything offline shown first in red. Needs the token's **Device: View**. UniFi Access's API sometimes
+  reports a device's online state wrong (seen with Intercom Viewers); turn on **UniFi Network** in the
+  site's connection settings and OpnDoor checks each device by MAC address in UniFi Network instead,
+  and shows its IP. That needs a read-only UniFi OS API key for the console that runs UniFi Network.
 - **People in UniFi Access** (People → People in UniFi Access): give someone a new PIN (optionally
   emailed to them) or turn all their access off and back on, without the UniFi app. Needs
   **People & Groups: Edit** and **Credentials: Edit** on the token.

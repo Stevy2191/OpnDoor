@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, Request
 from sqlmodel import Session, select
 
-from . import protect, unifi
+from . import network, protect, unifi
 from .auth import managed_site_ids
 from .db import get_session
 from .models import Door, Site, User
@@ -27,6 +27,8 @@ CACHE_SECONDS = 45
 def reliable(d: dict) -> bool:
     """Is the API's online state worth showing? On real consoles it reports Intercom Viewers the opposite way
     round from the UniFi app, and marks devices as not adopted when they are."""
+    if d.get("net"):  # UniFi Network said whether it's connected
+        return True
     return d.get("adopted", True) and not (d.get("type") or "").upper().startswith("UA-INT-VIEWER")
 
 
@@ -52,6 +54,17 @@ def site_devices(site: Site) -> dict:
     except unifi.UnifiError as e:
         out["console_ok"] = False
         out["errors"].append(f"UniFi Access: {e}")
+    out["net"] = False
+    if out["access"] and network.enabled(site):
+        try:
+            seen = network.clients(site)
+            for d in out["access"]:
+                m = network.mac(d["id"])
+                if m:
+                    d["online"], d["net"], d["ip"] = m in seen, True, seen.get(m, {}).get("ip", "")
+            out["net"] = True
+        except network.NetworkError as e:
+            out["errors"].append(f"UniFi Network: {e}")
     if protect.enabled(site):
         try:
             out["cameras"] = protect.cameras(site)
@@ -99,7 +112,8 @@ def devices_page(request: Request, refresh: int = 0, user: User = Depends(requir
             trusted = reliable(d)
             items.append({"name": name, "sub": sub_name, "kind": kind, "where": door.name if door else "",
                           "door_id": door.id if door else None, "online": d["online"] if trusted else None,
-                          "note": "" if trusted else "Status not available from UniFi", "firmware": d["firmware"]})
+                          "note": "" if trusted else "Status not available from UniFi", "firmware": d["firmware"],
+                          "ip": d.get("ip", "")})
         for c in info["cameras"]:
             st = (c.get("state") or "").upper()
             items.append({"name": c["name"], "sub": "", "note": "", "kind": "Camera", "where": "", "door_id": None,
@@ -108,6 +122,6 @@ def devices_page(request: Request, refresh: int = 0, user: User = Depends(requir
         bad = sum(1 for i in items if i["online"] is False)
         offline += bad + (0 if info.get("console_ok") else 1)
         total += len(items)
-        rows.append({"site": site, "devs": items, "bad": bad, "console_ok": info.get("console_ok"),
+        rows.append({"site": site, "net": info.get("net"), "devs": items, "bad": bad, "console_ok": info.get("console_ok"),
                      "errors": info["errors"]})
     return render(request, "devices.html", user, rows=rows, offline=offline, total=total)

@@ -12,8 +12,9 @@
 <section class="card devsite">
   <h2>{{ r.site.name }}
     {% if r.console_ok %}<span class="pill locked">Console connected</span>{% else %}<span class="pill bad">Can't reach the console</span>{% endif %}
-    {% if r.bad %}<span class="pill bad">{{ r.bad }} offline</span>{% endif %}</h2>
-  {% if user.is_admin %}<p class="small" style="margin:-.4rem 0 .8rem"><a href="/devices/raw?site={{ r.site.id }}" target="_blank" rel="noopener">What the console sent</a> <span class="muted">· to compare with the UniFi app</span></p>{% endif %}
+    {% if r.bad %}<span class="pill bad">{{ r.bad }} offline</span>{% endif %}
+    {% if r.net %}<span class="pill closed" title="Online or offline comes from UniFi Network">Checked with UniFi Network</span>{% endif %}</h2>
+  {% if user.is_admin %}<p class="small" style="margin:-.4rem 0 .8rem"><a href="/devices/raw?site={{ r.site.id }}" target="_blank" rel="noopener">What the console sent</a> <span class="muted">· to compare with the UniFi app</span>{% if not r.net %} · <a href="/sites/{{ r.site.id }}#console">Check status with UniFi Network</a>{% endif %}</p>{% endif %}
   {% for e in r.errors %}<p class="err small">{{ e }}</p>{% endfor %}
   {% if r.devs %}
   <div class="devgrid">
@@ -21,7 +22,7 @@
     <div class="dev {{ 'off' if i.online is false }}">
       <span class="dot {{ 'closed' if i.online is none else ('open' if i.online else 'bad') }}" title="{{ 'Unknown' if i.online is none else ('Online' if i.online else 'Offline') }}"></span>
       <span><span class="dn">{{ i.name }}</span>
-        <small>{% if i.sub %}{{ i.sub }}{% else %}{{ i.kind }}{% endif %}{% if i.where and not i.sub %} · {% if i.door_id %}<a href="/doors/{{ i.door_id|urlencode }}">{{ i.where }}</a>{% else %}{{ i.where }}{% endif %}{% endif %}{% if i.online is false %} · <b style="color:var(--err)">offline</b>{% endif %}{% if i.note %} · {{ i.note }}{% endif %}{% if i.firmware %} · {{ i.firmware }}{% endif %}</small></span>
+        <small>{% if i.sub %}{{ i.sub }}{% else %}{{ i.kind }}{% endif %}{% if i.where and not i.sub %} · {% if i.door_id %}<a href="/doors/{{ i.door_id|urlencode }}">{{ i.where }}</a>{% else %}{{ i.where }}{% endif %}{% endif %}{% if i.online is false %} · <b style="color:var(--err)">offline</b>{% endif %}{% if i.note %} · {{ i.note }}{% endif %}{% if i.ip %} · {{ i.ip }}{% endif %}{% if i.firmware %} · {{ i.firmware }}{% endif %}</small></span>
     </div>
     {% endfor %}
   </div>
