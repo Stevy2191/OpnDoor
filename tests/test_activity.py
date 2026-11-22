@@ -87,3 +87,31 @@ def test_busy_grid_counts():
         st = activity.summarize(s, evs, 30)
     assert st["busiest"] == "Mon 7 AM" and st["busiest_n"] == 5 and st["denied"] == 1
     assert st["grid"][0]["cells"][7]["denied"] == 1 and st["doors"][0] == {"name": "Bay 1", "count": 5, "pct": 100}
+
+
+def test_squares_show_dates_and_open_the_people_behind_them(client, fake):
+    from app.schedules import to_local
+    setup_admin(client)
+    now = datetime.utcnow().replace(microsecond=0)
+    a, b = now - timedelta(days=7, hours=1), now - timedelta(days=14, hours=1)  # same weekday and hour
+    fake.log_hits = [hit(1, "demo-front", a, who="Early Bird"), hit(2, "demo-front", b, who="Late Owl"),
+                     hit(3, "demo-front", now - timedelta(days=2, hours=5), who="Someone Else")]
+    sync()
+    la, lb = to_local(a, None), to_local(b, None)
+    wd, hr = la.weekday(), la.hour
+    page = client.get("/door-activity").text
+    assert f"{la.strftime('%b')} {la.day}: 1" in page and f"{lb.strftime('%b')} {lb.day}: 1" in page
+    assert f"&wd={wd}&hr={hr}#recent" in page  # the square is a link
+    page = client.get(f"/door-activity?days=30&wd={wd}&hr={hr}").text
+    assert "Early Bird" in page and "Late Owl" in page and "Someone Else" not in page
+    assert "Clear" in page and f"on={la.date().isoformat()}" in page  # a chip for each date
+    page = client.get(f"/door-activity?days=30&on={la.date().isoformat()}&hr={hr}").text
+    assert "Early Bird" in page and "Late Owl" not in page and "Whole day" in page
+    csv = client.get(f"/door-activity.csv?wd={wd}&hr={hr}").text
+    assert "Early Bird" in csv and "Someone Else" not in csv
+    assert client.get("/door-activity?wd=9&hr=99&on=nope").status_code == 200  # junk is ignored
+
+
+def test_hour_span():
+    assert activity.hour_span(8) == "8–9 AM" and activity.hour_span(11) == "11 AM–12 PM"
+    assert activity.hour_span(23) == "11 PM–12 AM" and activity.hour_span(12) == "12–1 PM"

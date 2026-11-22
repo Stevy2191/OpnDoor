@@ -100,10 +100,21 @@ def sync_all() -> None:
 
 SHADES = ["#f1f3f6", "#fbe3bd", "#f5c47e", "#e9a046", "#c66f12", "#8f4a00"]  # OpnDoor amber: none .. busiest
 DAYNAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+FULLDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def _hour_label(h: int) -> str:
     return "12 AM" if h == 0 else f"{h} AM" if h < 12 else "12 PM" if h == 12 else f"{h - 12} PM"
+
+
+def hour_span(h: int) -> str:
+    """8 -> "8–9 AM", 11 -> "11 AM–12 PM"."""
+    a, b = _hour_label(h), _hour_label((h + 1) % 24)
+    return f"{a.split()[0]}–{b}" if a.split()[1] == b.split()[1] else f"{a}–{b}"
+
+
+def _md(d: date) -> str:
+    return f"{d.strftime('%b')} {d.day}"
 
 
 def summarize(session: Session, events: list[DoorEvent], days: int) -> dict:
@@ -113,11 +124,14 @@ def summarize(session: Session, events: list[DoorEvent], days: int) -> dict:
     heat_denied = [[0] * 24 for _ in range(7)]
     today = to_local(utcnow(), None).date()
     per_day = {today - timedelta(days=k): [0, 0] for k in range(days - 1, -1, -1)}
+    cell_days: dict = {}  # (weekday, hour) -> {date: [opened, denied]}
     per_door: dict[str, int] = {}
     granted = denied = 0
     for e in events:
         local = to_local(e.at, tzs.get(e.site_id))
         d = local.date()
+        cd = cell_days.setdefault((local.weekday(), local.hour), {}).setdefault(d, [0, 0])
+        cd[0 if e.granted else 1] += 1
         if e.granted:
             granted += 1
             heat[local.weekday()][local.hour] += 1
@@ -135,10 +149,25 @@ def summarize(session: Session, events: list[DoorEvent], days: int) -> dict:
             return SHADES[0]
         return SHADES[min(5, 1 + int(4.999 * v / top))]
 
-    grid = [{"day": DAYNAMES[d], "cells": [{"n": heat[d][h], "denied": heat_denied[d][h], "c": shade(heat[d][h]),
-                                             "tip": f"{DAYNAMES[d]} {_hour_label(h)}: {heat[d][h]} opened"
-                                                    + (f", {heat_denied[d][h]} denied" if heat_denied[d][h] else "")}
-                                            for h in range(24)]} for d in range(7)]
+    dates_by_wd = {w: [x for x in per_day if x.weekday() == w] for w in range(7)}
+
+    def tip(d, h):
+        head = f"{DAYNAMES[d]} {hour_span(h)} · {heat[d][h]} opened" + (
+            f", {heat_denied[d][h]} turned away" if heat_denied[d][h] else "")
+        seen = cell_days.get((d, h), {})
+        lines = []
+        for x in dates_by_wd[d]:
+            o, n = seen.get(x, (0, 0))
+            lines.append(f"{_md(x)}: {o}" + (f" (+{n} turned away)" if n else ""))
+        if lines:
+            head += "\n" + "\n".join(lines)
+        if heat[d][h] or heat_denied[d][h]:
+            head += "\nClick to see who"
+        return head
+
+    grid = [{"day": DAYNAMES[d], "wd": d, "cells": [{"h": h, "n": heat[d][h], "denied": heat_denied[d][h],
+                                                      "c": shade(heat[d][h]), "tip": tip(d, h)}
+                                                     for h in range(24)]} for d in range(7)]
     bd, bh = max(((d, h) for d in range(7) for h in range(24)), key=lambda x: heat[x[0]][x[1]])
     day_rows = [{"d": d, "n": v[0], "denied": v[1]} for d, v in per_day.items()]
     peak_day = max(day_rows, key=lambda r: r["n"], default=None)
@@ -156,6 +185,34 @@ def summarize(session: Session, events: list[DoorEvent], days: int) -> dict:
         "doors": [{"name": n, "count": c, "pct": round(100 * c / door_max)} for n, c in doors],
         "legend": SHADES,
     }
+
+
+def parse_on(on: str) -> Optional[date]:
+    try:
+        return date.fromisoformat(on) if on else None
+    except ValueError:
+        return None
+
+
+def narrow(session: Session, rows: list[DoorEvent], wd: Optional[int], hr: Optional[int],
+           on: Optional[date]) -> list[DoorEvent]:
+    """Keep the events on one weekday / hour / date (in each site's own time)."""
+    if wd is None and hr is None and on is None:
+        return rows
+    tzs = {x.id: engine.site_tz(x) for x in session.exec(select(Site)).all()}
+    out = []
+    for e in rows:
+        local = to_local(e.at, tzs.get(e.site_id))
+        if (wd is None or local.weekday() == wd) and (hr is None or local.hour == hr) \
+                and (on is None or local.date() == on):
+            out.append(e)
+    return out
+
+
+def _slot(wd: str, hr: str) -> tuple[Optional[int], Optional[int]]:
+    w = int(wd) if wd.isdigit() and int(wd) < 7 else None
+    h = int(hr) if hr.isdigit() and int(hr) < 24 else None
+    return w, h
 
 
 def _events(session: Session, user: User, request: Request, days: int, door: str = "", building: str = "",
@@ -181,10 +238,31 @@ def _events(session: Session, user: User, request: Request, days: int, door: str
 
 @router.get("/door-activity")
 def activity_page(request: Request, days: int = 30, door: str = "", building: str = "", q: str = "", more: int = 0,
+                  wd: str = "", hr: str = "", on: str = "",
                   user: User = Depends(require_user), session: Session = Depends(get_session)):
     days = days if days in (7, 30, 90) else 30
     rows = _events(session, user, request, days, door, building, q)
     stats = summarize(session, rows, days)
+    w, h, day = *_slot(wd, hr), parse_on(on)
+    picked = None
+    if w is not None or h is not None or day is not None:
+        if day is not None:
+            w = None
+        rows = narrow(session, rows, w, h, day)
+        if day is not None:
+            label = day.strftime("%A") + f", {_md(day)}"
+        else:
+            label = (FULLDAYS[w] + "s" if w is not None else "Every day")
+        if h is not None:
+            label += " · " + hour_span(h)
+        chips = []
+        if w is not None and day is None:  # each date this weekday, for this hour
+            for r in stats["days"]:
+                if r["d"].weekday() == w:
+                    chips.append({"d": r["d"], "label": _md(r["d"])})
+        denied = sum(1 for e in rows if not e.granted)
+        picked = {"wd": w, "hr": h, "on": day, "label": label, "count": len(rows) - denied, "denied": denied,
+                  "chips": chips}
     allowed = allowed_door_ids(session, user)
     site_id = current_site_id(request, session, user)
     door_opts = [d for d in session.exec(select(Door).where(Door.present == True, Door.hidden == False)  # noqa: E712
@@ -196,16 +274,26 @@ def activity_page(request: Request, days: int = 30, door: str = "", building: st
     problems = [x for x in session.exec(select(Site)).all() if x.log_status and (site_id is None or x.id == site_id)]
     limit = 500 if more else 50
     recent = [{"e": e, "local": to_local(e.at, tzs.get(e.site_id))} for e in rows[:limit]]
+    if picked and picked["chips"]:
+        counts: dict = {}
+        for e in rows:
+            k = to_local(e.at, tzs.get(e.site_id)).date()
+            counts[k] = counts.get(k, 0) + 1
+        for c in picked["chips"]:
+            c["n"] = counts.get(c["d"], 0)
     return render(request, "activity.html", user, stats=stats, days=days, door=door, building=building, q=q,
                   door_opts=door_opts, buildings=buildings, recent=recent, problems=problems, more=more,
-                  total_rows=len(rows))
+                  total_rows=len(rows), picked=picked)
 
 
 @router.get("/door-activity.csv")
 def activity_csv(request: Request, days: int = 30, door: str = "", building: str = "", q: str = "",
+                 wd: str = "", hr: str = "", on: str = "",
                  user: User = Depends(require_user), session: Session = Depends(get_session)):
     days = days if days in (7, 30, 90) else 30
     rows = _events(session, user, request, days, door, building, q)
+    w, h, day = *_slot(wd, hr), parse_on(on)
+    rows = narrow(session, rows, None if day else w, h, day)
     tzs = {x.id: engine.site_tz(x) for x in session.exec(select(Site)).all()}
     sites = {x.id: x.name for x in session.exec(select(Site)).all()}
     out = io.StringIO()

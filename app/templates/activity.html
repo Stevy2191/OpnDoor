@@ -2,13 +2,14 @@
 {% from "_busyhours.html" import busy_grid %}
 {% block title %}Activity · OpnDoor{% endblock %}
 {% block content %}
+{% set base = '/door-activity?days=' ~ days ~ '&door=' ~ (door|urlencode) ~ '&building=' ~ building ~ '&q=' ~ (q|urlencode) %}
 <div class="pagehead">
   <div>
     <h1>Activity</h1>
     <p class="muted">Badge, phone, PIN and remote openings from UniFi Access, and attempts that were turned away.</p>
   </div>
   <div class="btnrow">
-    <a class="button" href="/door-activity.csv?days={{ days }}&door={{ door|urlencode }}&building={{ building }}&q={{ q|urlencode }}">Download CSV</a>
+    <a class="button" href="/door-activity.csv?days={{ days }}&door={{ door|urlencode }}&building={{ building }}&q={{ q|urlencode }}{% if picked %}&wd={{ picked.wd if picked.wd is not none else '' }}&hr={{ picked.hr if picked.hr is not none else '' }}&on={{ picked.on.isoformat() if picked.on else '' }}{% endif %}">Download CSV</a>
   </div>
 </div>
 
@@ -45,8 +46,8 @@
 
 <section class="card">
   <h2>Busy hours</h2>
-  <p class="muted small">Openings by day of the week and hour, last {{ days }} days, in each site's local time. Hover a square for the numbers.</p>
-  {{ busy_grid(stats) }}
+  <p class="muted small">Openings by day of the week and hour, last {{ days }} days, in each site's local time. Hover a square to see each date; click it to see who came through.</p>
+  {{ busy_grid(stats, False, base, picked) }}
 </section>
 
 <div class="grid2 wide-left">
@@ -54,10 +55,10 @@
     <h2>Openings per day</h2>
     <div class="daybars" role="img" aria-label="Openings per day for the last {{ days }} days">
       {% for r in stats.days %}
-      <div class="daybar" title="{{ r.d.strftime('%a %b %-d') }}: {{ r.n }} opened{% if r.denied %}, {{ r.denied }} turned away{% endif %}">
+      <a class="daybar{{ ' on' if picked and picked.on == r.d }}" href="{{ base }}&on={{ r.d.isoformat() }}#recent" title="{{ r.d.strftime('%a %b %-d') }}: {{ r.n }} opened{% if r.denied %}, {{ r.denied }} turned away{% endif %} · click to see who">
         <span class="bd" style="height: {{ (100 * r.denied / stats.day_max)|round(1) }}%"></span>
         <span class="bo" style="height: {{ (100 * r.n / stats.day_max)|round(1) }}%"></span>
-      </div>
+      </a>
       {% endfor %}
     </div>
     <div class="daybar-axis small muted"><span>{{ stats.days[0].d.strftime('%b %-d') if stats.days }}</span><span>Today</span></div>
@@ -72,7 +73,20 @@
 </div>
 
 <section class="card" id="recent">
-  <h2>Recent {% if q %}<small class="muted">matching “{{ q }}”</small>{% endif %}</h2>
+  <h2>{{ 'Openings' if picked else 'Recent' }} {% if q %}<small class="muted">matching “{{ q }}”</small>{% endif %}</h2>
+  {% if picked %}
+  <div class="picked">
+    <div><strong>{{ picked.label }}</strong> <span class="muted">· {{ '{:,}'.format(picked.count) }} opened{% if picked.denied %}, {{ picked.denied }} turned away{% endif %}</span>
+      <a class="small" href="{{ base }}#recent">Clear ✕</a>
+      {% if picked.on and picked.hr is not none %}<a class="small" href="{{ base }}&on={{ picked.on.isoformat() }}#recent">Whole day</a>{% endif %}
+    </div>
+    {% if picked.chips %}
+    <div class="chips"><span class="small muted">Pick a date:</span>
+      {% for c in picked.chips %}<a class="chip{{ ' zero' if not c.n }}" href="{{ base }}&on={{ c.d.isoformat() }}&hr={{ picked.hr if picked.hr is not none else '' }}#recent">{{ c.label }} <b>{{ c.n }}</b></a>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
   {% if recent %}
   <div class="tablewrap">
   <table class="list">
@@ -92,7 +106,7 @@
   </div>
   {% if total_rows > recent|length %}
   <p class="small muted">Showing the latest {{ recent|length }} of {{ '{:,}'.format(total_rows) }}.
-    {% if not more %}<a href="/door-activity?days={{ days }}&door={{ door|urlencode }}&building={{ building }}&q={{ q|urlencode }}&more=1#recent">Show more</a> or download the CSV for all of them.{% else %}Download the CSV for all of them.{% endif %}</p>
+    {% if not more %}<a href="{{ base }}{% if picked %}&wd={{ picked.wd if picked.wd is not none else '' }}&hr={{ picked.hr if picked.hr is not none else '' }}&on={{ picked.on.isoformat() if picked.on else '' }}{% endif %}&more=1#recent">Show more</a> or download the CSV for all of them.{% else %}Download the CSV for all of them.{% endif %}</p>
   {% endif %}
   {% else %}
   <p class="muted">Nothing yet. OpnDoor copies the door log from UniFi Access every couple of minutes{% if user.is_admin %}; the API token needs <strong>System Log: View</strong>{% endif %}.</p>
