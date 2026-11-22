@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
-from . import access, history, holidays, live, maps, sso, video
+from . import access, activity, history, holidays, live, maps, sso, video
 from .web import render, router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -27,6 +27,7 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(engine.safe(calendars.sync_all), "interval", minutes=config.CALENDAR_SYNC_MINUTES,
                   id="calendars", **opts)
     sched.add_job(engine.safe(engine.refresh_states), "interval", seconds=config.RECONCILE_SECONDS, id="states", **opts)
+    sched.add_job(engine.safe(activity.sync_all), "interval", minutes=2, id="doorlog", **opts)
     sched.add_job(engine.safe(access.sync_all), "interval", minutes=config.DOOR_SYNC_MINUTES, id="access", **opts)
     sched.start()
     return sched
@@ -60,6 +61,7 @@ app.include_router(maps.router)
 app.include_router(video.router)
 app.include_router(live.router)
 app.include_router(holidays.router)
+app.include_router(activity.router)
 
 
 @app.exception_handler(LoginRequired)

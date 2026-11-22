@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_line, padlock, trash %}
+{% from "_busyhours.html" import busy_grid %}
 {% block content %}
 {% set hour = now_hour %}
 <div class="pagehead">
@@ -95,6 +96,15 @@
   <p class="muted">No events today. Doors follow their regular hours.</p>
   {% endif %}
 </section>
+
+{% if busy %}
+<section class="card">
+  <div class="head" style="margin-bottom:.3rem"><h2 style="margin:0">Busy hours <small class="muted">last 30 days</small></h2>
+    <a href="/door-activity" class="small">All activity →</a></div>
+  <p class="muted small">{{ '{:,}'.format(busy.granted) }} openings · busiest {{ busy.busiest }}{% if busy.denied %} · {{ busy.denied }} turned away{% endif %}</p>
+  {{ busy_grid(busy, True) }}
+</section>
+{% endif %}
 
 <section class="card">
   <h2>Next 7 days</h2>

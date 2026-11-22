@@ -1,0 +1,21 @@
+{# The busy-hours grid: one row per weekday, one square per hour, deeper amber = busier. #}
+{% macro busy_grid(stats, compact=False) %}
+<div class="busy {{ 'compact' if compact }}">
+  <div class="busyrows">
+    {% for row in stats.grid %}
+    <div class="busyrow">
+      <span class="busyday">{{ row.day }}</span>
+      {% for c in row.cells %}<span class="busycell" style="background: {{ c.c }}" title="{{ c.tip }}"{% if c.denied %} data-denied="1"{% endif %}></span>{% endfor %}
+    </div>
+    {% endfor %}
+    <div class="busyrow busyhours" aria-hidden="true">
+      <span class="busyday"></span>
+      {% for h in range(24) %}<span class="busyh">{{ {0: '12a', 6: '6a', 12: '12p', 18: '6p'}.get(h, '') }}</span>{% endfor %}
+    </div>
+  </div>
+  <div class="busylegend small muted">
+    <span>Quiet</span>{% for c in stats.legend %}<span class="busycell" style="background: {{ c }}"></span>{% endfor %}<span>Busy</span>
+    <span class="busydot"></span><span>some turned away</span>
+  </div>
+</div>
+{% endmacro %}

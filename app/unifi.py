@@ -100,6 +100,26 @@ class UnifiClient:
         self._call("PUT", "/doors/settings/emergency",
                    json={"lockdown": mode == "lockdown", "evacuation": mode == "evacuation"})
 
+    def door_log(self, since: int, until: int, page: int = 1, size: int = 100) -> tuple[list[dict], int]:
+        """Door openings and denied attempts between two unix times. Returns (entries, total)."""
+        try:
+            resp = self.http.post("/system/logs", params={"page_num": page, "page_size": size},
+                                  json={"topic": "door_openings", "since": since, "until": until})
+        except httpx.HTTPError as e:
+            raise UnifiError(f"Cannot reach the UniFi Access console: {e}") from e
+        if resp.status_code in (401, 403):
+            raise UnifiError("The API token can't read the door log. Add System Log: View to the token.")
+        try:
+            body = resp.json()
+        except ValueError:
+            raise UnifiError(f"Unexpected response {resp.status_code}")
+        if resp.status_code >= 400 or body.get("code") != "SUCCESS":
+            raise UnifiError(f"UniFi Access error {resp.status_code}: {body.get('msg') or body}")
+        data = body.get("data") or {}
+        hits = data.get("hits", []) if isinstance(data, dict) else data
+        total = (body.get("pagination") or {}).get("total", len(hits))
+        return list(hits), int(total or 0)
+
     def get_emergency(self) -> str:
         data = self._call("GET", "/doors/settings/emergency") or {}
         return "lockdown" if data.get("lockdown") else "evacuation" if data.get("evacuation") else ""
@@ -213,6 +233,14 @@ class FakeUnifiClient:
     def get_emergency(self) -> str:
         return self.emergency
 
+    log_hits: list = None  # tests set entries here; the demo makes up a month of traffic
+
+    def door_log(self, since: int, until: int, page: int = 1, size: int = 100) -> tuple[list[dict], int]:
+        if self.log_hits is None:
+            self.log_hits = demo_log(self.doors)
+        rows = [h for h in self.log_hits if since <= h["_source"]["event"]["published"] // 1000 < until]
+        return rows[(page - 1) * size: page * size], len(rows)
+
     def open_door(self, door_id: str, actor_id: str, actor_name: str) -> None:
         self.calls.append(("open", door_id))
         log.info("[demo] open %s for %s", door_id, actor_name)
@@ -234,6 +262,41 @@ class FakeUnifiClient:
 
     def policy_schedule(self, schedule_id: str) -> dict:
         return self.schedules.get(schedule_id, {})
+
+
+def demo_log(doors: list) -> list[dict]:
+    """A believable month of door traffic for demo consoles: shift changes, office hours, quiet nights
+    (made in the app's own timezone, so the busy hours look right)."""
+    import random
+    from datetime import datetime as _dt, timedelta as _td
+    rnd = random.Random(7)
+    now = _dt.now(config.TZ)
+    people = ["J. Rivera", "M. Chen", "A. Patel", "S. Brooks", "K. Nguyen", "T. Wallace", "R. Okafor", "L. Moreno"]
+    methods = ["NFC", "NFC", "NFC", "MOBILE_TAP", "PIN_CODE", "REMOTE_THROUGH_UAH"]
+    out = []
+    n = 0
+    for day in range(30, -1, -1):
+        midnight = (now - _td(days=day)).replace(hour=0, minute=0, second=0, microsecond=0)
+        weekend = midnight.weekday() >= 5
+        for hour in range(24):
+            busy = 9 if hour in (7, 19) else 4 if 8 <= hour <= 18 else 1 if 5 <= hour <= 22 else 0
+            if weekend:
+                busy = (busy + 1) // 2
+            for _ in range(rnd.randint(busy, busy * 2)):
+                t = midnight + _td(hours=hour, seconds=rnd.randint(0, 3599))
+                if t > now:
+                    continue
+                d = doors[rnd.randrange(len(doors))] if doors else None
+                denied = rnd.random() < 0.03
+                n += 1
+                out.append({"_id": f"demo-{n}", "@timestamp": "", "_source": {
+                    "actor": {"display_name": "" if denied else rnd.choice(people), "type": "user"},
+                    "authentication": {"credential_provider": rnd.choice(methods)},
+                    "event": {"display_message": "Access Denied" if denied else "Access Granted",
+                              "published": int(t.timestamp() * 1000), "result": "BLOCKED" if denied else "ACCESS",
+                              "type": "access.door.unlock", "log_key": "access.door.unlock." + ("failed" if denied else "success")},
+                    "target": [{"type": "door", "id": d.id if d else "", "display_name": d.name if d else ""}]}})
+    return out
 
 
 _clients: dict = {}
