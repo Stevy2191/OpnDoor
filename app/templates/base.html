@@ -9,7 +9,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 {% set b = brand() %}
-{% if b.accent or b.nav %}<style>:root, :root[data-theme] {
+{% if b.accent or b.nav %}<style>/* :not(#_) outranks the light/dark theme rules, so your colours win in both */
+:root:not(#_) {
   {% if b.accent %}--accent: {{ b.accent }}; --accent-ink: {{ b.accent }}; --accent-soft: color-mix(in srgb, {{ b.accent }} 14%, var(--card));{% endif %}
   {% if b.nav %}--nav: {{ b.nav }}; --nav-2: color-mix(in srgb, {{ b.nav }} 85%, #fff); --nav-line: color-mix(in srgb, {{ b.nav }} 70%, #fff);{% endif %}
 }</style>{% endif %}
