@@ -612,7 +612,7 @@ details.more label { margin-top: .6rem; }
 .zoom button + button { border-left: 1px solid var(--line); }
 .pdot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); }
 .mapwrap { position: relative; overflow: auto; max-height: 74vh; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
-.mapinner { position: relative; width: 100%; min-width: 320px; }
+.mapinner { position: relative; width: 100%; margin: 0 auto; }
 .mapinner img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
 .mapwrap.placing .mapinner { cursor: crosshair; }
 .pin { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; padding: 0; border-radius: 50%;
