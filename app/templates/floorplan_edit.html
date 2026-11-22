@@ -79,11 +79,12 @@
   </section>
 </div>
 
+<script src="/static/planzoom.js?v={{ asset_v }}"></script>
 <script>
 (function () {
   const PLAN = {{ plan.id }}, inner = document.getElementById('mapinner'), wrap = document.getElementById('mapwrap');
   const tip = document.querySelector('.fptip'), selBox = document.querySelector('.fpsel');
-  let selected = null, zoom = 100, drag = null;
+  let selected = null, drag = null;
   const item = id => document.querySelector('.fpdoor[data-id="' + CSS.escape(id) + '"]');
   const pinEl = id => inner.querySelector('.pin[data-id="' + CSS.escape(id) + '"]');
   function save(body) {
@@ -146,9 +147,7 @@
     document.querySelectorAll('.fpdoor').forEach(b => b.hidden = t && !b.dataset.name.toLowerCase().includes(t));
     if (t) document.querySelector('.fpothers') && (document.querySelector('.fpothers').open = true);
   });
-  document.querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => {
-    const z = +b.dataset.zoom; zoom = z === 0 ? 100 : Math.min(400, Math.max(100, zoom + z * 50)); inner.style.width = zoom + '%';
-  }));
+  OpnPlanZoom(wrap, inner);
 })();
 </script>
 <script>

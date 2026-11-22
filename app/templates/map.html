@@ -97,16 +97,14 @@
 </div>
 {% endif %}
 
+<script src="/static/planzoom.js?v={{ asset_v }}"></script>
 <script>
 (function () {
   const wrap = document.getElementById('mapwrap'); if (!wrap) return;
   const inner = document.getElementById('mapinner'), pop = document.getElementById('pinpop');
-  const sel = new Set(); let curPin = null, zoom = 100;
+  const sel = new Set(); let curPin = null;
   document.getElementById('shownames').addEventListener('change', e => wrap.classList.toggle('names', e.target.checked));
-  document.querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => {
-    const z = +b.dataset.zoom; zoom = z === 0 ? 100 : Math.min(400, Math.max(100, zoom + z * 50));
-    inner.style.width = zoom + '%'; place();
-  }));
+  OpnPlanZoom(wrap, inner, () => place());
   function place() {
     if (!curPin || pop.hidden) return;
     const r = curPin.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;

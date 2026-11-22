@@ -83,7 +83,7 @@ def _asset_version() -> str:
     import hashlib
     h = hashlib.sha256()
     try:
-        for name in ("style.css", "live.js"):
+        for name in ("style.css", "live.js", "planzoom.js"):
             h.update((Path(__file__).parent / "static" / name).read_bytes())
         return h.hexdigest()[:10]
     except OSError:
