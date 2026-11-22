@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_busyhours.html" import busy_grid %}
+{% block title %}Activity · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Activity</h1>
+    <p class="muted">Badge, phone, PIN and remote openings from UniFi Access, and attempts that were turned away.</p>
+  </div>
+  <div class="btnrow">
+    <a class="button" href="/door-activity.csv?days={{ days }}&door={{ door|urlencode }}&building={{ building }}&q={{ q|urlencode }}">Download CSV</a>
+  </div>
+</div>
+
+{% for x in problems %}
+<div class="flash error">{{ x.name }}: {{ x.log_status }}</div>
+{% endfor %}
+
+<form method="get" class="card actfilters">
+  <input type="hidden" name="days" value="{{ days }}">
+  <div class="segtabs" role="group" aria-label="Period">
+    {% for n in (7, 30, 90) %}<button name="days" value="{{ n }}" class="{{ 'on' if days == n }}">{{ n }} days</button>{% endfor %}
+  </div>
+  {% if buildings %}
+  <label class="sr" for="actb">Building</label>
+  <select id="actb" name="building" onchange="this.form.door.value='';this.form.submit()">
+    <option value="">All buildings</option>
+    {% for b in buildings %}<option value="{{ b.id }}" {% if building == b.id|string %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  <label class="sr" for="actd">Door</label>
+  <select id="actd" name="door" onchange="this.form.submit()">
+    <option value="">All doors</option>
+    {% for d in door_opts %}<option value="{{ d.id }}" {% if door == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+  </select>
+  <input type="search" name="q" value="{{ q }}" placeholder="Search people, doors, cards…" aria-label="Search activity">
+</form>
+
+<section class="tiles">
+  <div class="tile"><span class="num">{{ '{:,}'.format(stats.granted) }}</span><span class="lbl">Openings · about {{ stats.per_day_avg }} a day</span></div>
+  <div class="tile {{ 'hot open' if stats.denied }}"><span class="num">{{ stats.denied }}</span><span class="lbl">Turned away{% if stats.total %} · {{ stats.denied_pct }}% of tries{% endif %}</span></div>
+  <div class="tile"><span class="num">{{ stats.busiest }}</span><span class="lbl">Busiest hour{% if stats.busiest_n %} · {{ stats.busiest_n }} openings{% endif %}</span></div>
+  <div class="tile"><span class="num">{{ stats.peak_day.d.strftime('%b %-d') if stats.peak_day else '—' }}</span><span class="lbl">Busiest day{% if stats.peak_day %} · {{ stats.peak_day.n }} openings{% endif %}</span></div>
+</section>
+
+<section class="card">
+  <h2>Busy hours</h2>
+  <p class="muted small">Openings by day of the week and hour, last {{ days }} days, in each site's local time. Hover a square for the numbers.</p>
+  {{ busy_grid(stats) }}
+</section>
+
+<div class="grid2 wide-left">
+  <section class="card">
+    <h2>Openings per day</h2>
+    <div class="daybars" role="img" aria-label="Openings per day for the last {{ days }} days">
+      {% for r in stats.days %}
+      <div class="daybar" title="{{ r.d.strftime('%a %b %-d') }}: {{ r.n }} opened{% if r.denied %}, {{ r.denied }} turned away{% endif %}">
+        <span class="bd" style="height: {{ (100 * r.denied / stats.day_max)|round(1) }}%"></span>
+        <span class="bo" style="height: {{ (100 * r.n / stats.day_max)|round(1) }}%"></span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="daybar-axis small muted"><span>{{ stats.days[0].d.strftime('%b %-d') if stats.days }}</span><span>Today</span></div>
+    <p class="small muted"><span class="key bo"></span> opened <span class="key bd"></span> turned away</p>
+  </section>
+  <section class="card">
+    <h2>Busiest doors</h2>
+    {% for x in stats.doors %}
+    <div class="doorbar"><span class="dn">{{ x.name }}</span><span class="track"><span style="width: {{ x.pct }}%"></span></span><span class="dc">{{ x.count }}</span></div>
+    {% else %}<p class="muted">No openings yet.</p>{% endfor %}
+  </section>
+</div>
+
+<section class="card" id="recent">
+  <h2>Recent {% if q %}<small class="muted">matching “{{ q }}”</small>{% endif %}</h2>
+  {% if recent %}
+  <div class="tablewrap">
+  <table class="list">
+    <thead><tr><th>When</th><th>Door</th><th>Who</th><th>How</th><th>Result</th></tr></thead>
+    <tbody>
+    {% for r in recent %}{% set e = r.e %}
+      <tr>
+        <td class="nowrap">{{ r.local|day }} {{ r.local|time }}</td>
+        <td>{% if e.door_id %}<a href="/doors/{{ e.door_id|urlencode }}">{{ e.door_name }}</a>{% else %}{{ e.door_name or '—' }}{% endif %}</td>
+        <td>{{ e.who or '—' }}</td>
+        <td class="muted">{{ e.method or '—' }}</td>
+        <td>{% if e.granted %}<span class="pill locked">Opened</span>{% else %}<span class="pill open">Turned away</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if total_rows > recent|length %}
+  <p class="small muted">Showing the latest {{ recent|length }} of {{ '{:,}'.format(total_rows) }}.
+    {% if not more %}<a href="/door-activity?days={{ days }}&door={{ door|urlencode }}&building={{ building }}&q={{ q|urlencode }}&more=1#recent">Show more</a> or download the CSV for all of them.{% else %}Download the CSV for all of them.{% endif %}</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">Nothing yet. OpnDoor copies the door log from UniFi Access every couple of minutes{% if user.is_admin %}; the API token needs <strong>System Log: View</strong>{% endif %}.</p>
+  {% endif %}
+</section>
+{% endblock %}

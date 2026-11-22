@@ -121,6 +121,17 @@
       <div class="card empty"><p>No schedules yet. The door stays on its normal UniFi rule.</p></div>
     {% endfor %}
 
+    <h2>Recent openings</h2>
+    {% if openings %}
+    <ul class="openings">
+      {% for r in openings %}{% set e = r.e %}
+      <li><span class="muted nowrap">{{ r.local|day }} {{ r.local|time }}</span>
+        <span>{{ e.who or 'Someone' }}{% if e.method %} <small class="muted">· {{ e.method }}</small>{% endif %}</span>
+        {% if not e.granted %}<span class="pill open">Turned away</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <p class="small"><a href="/door-activity?door={{ door.id|urlencode }}">All activity for this door →</a></p>
+    {% else %}<p class="muted small">No openings copied from UniFi Access yet.</p>{% endif %}
     <h2>Recent changes</h2>
     {% for e in history %}
       <div class="hist small">

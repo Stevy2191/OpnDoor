@@ -468,8 +468,10 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
     em_sites = [x for x in session.exec(select(Site).order_by(Site.name)).all()
                 if x.id in managed and (site_id is None or x.id == site_id)]
     standing_open = [d for d in doors if d.position_status == "open"]
+    from .activity import busy_hours_for
+    busy = busy_hours_for(session, in_view)
     return render(request, "dashboard.html", user, doors=doors, right_now=right_now, tiles=tiles,
-                  em_sites=em_sites, standing_open=standing_open,
+                  em_sites=em_sites, standing_open=standing_open, busy=busy,
                   agenda_today=agenda_today, agenda_week=agenda_week, site_id=site_id,
                   today_label=now.strftime("%A, %B %-d"), default_until=_default_until(now))
 
@@ -1068,7 +1070,9 @@ def door_page(request: Request, door_id: str, user: User = Depends(require_user)
             cams = protect.cameras(site)
         except protect.ProtectError as e:
             cam_error = str(e)
+    from .activity import recent_for_door
     return render(request, "door.html", user, door=door, site=site, days=days, rows=rows,
+                  openings=recent_for_door(session, door),
                   cams=cams, cam_error=cam_error, protect_on=protect.enabled(site),
                   can_history=user.is_manager and door.site_id in managed_site_ids(session, user),
                   history=audit.for_door(session, door.id), audit_mod=audit,

@@ -105,6 +105,8 @@ class Site(SQLModel, table=True):
     emergency: str = ""  # "lockdown" | "evacuation" | "" (normal), as UniFi Access reports it
     emergency_by: str = ""
     emergency_at: Optional[datetime] = None
+    log_until: Optional[datetime] = None  # door log copied up to here (naive UTC)
+    log_status: str = ""  # "" or why the door log can't be read
     protect_key: str = ""  # UniFi OS API key for UniFi Protect (camera pictures); optional
     protect_host: str = ""  # Protect console address if not the same console as Access
     created_at: datetime = Field(default_factory=utcnow)
@@ -283,6 +285,21 @@ class CalendarRule(SQLModel, table=True):
     contains: str
     door_ids: str  # comma-separated
     position: int = 0
+
+
+class DoorEvent(SQLModel, table=True):
+    """A door opening (or a denied attempt) copied from UniFi Access's own log."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    site_id: int = Field(foreign_key="site.id", index=True)
+    unifi_id: str = Field(index=True)  # the log entry's id on that console
+    door_id: Optional[str] = Field(default=None, index=True)  # our door id, if we know the door
+    door_name: str = ""
+    at: datetime = Field(index=True)  # naive UTC
+    who: str = ""  # person, visitor or "OpnDoor (Ada)"
+    method: str = ""  # NFC, PIN, mobile, remote, ...
+    granted: bool = True
+    message: str = ""
 
 
 class AuditLog(SQLModel, table=True):
