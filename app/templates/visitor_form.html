@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import door_chips %}
+{% block title %}New visitor pass · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<p class="crumbs small"><a href="/visitors">Visitors</a> › New pass</p>
+<h1>New visitor pass</h1>
+<p class="muted">UniFi Access gives them a PIN and/or QR code that opens only the doors below, only during the visit.</p>
+
+<form method="post" action="/visitors/new" class="vform">
+  <section class="card">
+    <h2>Who's coming</h2>
+    <div class="fields2">
+      <label>First name <input name="first_name" value="{{ f.first_name }}" required autofocus></label>
+      <label>Last name <input name="last_name" value="{{ f.last_name }}"></label>
+      <label>Email <input type="email" name="email" value="{{ f.email }}" placeholder="for sending the pass"></label>
+      <label>Phone <span class="muted small">· optional</span><input name="phone" value="{{ f.phone }}"></label>
+      <label>Company <span class="muted small">· optional</span><input name="company" value="{{ f.company }}"></label>
+      <label>Here for <span class="muted small">· optional</span><input name="reason" value="{{ f.reason }}" placeholder="e.g. Interview, ride-along, board meeting"></label>
+    </div>
+    <label class="mt">Here to see <input name="host" value="{{ f.host }}"></label>
+    <label class="check small mt"><input type="checkbox" name="tell_me" {% if f.tell_me %}checked{% endif %}> Email me when they check in at a lobby screen</label>
+  </section>
+
+  <section class="card">
+    <h2>When</h2>
+    <div class="fields3">
+      <label>Date <input type="date" name="date" value="{{ f.date }}" required></label>
+      <label>From <input type="time" name="start" value="{{ f.start }}" required></label>
+      <label>Until <input type="time" name="end" value="{{ f.end }}" required></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Doors they can open</h2>
+    {% if doors %}{{ door_chips(doors, 'doors', f.doors, sites) }}
+    {% else %}<p class="muted">You don't have any doors to give out.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Pass</h2>
+    <div class="segpick">
+      {% for val, lbl, sub in [('both', 'PIN and QR code', 'Works on any reader'), ('pin', 'PIN only', 'For keypads'), ('qr', 'QR code only', 'Readers with a camera')] %}
+      <label class="segopt"><input type="radio" name="creds" value="{{ val }}" {% if f.creds == val %}checked{% endif %}><span><b>{{ lbl }}</b><small class="muted">{{ sub }}</small></span></label>
+      {% endfor %}
+    </div>
+    <label class="check mt"><input type="checkbox" name="send" {% if f.send and mail_ready %}checked{% endif %} {% if not mail_ready %}disabled{% endif %}>
+      Email the pass to them now</label>
+    {% if not mail_ready %}<small class="hint">Email isn't set up yet{% if user.is_admin %} (<a href="/settings/email">set it up</a>){% endif %}. You can read them the PIN instead.</small>{% endif %}
+  </section>
+
+  <div class="btnrow"><button class="primary">Make the pass</button><a class="button" href="/visitors">Cancel</a></div>
+</form>
+{% endblock %}

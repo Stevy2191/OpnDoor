@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Screens · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Screens</h1>
+    <p class="muted">Pages for a tablet or TV, on a private link with no sign-in. They can't open doors.</p>
+  </div>
+</div>
+
+<div class="screenkinds">
+  <div class="card skind"><h3>Lobby screen</h3><p class="muted">Welcomes today's visitors by first name. They tap their name to check in, and whoever they're seeing gets an email.</p></div>
+  <div class="card skind"><h3>Room screen</h3><p class="muted">Hang it outside a meeting room. Shows <b>Available</b> or <b>In use</b>, and the rest of today's meetings, from that door's schedules and calendars.</p></div>
+</div>
+
+{% if screens %}
+<section class="card">
+  <h2>Your screens</h2>
+  <div class="rowlist">
+    {% for sc in screens %}{% set url = base ~ '/screen/' ~ sc.token %}
+    <div class="rowitem screenrow" id="screen-{{ sc.id }}">
+      <div class="ri-main">
+        <strong>{{ sc.name }}</strong>
+        <span class="muted small">{{ 'Room · ' ~ door_names.get(sc.door_id, 'door removed') if sc.kind == 'room' else 'Lobby' }}{% if sc.last_seen %} · last opened {{ sc.last_seen|local|day }} {{ sc.last_seen|local|time }}{% else %} · not opened yet{% endif %}</span>
+        <div class="linkbox"><input readonly value="{{ url }}" aria-label="Screen link" onclick="this.select()">
+          <button type="button" class="small" data-copy="{{ url }}">Copy</button>
+          <a class="button small" href="{{ url }}" target="_blank" rel="noopener">Open</a></div>
+      </div>
+      <div class="btnrow">
+        <form method="post" action="/screens/{{ sc.id }}/newlink" onsubmit="return confirm('Make a new link? The old link stops working right away.')"><button class="small" title="If the link got out, make a new one">New link</button></form>
+        <form method="post" action="/screens/{{ sc.id }}/delete" onsubmit="return confirm('Remove {{ sc.name|e }}?')"><button class="small danger">Remove</button></form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Add a screen</h2>
+  <form method="post" action="/screens" class="connform" id="addscreen">
+    <div class="segpick">
+      <label class="segopt"><input type="radio" name="kind" value="lobby" checked><span><b>Lobby</b><small class="muted">Visitors check in</small></span></label>
+      <label class="segopt"><input type="radio" name="kind" value="room"><span><b>Room</b><small class="muted">Free or in use</small></span></label>
+    </div>
+    <div class="fields2">
+      <label data-for="lobby">Site <select name="site_id">{% for s in site_list %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label>
+      <label data-for="room" hidden>Room's door <select name="door_id">{% for d in doors %}<option value="{{ d.id }}">{{ d.name }}{% if site_list|length > 1 %} · {{ (site_list|selectattr('id', 'equalto', d.site_id)|first).name }}{% endif %}</option>{% endfor %}</select></label>
+      <label>Name <span class="muted small">· optional</span><input name="name" placeholder="e.g. Front lobby iPad"></label>
+    </div>
+    <label data-for="lobby">Welcome message <span class="muted small">· optional</span><input name="message" placeholder="e.g. Welcome to Station 2. Please check in below."></label>
+    <label class="check" data-for="lobby"><input type="checkbox" name="checkin" value="true" checked> Visitors can tap their name to check in</label>
+    <div class="btnrow"><button class="primary">Add screen</button></div>
+  </form>
+  <details class="help mt">
+    <summary>Setting up the tablet</summary>
+    <ol>
+      <li>Open the screen's link in the tablet's browser.</li>
+      <li>iPad: tap Share → <em>Add to Home Screen</em>, then open it from there so it fills the screen.</li>
+      <li>Turn on <em>Guided Access</em> (Settings → Accessibility) to keep it on this page, and set Auto-Lock to Never.</li>
+      <li>The page updates itself every minute. Nobody needs to sign in.</li>
+    </ol>
+  </details>
+</section>
+<script>
+(function () {
+  const f = document.getElementById('addscreen');
+  const sync = () => { const k = f.querySelector('[name=kind]:checked').value; f.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== k); };
+  f.querySelectorAll('[name=kind]').forEach(r => r.addEventListener('change', sync)); sync();
+  document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
+    navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = 'Copied'; setTimeout(() => b.textContent = 'Copy', 1500); });
+  }));
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ v.name }} · Visitors · OpnDoor{% endblock %}
+{% block content %}
+<p class="crumbs small"><a href="/visitors">Visitors</a> › {{ v.name }}</p>
+<div class="pagehead">
+  <div>
+    <h1>{{ v.name }} <span class="pill {{ states[state][1] }}" style="vertical-align:middle">{{ states[state][0] }}</span></h1>
+    <p class="muted">{{ [v.company, v.reason]|select|join(' · ') or 'Visitor' }}{% if v.host_name %} · here to see {{ v.host_name }}{% endif %}</p>
+  </div>
+  {% if v.status != 'cancelled' and state != 'gone' %}
+  <div class="btnrow">
+    {% if state == 'expected' %}
+    <form method="post" action="/visitors/{{ v.id }}/check"><input type="hidden" name="what" value="in"><button>Mark as here</button></form>
+    {% elif state == 'here' %}
+    <form method="post" action="/visitors/{{ v.id }}/check"><input type="hidden" name="what" value="out"><button>Mark as gone</button></form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="grid2 wide-left">
+  <section class="card">
+    <h2>Visit</h2>
+    <dl class="facts">
+      <dt>When</dt><dd>{{ s.strftime('%A, %B') }} {{ s.day }}, {{ s|time }} to {% if e.date() != s.date() %}{{ e.strftime('%b') }} {{ e.day }} {% endif %}{{ e|time }}</dd>
+      <dt>Site</dt><dd>{{ site.name }}</dd>
+      <dt>Doors</dt><dd>{{ doors|join(', ') or '—' }}</dd>
+      {% if v.email %}<dt>Email</dt><dd>{{ v.email }}</dd>{% endif %}
+      {% if v.phone %}<dt>Phone</dt><dd>{{ v.phone }}</dd>{% endif %}
+      {% if arrived %}<dt>First door</dt><dd>{{ arrived|time }}</dd>{% endif %}
+      {% if checked_in %}<dt>Checked in</dt><dd>{{ checked_in|time }}</dd>{% endif %}
+      {% if checked_out %}<dt>Left</dt><dd>{{ checked_out|time }}</dd>{% endif %}
+      <dt>Emailed</dt><dd>{% if v.emailed_at %}{{ v.emailed_at|local|day }} {{ v.emailed_at|local|time }}{% else %}Not yet{% endif %}</dd>
+    </dl>
+    {% if v.error %}<p class="err">{{ v.error }}</p>{% endif %}
+  </section>
+
+  <section class="card passcard">
+    <h2>Pass</h2>
+    {% if v.status == 'cancelled' %}
+    <p class="muted">Cancelled. The PIN and QR code don't work any more.</p>
+    {% else %}
+      {% if v.pin %}<p class="muted small lbl">PIN</p><p class="passpin">{{ v.pin }}</p>{% endif %}
+      {% if v.use_qr %}<p class="muted small lbl">QR code</p><img class="qr" src="/visitors/{{ v.id }}/qr.png" alt="QR code for {{ v.name }}" width="180" height="180"
+        onerror="this.replaceWith(Object.assign(document.createElement('p'),{className:'muted small',textContent:'The QR code isn’t available from UniFi Access. It needs UniFi Access 3.3.10 or later.'}))">{% endif %}
+      {% if state != 'gone' %}
+      <div class="btnrow mt">
+        {% if v.email %}<form method="post" action="/visitors/{{ v.id }}/send"><button {% if not mail_ready %}disabled title="Email isn't set up"{% endif %}>{{ 'Send again' if v.emailed_at else 'Email the pass' }}</button></form>{% endif %}
+        <form method="post" action="/visitors/{{ v.id }}/cancel" onsubmit="return confirm('Cancel the pass for {{ v.name|e }}? Their PIN and QR code stop working right away.')">
+          <button class="danger">Cancel pass</button></form>
+      </div>
+      {% endif %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

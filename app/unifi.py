@@ -100,6 +100,58 @@ class UnifiClient:
         self._call("PUT", "/doors/settings/emergency",
                    json={"lockdown": mode == "lockdown", "evacuation": mode == "evacuation"})
 
+    # ---------- visitors ----------
+
+    def create_visitor(self, first: str, last: str, email: str, phone: str, company: str, remarks: str,
+                       start: int, end: int, door_ids: list[str]) -> str:
+        """Add a visitor who may use these doors between two unix times. Returns their UniFi id."""
+        body = {"first_name": first, "last_name": last or "-", "start_time": start, "end_time": end,
+                "visit_reason": "Others", "remarks": remarks[:200],
+                "resources": [{"id": d, "type": "door"} for d in door_ids]}
+        if email:
+            body["email"] = email
+        if phone:
+            body["mobile_phone"] = phone
+        if company:
+            body["visitor_company"] = company
+        try:
+            data = self._call("POST", "/visitors", json=body) or {}
+        except UnifiError as e:
+            if "403" in str(e) or "permission" in str(e).lower():
+                raise UnifiError("The API token can't add visitors. Set Visitor to Edit on the token.") from e
+            raise
+        return str(data.get("id") or "")
+
+    def delete_visitor(self, visitor_id: str) -> None:
+        self._call("DELETE", f"/visitors/{visitor_id}", params={"is_force": "true"})
+
+    def new_pin(self) -> str:
+        """A PIN the console hasn't given anyone else."""
+        for path in ("/credentials/pin_codes", "/pin_codes"):  # the path differs between Access versions
+            try:
+                data = self._call("POST", path)
+            except UnifiError as e:
+                last = e
+                continue
+            return str(data.get("pin_code") or data.get("token") or "") if isinstance(data, dict) else str(data or "")
+        raise last
+
+    def set_visitor_pin(self, visitor_id: str, pin: str) -> None:
+        self._call("PUT", f"/visitors/{visitor_id}/pin_codes", json={"pin_code": pin})
+
+    def set_visitor_qr(self, visitor_id: str) -> None:
+        self._call("PUT", f"/visitors/{visitor_id}/qr_codes", json={})
+
+    def visitor_qr_png(self, visitor_id: str) -> bytes:
+        for path in (f"/credentials/qr_codes/download/{visitor_id}", f"/qr_codes/{visitor_id}"):
+            try:
+                resp = self.http.get(path)
+            except httpx.HTTPError as e:
+                raise UnifiError(f"Cannot reach the UniFi Access console: {e}") from e
+            if resp.status_code == 200 and resp.content[:4] == b"\x89PNG":
+                return resp.content
+        raise UnifiError("UniFi Access didn't send the QR code. QR codes for visitors need UniFi Access 3.3.10 or later.")
+
     def door_log(self, since: int, until: int, page: int = 1, size: int = 100) -> tuple[list[dict], int]:
         """Door openings and denied attempts between two unix times. Returns (entries, total)."""
         try:
@@ -233,6 +285,33 @@ class FakeUnifiClient:
     def get_emergency(self) -> str:
         return self.emergency
 
+    visitors: dict = None
+
+    def create_visitor(self, first, last, email, phone, company, remarks, start, end, door_ids) -> str:
+        if self.visitors is None:
+            self.visitors = {}
+        vid = f"demo-visitor-{len(self.visitors) + 1}"
+        self.visitors[vid] = {"first_name": first, "last_name": last, "start": start, "end": end, "doors": door_ids}
+        self.calls.append(("visitor", vid))
+        return vid
+
+    def delete_visitor(self, visitor_id: str) -> None:
+        (self.visitors or {}).pop(visitor_id, None)
+        self.calls.append(("visitor_delete", visitor_id))
+
+    def new_pin(self) -> str:
+        import random
+        return f"{random.randint(0, 999999):06d}"
+
+    def set_visitor_pin(self, visitor_id: str, pin: str) -> None:
+        self.visitors[visitor_id]["pin"] = pin
+
+    def set_visitor_qr(self, visitor_id: str) -> None:
+        self.visitors[visitor_id]["qr"] = True
+
+    def visitor_qr_png(self, visitor_id: str) -> bytes:
+        return demo_qr_png(visitor_id)
+
     log_hits: list = None  # tests set entries here; the demo makes up a month of traffic
 
     def door_log(self, since: int, until: int, page: int = 1, size: int = 100) -> tuple[list[dict], int]:
@@ -262,6 +341,33 @@ class FakeUnifiClient:
 
     def policy_schedule(self, schedule_id: str) -> dict:
         return self.schedules.get(schedule_id, {})
+
+
+def demo_qr_png(text: str) -> bytes:
+    """A stand-in QR picture for demo consoles (a pattern, not a scannable code)."""
+    import hashlib
+    import io
+
+    from PIL import Image
+    bits = hashlib.sha256(text.encode()).digest() * 2
+    n, cell = 21, 10
+    img = Image.new("L", ((n + 4) * cell, (n + 4) * cell), 255)
+    px = img.load()
+    finders = [(0, 0), (n - 7, 0), (0, n - 7)]
+    for y in range(n):
+        for x in range(n):
+            f = next(((x - fx, y - fy) for fx, fy in finders if 0 <= x - fx < 7 and 0 <= y - fy < 7), None)
+            if f:
+                on = f[0] in (0, 6) or f[1] in (0, 6) or (2 <= f[0] <= 4 and 2 <= f[1] <= 4)
+            else:
+                on = bits[(y * n + x) // 8 % 64] >> (x % 8) & 1
+            if on:
+                for dy in range(cell):
+                    for dx in range(cell):
+                        px[(x + 2) * cell + dx, (y + 2) * cell + dy] = 0
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
 
 
 def demo_log(doors: list) -> list[dict]:

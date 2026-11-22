@@ -1,0 +1,83 @@
+{% include "_screenhead.html" %}
+<title>{{ sc.name }}</title>
+<style>
+  .welcome { font-size: clamp(32px, 5.5vw, 72px); font-weight: 800; line-height: 1.05; }
+  .msg { font-size: clamp(18px, 2.2vw, 28px); color: var(--muted); margin-top: .6rem; max-width: 34ch; }
+  .people { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: clamp(10px, 1.4vw, 18px); align-content: start; flex: 1; overflow: auto; }
+  .person { display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; text-align: left;
+    background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: clamp(16px, 2vw, 26px); min-height: 92px; }
+  button.person:active { transform: scale(.98); }
+  .person .n { font-size: clamp(22px, 2.6vw, 32px); font-weight: 700; display: block; }
+  .person .s { color: var(--muted); font-size: clamp(14px, 1.4vw, 18px); }
+  .person .go { flex: none; background: var(--amber); color: #1b1200; font-weight: 700; border-radius: 999px; padding: .55rem 1.1rem; font-size: clamp(15px, 1.5vw, 19px); }
+  .person.here { opacity: .75; }
+  .person.here .go { background: transparent; color: var(--ok); border: 2px solid var(--ok); }
+  .empty { flex: 1; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: clamp(20px, 2.4vw, 30px); }
+  .done { position: fixed; inset: 0; background: rgba(8, 18, 34, .94); display: grid; place-items: center; text-align: center; padding: 24px; }
+  .done .big { font-size: clamp(36px, 6vw, 80px); }
+  .done .tick { width: clamp(80px, 12vw, 140px); height: clamp(80px, 12vw, 140px); border-radius: 50%; background: var(--ok); display: grid; place-items: center; margin: 0 auto 24px; }
+  dialog { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 22px; padding: clamp(20px, 3vw, 40px); text-align: center; width: min(560px, 92vw); }
+  dialog::backdrop { background: rgba(8, 18, 34, .8); }
+  dialog .big { font-size: clamp(28px, 4vw, 48px); margin-bottom: .4rem; }
+  dialog .row { display: flex; gap: 12px; justify-content: center; margin-top: 28px; }
+  dialog button { border-radius: 14px; padding: 16px 28px; font-size: 20px; font-weight: 700; border: 1px solid var(--line); background: transparent; color: var(--text); }
+  dialog button.yes { background: var(--amber); color: #1b1200; border-color: var(--amber); }
+  .foot { color: var(--muted); font-size: 14px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div>
+      <div class="brand">{{ d.site.name }}</div>
+      <h1 class="welcome">Welcome</h1>
+      {% if sc.message %}<p class="msg">{{ sc.message }}</p>{% elif d.people and sc.checkin %}<p class="msg">Expecting you? Tap your name to check in.</p>{% endif %}
+    </div>
+    <div class="clock"><div class="t" id="clk">{{ d.now|time }}</div><div class="d">{{ d.now.strftime('%A, %B') }} {{ d.now.day }}</div></div>
+  </div>
+
+  {% if d.people %}
+  <form method="post" action="/screen/{{ sc.token }}/checkin" class="people" id="people">
+    {% for p in d.people %}
+      {% if sc.checkin and not p.here %}
+      <button class="person" name="visitor" value="{{ p.id }}" data-name="{{ p.name }}" type="button">
+        <span><span class="n">{{ p.name }}</span><span class="s">{{ p.at|time }}{% if p.host %} · to see {{ p.host }}{% endif %}</span></span>
+        <span class="go">Check in</span></button>
+      {% else %}
+      <div class="person {{ 'here' if p.here }}">
+        <span><span class="n">{{ p.name }}</span><span class="s">{{ p.at|time }}{% if p.host %} · to see {{ p.host }}{% endif %}</span></span>
+        {% if p.here %}<span class="go">Here ✓</span>{% endif %}</div>
+      {% endif %}
+    {% endfor %}
+  </form>
+  {% else %}
+  <div class="empty">No visitors expected right now.</div>
+  {% endif %}
+  <div class="foot">Use your PIN or QR code at the door reader.</div>
+
+  <dialog id="ask"><div class="big">Are you <span id="askname"></span>?</div><div class="muted">We'll let them know you're here.</div>
+    <div class="row"><button type="button" id="no">Not me</button><button type="button" class="yes" id="yes">Yes, check in</button></div></dialog>
+
+  {% if done %}
+  <div class="done" id="done"><div><div class="tick"><svg width="60%" height="60%" viewBox="0 0 24 24" fill="none" stroke="#06240f" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg></div>
+    <div class="big">Thanks, {{ done }}!</div><p class="msg" style="margin:1rem auto 0">You're checked in. Someone will be right with you.</p></div></div>
+  {% endif %}
+<script>
+(function () {
+  const clk = document.getElementById('clk');
+  setInterval(() => { clk.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }, 10000);
+  const ask = document.getElementById('ask'), form = document.getElementById('people'); let pick = null;
+  document.querySelectorAll('button.person').forEach(b => b.addEventListener('click', () => {
+    pick = b; document.getElementById('askname').textContent = b.dataset.name; ask.showModal();
+    clearTimeout(ask.t); ask.t = setTimeout(() => ask.close(), 20000);
+  }));
+  document.getElementById('no').onclick = () => ask.close();
+  document.getElementById('yes').onclick = () => {
+    const i = document.createElement('input'); i.type = 'hidden'; i.name = 'visitor'; i.value = pick.value; form.appendChild(i); form.submit();
+  };
+  const done = document.getElementById('done');
+  if (done) { history.replaceState(null, '', location.pathname); setTimeout(() => done.remove(), 6000); done.onclick = () => done.remove(); }
+  setInterval(() => { if (!ask.open && !document.getElementById('done')) location.replace(location.pathname); }, 60000);
+})();
+</script>
+</body>
+</html>

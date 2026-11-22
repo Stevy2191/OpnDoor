@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Visitors · OpnDoor{% endblock %}
+{% macro vrow(i, show_day=False) %}{% set v = i.v %}{% set st = states[i.state] %}
+<a class="vrow" href="/visitors/{{ v.id }}">
+  <span class="vtime">{% if show_day %}<b>{{ i.s.strftime('%a %b') }} {{ i.s.day }}</b>{% endif %}{{ i.s|time }}–{{ i.e|time }}</span>
+  <span class="vwho"><strong>{{ v.name }}</strong>{% if v.company or v.reason %}<small class="muted">{{ [v.company, v.reason]|select|join(' · ') }}</small>{% endif %}</span>
+  <span class="vhost muted">{% if v.host_name %}to see {{ v.host_name }}{% endif %}</span>
+  <span class="vcred muted small">{% if v.pin %}PIN{% endif %}{% if v.pin and v.use_qr %} + {% endif %}{% if v.use_qr %}QR{% endif %}</span>
+  <span class="pill {{ st[1] }}">{{ st[0] }}{% if i.state == 'here' and i.arrived %} · {{ i.arrived|time }}{% endif %}</span>
+</a>
+{% endmacro %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Visitors</h1>
+    <p class="muted">Passes with a PIN or QR code that only work on the doors and times you pick.</p>
+  </div>
+  <div class="btnrow noprint">
+    {% if today %}<button type="button" onclick="print()">Print today's list</button>{% endif %}
+    <a class="button primary" href="/visitors/new">+ New visitor pass</a>
+  </div>
+</div>
+{% if not mail_ready %}
+<div class="flash info noprint">Passes can't be emailed yet.{% if user.is_admin %} <a href="/settings/email">Set up email</a> to send them.{% else %} Ask an admin to set up email.{% endif %} You can still make passes and read out the PIN.</div>
+{% endif %}
+
+<section class="card">
+  <div class="cardhead">
+    <h2>Today <small class="muted">{{ today|length }}</small></h2>
+    {% if today %}<div class="vcounts small">
+      <span><b>{{ counts.expected }}</b> expected</span><span><b>{{ counts.here }}</b> here</span><span><b>{{ counts.gone }}</b> gone</span>
+    </div>{% endif %}
+  </div>
+  {% if today %}
+  <div class="vlist">{% for i in today %}{{ vrow(i) }}{% endfor %}</div>
+  {% else %}
+  <p class="muted empty">No visitors today.</p>
+  {% endif %}
+</section>
+
+<section class="card noprint">
+  <h2>Coming up <small class="muted">{{ upcoming|length }}</small></h2>
+  {% if upcoming %}<div class="vlist">{% for i in upcoming %}{{ vrow(i, True) }}{% endfor %}</div>
+  {% else %}<p class="muted empty">Nothing booked yet.</p>{% endif %}
+</section>
+
+{% if past %}
+<details class="card noprint">
+  <summary><h2 style="display:inline">Last 7 days <small class="muted">{{ past|length }}</small></h2></summary>
+  <div class="vlist" style="margin-top:1rem">{% for i in past %}{{ vrow(i, True) }}{% endfor %}</div>
+</details>
+{% endif %}
+{% endblock %}
