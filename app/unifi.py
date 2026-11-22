@@ -199,7 +199,9 @@ class UnifiClient:
                 online = dev.get("is_online", dev.get("online"))
                 if online is None and isinstance(dev.get("state"), str):
                     online = dev["state"].lower() in ("online", "connected", "adopted")
-                out.append({"id": dev.get("id", ""), "name": dev.get("alias") or dev.get("name") or dev.get("id", ""),
+                out.append({"id": dev.get("id", ""), "alias": dev.get("alias") or "",
+                            "name": dev.get("alias") or dev.get("name") or dev.get("id", ""),
+                            "model_name": dev.get("name") or "", "adopted": dev.get("is_adopted", True) is not False,
                             "type": dev.get("type") or dev.get("device_type") or "", "door_id": dev.get("location_id") or "",
                             "online": online, "firmware": dev.get("firmware") or dev.get("version") or ""})
         return out

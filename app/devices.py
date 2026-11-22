@@ -15,7 +15,8 @@ from .web import render, require_admin, require_manager
 
 router = APIRouter()
 
-TYPES = {"UAH": "Hub", "UAH-DOOR": "Door hub", "UAH-ENT": "Enterprise hub", "UA-HUB-GATE": "Gate hub",
+TYPES = {"UA-G2-MINI": "G2 Mini reader", "UA-G3-PRO": "G3 Pro reader", "UA-INT-VIEWER": "Intercom viewer",
+         "UA-G2-PRO": "G2 Pro reader", "UAH-DOOR": "Door hub", "UAH": "Hub", "UAH-DOOR": "Door hub", "UAH-ENT": "Enterprise hub", "UA-HUB-GATE": "Gate hub",
          "UGT": "Gate hub", "UDA": "Door hub", "UA-G2-PRO": "G2 Pro reader", "UA-G2": "G2 reader",
          "UA-G3": "G3 reader", "UA-LITE": "Reader Lite", "UA-PRO": "Reader Pro", "UA-INTERCOM": "Intercom",
          "UA-ULTRA": "Ultra reader", "UVC": "Camera"}
@@ -85,11 +86,17 @@ def devices_page(request: Request, refresh: int = 0, user: User = Depends(requir
         items = []
         for d in info["access"]:
             door = doors.get(d["door_id"])
-            items.append({"name": d["name"], "kind": _type(d["type"]), "where": door.name if door else "",
-                          "door_id": door.id if door else None, "online": d["online"], "firmware": d["firmware"]})
+            kind = _type(d["type"])
+            name, sub_name = d["name"], ""
+            if not d.get("alias", d["name"]) and door:  # unnamed reader: call it by its door, like the UniFi app
+                name, sub_name = f"{door.name} · {kind}", d.get("model_name") or ""
+            adopted = d.get("adopted", True)
+            items.append({"name": name, "sub": sub_name, "kind": kind, "where": door.name if door else "",
+                          "door_id": door.id if door else None, "online": d["online"] if adopted else None,
+                          "note": "" if adopted else "UniFi says this isn't adopted", "firmware": d["firmware"]})
         for c in info["cameras"]:
             st = (c.get("state") or "").upper()
-            items.append({"name": c["name"], "kind": "Camera", "where": "", "door_id": None,
+            items.append({"name": c["name"], "sub": "", "note": "", "kind": "Camera", "where": "", "door_id": None,
                           "online": True if st == "CONNECTED" else (False if st else None), "firmware": ""})
         items.sort(key=lambda i: (i["online"] is not False, i["kind"] != "Hub", i["name"].lower()))
         bad = sum(1 for i in items if i["online"] is False)

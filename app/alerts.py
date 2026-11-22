@@ -149,7 +149,7 @@ def find(session: Session, rule: AlertRule, now: Optional[datetime] = None) -> l
             if rule.kind == "console" and not info.get("console_ok"):
                 down.append(("console", f"the UniFi Access console for {site.name}"))
             if rule.kind == "device_offline":
-                down += [(d["id"], f"{d['name']}") for d in info["access"] if d["online"] is False]
+                down += [(d["id"], f"{d['name']}") for d in info["access"] if d["online"] is False and d.get("adopted", True)]
                 down += [(c["id"], c["name"]) for c in info["cameras"] if (c.get("state") or "").upper() not in ("", "CONNECTED")]
             seen = set()
             for dev_id, name in down:
