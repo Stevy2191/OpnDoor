@@ -185,6 +185,9 @@ class UnifiClient:
                 raise
             self._call("PUT", f"/doors/{door_id}/unlock")  # Access before 3.3.21 takes no actor
 
+    def raw_devices(self):
+        return self._call("GET", "/devices")
+
     def list_devices(self) -> list[dict]:
         """Every Access device: {id, name, type, door_id, online (True/False/None), firmware}."""
         data = self._call("GET", "/devices") or []
@@ -373,6 +376,9 @@ class FakeUnifiClient:
 
     def door_devices(self) -> dict[str, list[str]]:
         return dict(getattr(self, "devices", {}))
+
+    def raw_devices(self):
+        return [self.list_devices()]
 
     def list_devices(self) -> list[dict]:
         out = [{"id": "demo-hub", "name": "Access Hub", "type": "UAH", "door_id": "", "online": True,

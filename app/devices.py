@@ -9,7 +9,9 @@ from . import protect, unifi
 from .auth import managed_site_ids
 from .db import get_session
 from .models import Door, Site, User
-from .web import render, require_manager
+from fastapi.responses import JSONResponse
+
+from .web import render, require_admin, require_manager
 
 router = APIRouter()
 
@@ -50,6 +52,19 @@ def site_devices(site: Site) -> dict:
             out["errors"].append(f"UniFi Protect: {e}")
     _cache[site.id] = (time.monotonic(), out)
     return out
+
+
+@router.get("/devices/raw")
+def devices_raw(site: int, user: User = Depends(require_admin), session: Session = Depends(get_session)):
+    """Exactly what the console says about its devices, to compare with the UniFi app (admins only)."""
+    st = session.get(Site, site)
+    if not st:
+        return JSONResponse({"error": "no such site"}, status_code=404)
+    try:
+        data = unifi.get_client(st).raw_devices()
+    except unifi.UnifiError as e:
+        data = {"error": str(e)}
+    return JSONResponse(data, headers={"Content-Disposition": f'inline; filename="devices-{st.id}.json"'})
 
 
 @router.get("/devices")

@@ -102,3 +102,9 @@ def test_unifi_people_new_pin_and_turn_off(client, fake):
     assert fake.users[0]["status"] == "DEACTIVATED" and "Turn back on" in r.text
     client.post("/unifi-people/1/u1/active", data={"active": "true"})
     assert fake.users[0]["status"] == "ACTIVE"
+
+
+def test_devices_raw_is_for_admins(client, fake):
+    setup_admin(client)
+    data = client.get("/devices/raw?site=1").json()
+    assert data and data[0][0]["name"] == "Access Hub"

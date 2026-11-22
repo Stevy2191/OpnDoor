@@ -13,6 +13,7 @@
   <h2>{{ r.site.name }}
     {% if r.console_ok %}<span class="pill locked">Console connected</span>{% else %}<span class="pill bad">Can't reach the console</span>{% endif %}
     {% if r.bad %}<span class="pill bad">{{ r.bad }} offline</span>{% endif %}</h2>
+  {% if user.is_admin %}<p class="small" style="margin:-.4rem 0 .8rem"><a href="/devices/raw?site={{ r.site.id }}" target="_blank" rel="noopener">What the console sent</a> <span class="muted">· to compare with the UniFi app</span></p>{% endif %}
   {% for e in r.errors %}<p class="err small">{{ e }}</p>{% endfor %}
   {% if r.devs %}
   <div class="devgrid">
