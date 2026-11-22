@@ -62,6 +62,7 @@
   <div class="wday {{ 'today' if d == today }} {{ 'past' if d < today }}" data-day="{{ d.isoformat() }}" title="Click to add a schedule on {{ d.strftime('%a, %b %-d') }}">
     <div class="wdhead"><span class="dow">{{ d.strftime('%a') }}</span> <span class="dnum">{{ d.day }}</span>{% if d == today %}<span class="todaytag">Today</span>{% endif %}
       <a class="wadd" href="/schedules/new?day={{ d.isoformat() }}" aria-label="Add a schedule on {{ d.strftime('%A, %B %-d') }}">+</a></div>
+    {% set hol = (holidays or {}).get(d) %}{% if hol %}<div class="holtag" title="Repeating schedules that follow holidays {{ 'run ' ~ hol.hours.replace('-', '–') ~ ' instead' if hol.hours else "don't run" }}">★ {{ hol.name }}{% if hol.hours %} · {{ hol.hours.replace('-', '–') }}{% else %} · closed{% endif %}</div>{% endif %}
     {% for c in by_day[d] %}{% set s = c.s %}
     <a class="ev {{ kindclass(s) }}" href="{{ '/schedules/' ~ s.id if c.editable else '#' }}" {% if not c.editable %}aria-disabled="true"{% endif %} title="{{ s.label }} · {{ c.doors }}">
       <span class="evtime">{{ span(c.o.start, c.o.end) }}</span>

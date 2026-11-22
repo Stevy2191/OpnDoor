@@ -39,6 +39,47 @@ def image_kind(head: bytes) -> Optional[str]:
     return None
 
 
+def pdf_to_png(data: bytes) -> bytes:
+    """First page of a PDF floor plan as a PNG about 2400 px on its long side."""
+    import io
+
+    import pypdfium2 as pdfium
+    pdf = pdfium.PdfDocument(data)
+    try:
+        page = pdf[0]
+        w, h = page.get_size()  # points
+        scale = min(8.0, max(1.0, 2400 / max(w, h)))
+        img = page.render(scale=scale).to_pil().convert("RGB")
+    finally:
+        pdf.close()
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+def _open_image(plan: FloorPlan):
+    from PIL import Image
+    img = Image.open(plan_dir() / plan.filename)
+    img.load()
+    return img
+
+
+def _save_image(session: Session, plan: FloorPlan, img) -> None:
+    """Save an edited plan image under a new name (so browsers don't show the old one) and drop the old file."""
+    ext = plan.filename.rsplit(".", 1)[-1].lower()
+    fmt = {"jpg": "JPEG", "png": "PNG", "webp": "WEBP"}.get(ext, "PNG")
+    if fmt == "JPEG" and img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    old = plan.filename
+    plan.filename = f"{uuid.uuid4().hex}.{ext if fmt != 'PNG' or ext == 'png' else 'png'}"
+    img.save(plan_dir() / plan.filename, fmt, **({"quality": 90} if fmt in ("JPEG", "WEBP") else {}))
+    session.add(plan)
+    try:
+        (plan_dir() / old).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def plan_site_id(session: Session, plan: FloorPlan) -> Optional[int]:
     b = session.get(Building, plan.building_id)
     return b.site_id if b else None
@@ -147,8 +188,14 @@ async def plan_upload(request: Request, building_id: int = Form(...), name: str 
         flash(request, "That image is too big. Please use one under 15 MB.", "error")
         return redirect(back)
     ext = image_kind(data[:16])
+    if not ext and data[:5] == b"%PDF-":
+        try:
+            data, ext = pdf_to_png(data), "png"
+        except Exception:  # noqa: BLE001 - damaged, encrypted or not really a PDF
+            flash(request, "That PDF couldn't be read. Try saving it again, or export the page as a picture.", "error")
+            return redirect(back)
     if not ext:
-        flash(request, "Please upload a PNG, JPG or WebP picture of the floor plan.", "error")
+        flash(request, "Please upload a PDF, PNG, JPG or WebP of the floor plan.", "error")
         return redirect(back)
     filename = f"{uuid.uuid4().hex}.{ext}"
     (plan_dir() / filename).write_bytes(data)
@@ -160,6 +207,58 @@ async def plan_upload(request: Request, building_id: int = Form(...), name: str 
     session.commit()
     flash(request, f"Added “{plan.name}”. Now place the doors on it.")
     return redirect(f"/floorplans/{plan.id}/edit")
+
+
+@router.post("/floorplans/{pid}/crop")
+def plan_crop(request: Request, pid: int, x: float = Form(...), y: float = Form(...), w: float = Form(...),
+              h: float = Form(...), user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    """Cut the plan down to a box (percent of the picture). Door pins move with it."""
+    plan = _managed_plan(session, user, pid)
+    if not plan:
+        return redirect("/sites")
+    x, y = max(0.0, min(100.0, x)), max(0.0, min(100.0, y))
+    w, h = max(0.0, min(100.0 - x, w)), max(0.0, min(100.0 - y, h))
+    if w < 5 or h < 5:
+        flash(request, "Draw a bigger box to crop to.", "error")
+        return redirect(f"/floorplans/{pid}/edit")
+    img = _open_image(plan)
+    W, H = img.size
+    box = (round(W * x / 100), round(H * y / 100), round(W * (x + w) / 100), round(H * (y + h) / 100))
+    _save_image(session, plan, img.crop(box))
+    dropped = 0
+    for pin in session.exec(select(DoorPin).where(DoorPin.plan_id == plan.id)).all():
+        nx, ny = (pin.x - x) / w * 100, (pin.y - y) / h * 100
+        if 0 <= nx <= 100 and 0 <= ny <= 100:
+            pin.x, pin.y = nx, ny
+            session.add(pin)
+        else:
+            session.delete(pin)
+            dropped += 1
+    audit.record(session, "floorplan.update", f"{user.display} cropped floor plan “{plan.name}”", user=user,
+                 site_ids=[plan_site_id(session, plan)])
+    session.commit()
+    flash(request, "Cropped." + (f" {dropped} door{' was' if dropped == 1 else 's were'} outside the box and "
+                                 f"{'was' if dropped == 1 else 'were'} taken off; place {'it' if dropped == 1 else 'them'} again."
+                                 if dropped else ""))
+    return redirect(f"/floorplans/{pid}/edit")
+
+
+@router.post("/floorplans/{pid}/rotate")
+def plan_rotate(request: Request, pid: int, turn: str = Form("right"), user: User = Depends(require_manager),
+                session: Session = Depends(get_session)):
+    """Turn the plan a quarter turn. Door pins turn with it."""
+    from PIL import Image
+    plan = _managed_plan(session, user, pid)
+    if not plan:
+        return redirect("/sites")
+    right = turn != "left"
+    img = _open_image(plan).transpose(Image.Transpose.ROTATE_270 if right else Image.Transpose.ROTATE_90)
+    _save_image(session, plan, img)
+    for pin in session.exec(select(DoorPin).where(DoorPin.plan_id == plan.id)).all():
+        pin.x, pin.y = (100 - pin.y, pin.x) if right else (pin.y, 100 - pin.x)
+        session.add(pin)
+    session.commit()
+    return redirect(f"/floorplans/{pid}/edit")
 
 
 @router.get("/floorplans/{pid}/edit")

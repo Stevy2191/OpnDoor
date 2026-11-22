@@ -78,6 +78,18 @@
     {{ door_chips(doors, 'default_doors', defaults, sites) }}
   </fieldset>
 
+  <fieldset>
+    <legend>Approval</legend>
+    <p class="muted small">Events that need approval wait on the Calendars page and unlock nothing until someone approves them.</p>
+    <label class="check"><input type="checkbox" name="approve_new" {% if feed and feed.approve_new %}checked{% endif %}> New and changed events wait for approval</label>
+    <div class="small muted" style="margin:.5rem 0 .3rem">Always ask first when an event…</div>
+    <div class="grid3">
+      <label>is longer than <span class="inline"><input type="number" name="approve_over_hours" min="0" max="72" value="{{ feed.approve_over_hours if feed and feed.approve_over_hours else '' }}" placeholder="no limit"> hours</span></label>
+      <label>starts before <input type="time" name="approve_before" value="{{ feed.approve_before if feed else '' }}"></label>
+      <label>ends after <input type="time" name="approve_after" value="{{ feed.approve_after if feed else '' }}"></label>
+    </div>
+  </fieldset>
+
   <label class="check"><input type="checkbox" name="include_all_day" {% if feed and feed.include_all_day %}checked{% endif %}> Include all-day events <small class="muted">(unlocks the whole day)</small></label>
   <label class="check"><input type="checkbox" name="enabled" {% if not feed or feed.enabled %}checked{% endif %}> Active</label>
 

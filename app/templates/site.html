@@ -40,8 +40,8 @@
   <form method="post" action="/floorplans" enctype="multipart/form-data" class="fpupload">
     <label>Building <select name="building_id" required>{% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select></label>
     <label>Floor name <input name="name" value="Main floor" required></label>
-    <label>Picture <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required>
-      <small class="muted">PNG, JPG or WebP, up to 15 MB. A screenshot or photo of the plan works.</small></label>
+    <label>Picture <input type="file" name="image" accept="application/pdf,image/png,image/jpeg,image/webp" required>
+      <small class="muted">PDF, PNG, JPG or WebP, up to 15 MB. A screenshot or photo of the plan works.</small></label>
     <div><button class="primary">Add floor plan</button></div>
   </form>
   {% else %}

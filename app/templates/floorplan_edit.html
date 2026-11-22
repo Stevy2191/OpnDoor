@@ -39,12 +39,25 @@
   <section>
     <div class="maptools">
       <span class="small muted fptip">Pick a door on the left, then click the plan.</span>
+      <div class="btnrow fptools">
+        <button type="button" class="small" id="cropbtn" title="Cut away empty space around the plan">✂ Crop</button>
+        <form method="post" action="/floorplans/{{ plan.id }}/rotate"><input type="hidden" name="turn" value="left">
+          <button class="small" title="Turn a quarter turn to the left" aria-label="Rotate left">↺</button></form>
+        <form method="post" action="/floorplans/{{ plan.id }}/rotate"><input type="hidden" name="turn" value="right">
+          <button class="small" title="Turn a quarter turn to the right" aria-label="Rotate right">↻</button></form>
+      </div>
       <div class="zoom" role="group" aria-label="Zoom">
         <button type="button" data-zoom="-1" aria-label="Zoom out">−</button>
         <button type="button" data-zoom="0">Fit</button>
         <button type="button" data-zoom="1" aria-label="Zoom in">+</button>
       </div>
     </div>
+    <form method="post" action="/floorplans/{{ plan.id }}/crop" class="cropbar" id="cropbar" hidden>
+      <span class="small">Drag a box around the part of the plan to keep. Doors outside it are taken off.</span>
+      <input type="hidden" name="x"><input type="hidden" name="y"><input type="hidden" name="w"><input type="hidden" name="h">
+      <button class="small primary" id="cropok" disabled>Apply crop</button>
+      <button type="button" class="small" id="cropcancel">Cancel</button>
+    </form>
     <div class="mapwrap names editing" id="mapwrap">
       <div class="mapinner" id="mapinner">
         <img src="/floorplans/{{ plan.id }}/image" alt="Floor plan" draggable="false">
@@ -136,6 +149,34 @@
   document.querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => {
     const z = +b.dataset.zoom; zoom = z === 0 ? 100 : Math.min(400, Math.max(100, zoom + z * 50)); inner.style.width = zoom + '%';
   }));
+})();
+</script>
+<script>
+(function () {
+  const inner = document.getElementById('mapinner'), wrap = document.getElementById('mapwrap');
+  const bar = document.getElementById('cropbar'), ok = document.getElementById('cropok');
+  let box = null, start = null, on = false;
+  const pct = e => { const r = inner.getBoundingClientRect();
+    return [Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100)), Math.min(100, Math.max(0, (e.clientY - r.top) / r.height * 100))]; };
+  function stop() { on = false; bar.hidden = true; wrap.classList.remove('cropping'); if (box) box.remove(); box = null; ok.disabled = true; }
+  document.getElementById('cropbtn').addEventListener('click', () => { on = true; bar.hidden = false; wrap.classList.add('cropping'); });
+  document.getElementById('cropcancel').addEventListener('click', stop);
+  // capture phase: while cropping, the plan doesn't place or drag doors
+  inner.addEventListener('pointerdown', e => {
+    if (!on) return; e.stopPropagation(); e.preventDefault();
+    start = pct(e); if (!box) { box = document.createElement('div'); box.className = 'cropbox'; inner.appendChild(box); }
+    inner.setPointerCapture(e.pointerId);
+  }, true);
+  inner.addEventListener('pointermove', e => {
+    if (!on || !start) return; e.stopPropagation();
+    const [x, y] = pct(e), l = Math.min(x, start[0]), t = Math.min(y, start[1]), w = Math.abs(x - start[0]), h = Math.abs(y - start[1]);
+    Object.assign(box.style, { left: l + '%', top: t + '%', width: w + '%', height: h + '%' });
+    Object.assign(bar.querySelector('[name=x]'), { value: l }); bar.querySelector('[name=y]').value = t;
+    bar.querySelector('[name=w]').value = w; bar.querySelector('[name=h]').value = h;
+    ok.disabled = w < 5 || h < 5;
+  }, true);
+  inner.addEventListener('pointerup', e => { if (on) { e.stopPropagation(); start = null; } }, true);
+  inner.addEventListener('click', e => { if (on) e.stopPropagation(); }, true);
 })();
 </script>
 {% endblock %}

@@ -73,6 +73,25 @@
         </div>
         <label class="untilfield">Until <small class="muted">(optional; leave empty to keep going)</small>
           <input type="date" name="until" value="{{ until_val }}"></label>
+        {% if not sched %}
+        <div class="perdaybox">
+          <label class="check"><input type="checkbox" name="perday" value="1" id="perday"> Different hours on different days</label>
+          <div class="perday" hidden>
+            {% for i in range(7) %}
+            <div class="pdrow">
+              <label class="check"><input type="checkbox" name="pd_on" value="{{ i }}" {% if i < 5 %}checked{% endif %}> <span>{{ WEEKDAYS[i] }}</span></label>
+              <input type="time" name="pd_start" value="08:00" aria-label="{{ WEEKDAYS[i] }} from">
+              <span class="muted">to</span>
+              <input type="time" name="pd_end" value="17:00" aria-label="{{ WEEKDAYS[i] }} to">
+            </div>
+            {% endfor %}
+            <button type="button" class="link small" id="copymon">Copy Monday to Tue–Fri</button>
+          </div>
+        </div>
+        {% endif %}
+        <input type="hidden" name="holidays_field" value="1">
+        <label class="check holcheck"><input type="checkbox" name="follow_holidays" value="1" {% if not sched or sched.on_holidays != 'run' %}checked{% endif %}>
+          <span>Skip on holidays <small class="muted">(doors stay locked that day, or open the holiday's shorter hours; see <a href="/holidays">Holidays</a>)</small></span></label>
       </div>
     </section>
   </div>
@@ -151,6 +170,12 @@
     const d = doorText();
     const s = $('input[name=start]').value, e = $('input[name=end]').value, day = $('input[name=day]').value;
     over.hidden = !(s && e && e <= s);
+    const pdBox = $('#perday'), perday = !!(pdBox && pdBox.checked && mode === 'default');
+    if (pdBox) {
+      pdBox.closest('.perdaybox').hidden = mode !== 'default';
+      $('.perday').hidden = !perday;
+      f.classList.toggle('perdaymode', perday);
+    }
     const picked = $$('input[name=weekdays]:checked').map(x => +x.value);
     const daysTxt = picked.length === 7 ? 'every day' : picked.join() === '0,1,2,3,4' ? 'on weekdays' : picked.join() === '5,6' ? 'on weekends' : picked.length ? 'every ' + picked.map(i => days[i]).join(', ') : '';
     const until = $('input[name=until]').value;
@@ -158,13 +183,18 @@
     if (!mode) missing.push('Choose what you want to do (step 1)');
     if (!label.value.trim()) missing.push('Give it a name (step 2)');
     if (!d.n) missing.push('Pick at least one door (step 3)');
-    if (weekly && !picked.length) missing.push('Pick the days (step 4)');
-    if (!s || !e) missing.push('Set the times (step 4)');
+    const pdOn = perday ? $$('input[name=pd_on]:checked').map(x => +x.value) : [];
+    if (perday && !pdOn.length) missing.push('Tick at least one day (step 4)');
+    if (!perday && weekly && !picked.length) missing.push('Pick the days (step 4)');
+    if (!perday && (!s || !e)) missing.push('Set the times (step 4)');
 
     const LOCK = {{ padlock(False, 'inline')|tojson }}, OPEN = {{ padlock(True, 'inline')|tojson }};
     const verb = mode === 'lock' ? LOCK + ' Keep <b>locked</b>' : mode === 'default' ? '🕘 <b>Unlocked</b> as regular hours:' : OPEN + ' <b>Unlock</b>';
     const what = d.n ? '<b>' + d.text + '</b>' : '<span class="muted">(no doors yet)</span>';
-    const when = weekly
+    const pdS = $$('input[name=pd_start]'), pdE = $$('input[name=pd_end]');
+    const when = perday
+      ? pdOn.map(i => days[i] + ' ' + t12(pdS[i].value) + '–' + t12(pdE[i].value)).join(', ')
+      : weekly
       ? (daysTxt || '<span class="muted">(no days yet)</span>') + ', ' + t12(s) + ' – ' + t12(e) + (e && s && e <= s ? ' (next day)' : '') + (until ? ', until ' + dayname(until) : '') + (mode === 'default' ? '' : ', starting ' + dayname(day))
       : 'on ' + dayname(day) + ', ' + t12(s) + ' – ' + t12(e) + (e && s && e <= s ? ' (next day)' : '');
     sum.innerHTML = mode ? verb + ' ' + what + ' ' + when + '.' + (mode === 'default' ? '<br><small class="muted">Outside these hours the doors stay locked.</small>' : '') : 'Choose what you want to do, then the doors and the time.';
@@ -174,6 +204,12 @@
   f.querySelectorAll('[data-days]').forEach(b => b.addEventListener('click', () => {
     const want = b.dataset.days.split(','); $$('input[name=weekdays]').forEach(x => x.checked = want.includes(x.value)); update();
   }));
+  const cm = $('#copymon');
+  if (cm) cm.addEventListener('click', () => {
+    const on = $$('input[name=pd_on]'), s = $$('input[name=pd_start]'), e = $$('input[name=pd_end]');
+    for (let i = 1; i <= 4; i++) { s[i].value = s[0].value; e[i].value = e[0].value; on[i].checked = on[0].checked; }
+    update();
+  });
   f.addEventListener('input', () => setTimeout(update));
   f.addEventListener('change', () => setTimeout(update));
   update();
