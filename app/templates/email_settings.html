@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Email · OpnDoor{% endblock %}
-{% block mainclass %}narrow{% endblock %}
 {% block content %}
-<h1>Email</h1>
-<p class="muted">The account OpnDoor sends visitor passes and check-in alerts from.</p>
+{% set tab = 'email' %}{% include "_settingstabs.html" %}
+<p class="muted">The account OpnDoor sends visitor passes, new PINs and alerts from.</p>
 
 <form method="post" action="/settings/email" class="connform card">
   <fieldset class="group">

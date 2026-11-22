@@ -24,3 +24,15 @@ services:
     # no ports: only OpnDoor talks to it, and OpnDoor checks who may watch which door
     volumes:
       - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+
+  # The Update button in OpnDoor (Settings -> Updates). Optional: delete this block to turn it off.
+  # It needs updater.sh next to this file and the same folder path inside and outside the container.
+  updater:
+    image: docker:27-cli
+    container_name: opndoor-updater
+    restart: unless-stopped
+    working_dir: /srv/docker/opndoor
+    entrypoint: ["sh", "/srv/docker/opndoor/updater.sh"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/docker/opndoor:/srv/docker/opndoor

@@ -175,6 +175,23 @@ can't open doors.
 
 If a screen's link gets out, use **New link** and the old one stops working.
 
+## Admin tools
+
+- **Devices** (Manage → Devices): every console, reader, hub and Protect camera per site, with
+  anything offline shown first in red. Needs the token's **Device: View**.
+- **People in UniFi Access** (People → People in UniFi Access): give someone a new PIN (optionally
+  emailed to them) or turn all their access off and back on, without the UniFi app. Needs
+  **People & Groups: Edit** and **Credentials: Edit** on the token.
+- **Settings → Branding:** your logo, name and colours, used on every page, the sign-in page,
+  lobby and room screens and visitor emails.
+- **Settings → Backups:** a backup every night (keeps the last 14 by default) in `data/backups`,
+  plus **Back up now**, download, and restore (from a saved backup or an uploaded file). A backup
+  of the current data is always made before a restore or an update.
+- **Settings → Updates:** shows the running and newest version, with an **Update now** button
+  and optional automatic updates at night. The button needs the small `updater` helper next to
+  OpnDoor: run the installer again, choose *Change settings*, and answer **Yes** to "Turn on the
+  Update button". The helper is allowed to use Docker, and only ever pulls and restarts OpnDoor.
+
 ## Sign in with Microsoft
 
 Do this once, as someone who can register apps in your Microsoft 365 tenant.

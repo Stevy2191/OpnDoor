@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Backups · Settings · OpnDoor{% endblock %}
+{% block content %}
+{% include "_settingstabs.html" %}
+<section class="card">
+  <div class="cardhead">
+    <div><h2>Backups</h2><p class="muted" style="margin:.3rem 0 0">Everything in OpnDoor: people, schedules, sites, history, floor plans and your logo.</p></div>
+    <form method="post" action="/settings/backups/now"><button class="primary">Back up now</button></form>
+  </div>
+  <form method="post" action="/settings/backups" class="bkset">
+    <label class="check"><input type="checkbox" name="enabled" value="true" {% if enabled %}checked{% endif %}> Back up automatically every night</label>
+    <label class="inline">Keep the last <input name="keep" value="{{ keep }}" inputmode="numeric" style="width:4.5rem;display:inline-block;margin:0 .3rem"> nightly backups</label>
+    <button class="small">Save</button>
+  </form>
+  <p class="hint">Backups are saved in the <code>data/backups</code> folder next to OpnDoor. They contain your UniFi API tokens, so keep downloaded copies somewhere safe. For extra safety, copy that folder to another computer or drive now and then.</p>
+  {% if backups %}
+  <div class="rowlist mt">
+    {% for bk in backups %}
+    <div class="rowitem">
+      <div class="ri-main"><strong>{{ bk.at.strftime('%a %b') }} {{ bk.at.day }}, {{ bk.at|time }}</strong>
+        <span class="muted small">{{ (bk.size / 1024 / 1024)|round(1) }} MB{% if '-before-update' in bk.name %} · before an update{% elif '-before-restore' in bk.name %} · before a restore{% endif %}</span></div>
+      <div class="btnrow">
+        <a class="button small" href="/settings/backups/{{ bk.name }}">Download</a>
+        <form method="post" action="/settings/restore" onsubmit="return confirm('Restore this backup? Everything goes back to how it was then, and OpnDoor restarts. Changes since then are lost (a backup of right now is made first).')"><input type="hidden" name="name" value="{{ bk.name }}"><button class="small">Restore</button></form>
+        <form method="post" action="/settings/backups/{{ bk.name }}/delete" onsubmit="return confirm('Delete this backup?')"><button class="small danger" aria-label="Delete">Delete</button></form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted empty">No backups yet. The first one is made tonight, or click Back up now.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Restore from a file</h2>
+  <p class="muted">Use a backup you downloaded, for example after moving OpnDoor to a new server.</p>
+  <form method="post" action="/settings/restore" enctype="multipart/form-data" class="btnrow"
+    onsubmit="return confirm('Replace everything in OpnDoor with this backup? OpnDoor restarts. A backup of right now is made first.')">
+    <input type="file" name="file" accept=".zip,application/zip" required style="max-width:340px;margin:0">
+    <button>Restore</button>
+  </form>
+</section>
+{% endblock %}

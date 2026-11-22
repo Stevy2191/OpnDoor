@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Branding · Settings · OpnDoor{% endblock %}
+{% block content %}
+{% include "_settingstabs.html" %}
+<form method="post" action="/settings/branding" enctype="multipart/form-data" class="card connform">
+  <fieldset class="group">
+    <legend>Logo and name</legend>
+    <div class="logoprev">{% if b.logo %}<img src="/brand/logo" alt="Your logo">{% else %}<span class="logo"></span>{{ b.name or 'OpnDoor' }}{% endif %}</div>
+    <label>Name <span class="muted small">· shown when there's no logo, and in page titles for screens</span>
+      <input name="name" value="{{ b.name }}" placeholder="OpnDoor" maxlength="60"></label>
+    <label>Logo <span class="muted small">· PNG, JPG or WebP. A wide logo on a clear background looks best.</span>
+      <input type="file" name="logo" accept="image/png,image/jpeg,image/webp"></label>
+    {% if b.logo %}<label class="check small"><input type="checkbox" name="remove_logo" value="true"> Remove the logo</label>{% endif %}
+  </fieldset>
+  <fieldset class="group">
+    <legend>Colours</legend>
+    <div class="swatchrow">
+      <label>Buttons and links <input type="color" name="accent" value="{{ b.accent or '#0f766e' }}"></label>
+      <label>Side menu <input type="color" name="nav" value="{{ b.nav or '#142b52' }}"></label>
+    </div>
+    <label class="check small"><input type="checkbox" name="reset_colors" value="true"> Go back to OpnDoor's colours</label>
+  </fieldset>
+  <div class="btnrow"><button class="primary">Save</button></div>
+</form>
+{% endblock %}

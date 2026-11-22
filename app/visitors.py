@@ -110,16 +110,21 @@ def pass_email(session: Session, v: Visitor) -> tuple[str, str, str, dict]:
     lines.append("")
     if v.pin:
         lines.append(f"Your door PIN: {v.pin}  (type it on the reader's keypad)")
-    if images:
+    if "pass" in images:
         lines.append("Your QR code is attached. Hold it up to the reader's camera.")
     lines += [f"It opens: {doors}", "It only works during your visit.", "", "See you soon."]
     text = "\n".join(lines)
+    from .admin import logo_png
+    logo = logo_png()
+    if logo:
+        images["logo"] = logo
     html = f"""<div style="font-family:Arial,sans-serif;font-size:15px;color:#16191f;max-width:520px">
+{'<img src="cid:logo" alt="" style="max-height:48px;max-width:220px;margin-bottom:12px">' if logo else ''}
 <p>Hi {escape(v.first_name)},</p>
 <p>You're expected at <strong>{escape(site.name)}</strong> on <strong>{escape(when)}</strong>.
 {f'You are here to see {escape(v.host_name)}.' if v.host_name else ''}</p>
 {f'<p style="font-size:13px;color:#646b78;margin:20px 0 4px">YOUR DOOR PIN</p><p style="font-size:32px;font-weight:bold;letter-spacing:6px;margin:0">{escape(v.pin)}</p><p style="color:#646b78">Type it on the keypad at the door.</p>' if v.pin else ''}
-{'<p style="font-size:13px;color:#646b78;margin:20px 0 4px">YOUR QR CODE</p><img src="cid:pass" width="220" height="220" alt="QR code"><p style="color:#646b78">Hold it up to the camera on the door reader.</p>' if images else ''}
+{'<p style="font-size:13px;color:#646b78;margin:20px 0 4px">YOUR QR CODE</p><img src="cid:pass" width="220" height="220" alt="QR code"><p style="color:#646b78">Hold it up to the camera on the door reader.</p>' if "pass" in images else ''}
 <p>It opens: {escape(doors)}<br>It only works during your visit.</p>
 </div>"""
     return f"Your visit to {site.name}: {s.strftime('%b')} {s.day}", text, html, images

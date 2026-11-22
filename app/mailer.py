@@ -98,7 +98,7 @@ def send_now(to: str, subject: str, text: str, html: str = "", images: Optional[
 
 @router.get("/settings/email")
 def email_page(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
-    return render(request, "email_settings.html", user, mail=settings(session))
+    return render(request, "email_settings.html", user, mail=settings(session), tab="email")
 
 
 @router.post("/settings/email")
