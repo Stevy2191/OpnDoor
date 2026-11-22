@@ -135,6 +135,7 @@ class Door(SQLModel, table=True):
     present: bool = True  # False once the door disappears from the controller
     lock_status: str = ""  # last seen relay status ("lock"/"unlock")
     position_status: str = ""  # last seen door position ("open"/"close")
+    position_since: Optional[datetime] = None  # when the position last changed (naive UTC)
     camera_id: str = ""  # UniFi Protect camera showing this door (see protect.py)
     hidden: bool = False  # an admin hid it (e.g. a gate hub's unused side door): nobody sees or uses it
     updated_at: datetime = Field(default_factory=utcnow)
@@ -358,6 +359,55 @@ class Screen(SQLModel, table=True):
     created_by: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
     last_seen: Optional[datetime] = None
+
+
+class AlertRule(SQLModel, table=True):
+    """Something someone asked to be told about. Every rule is made by a person and starts off."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    kind: str  # see alerts.KINDS
+    enabled: bool = False
+    enabled_at: Optional[datetime] = None  # only things after this count, so turning on doesn't flood
+    site_id: Optional[int] = Field(default=None, foreign_key="site.id", index=True)  # None = all your sites
+    door_ids: str = ""  # comma separated; empty = every door at the site(s)
+    params: str = "{}"  # JSON: thresholds like {"minutes": 10}
+    user_ids: str = ""  # comma separated OpnDoor people to email
+    emails: str = ""  # extra addresses (e.g. email-to-text), comma separated
+    days: str = "0123456"  # weekdays it's active (0 = Monday)
+    start: str = ""  # "HH:MM"; empty start and end = all day
+    end: str = ""
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class AlertSent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rule_id: int = Field(foreign_key="alertrule.id", index=True)
+    key: str = Field(index=True)  # what it was about, so the same thing isn't sent twice
+    at: datetime = Field(default_factory=utcnow, index=True)
+    subject: str = ""
+    sent_to: str = ""
+    error: str = ""
+
+
+class Report(SQLModel, table=True):
+    """An emailed summary (daily, weekly or monthly) for the people someone picked."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    enabled: bool = True
+    site_id: Optional[int] = Field(default=None, foreign_key="site.id", index=True)  # None = all your sites
+    frequency: str = "weekly"  # daily | weekly | monthly
+    weekday: int = 0  # weekly: 0 = Monday
+    hour: int = 7  # local hour it goes out
+    sections: str = "activity,visitors,alerts,devices,changes,upcoming"
+    user_ids: str = ""
+    emails: str = ""
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    last_sent_at: Optional[datetime] = None
+    last_error: str = ""
 
 
 class Setting(SQLModel, table=True):

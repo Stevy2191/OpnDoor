@@ -56,6 +56,10 @@ ACTIONS = {
     "settings.backup": ("site", "Made a backup"),
     "settings.restore": ("site", "Restored a backup"),
     "settings.update": ("site", "Started an update"),
+    "alert.save": ("site", "Changed an alert"),
+    "alert.delete": ("site", "Deleted an alert"),
+    "report.save": ("site", "Changed a report"),
+    "report.delete": ("site", "Deleted a report"),
     "unifi.pin": ("access", "Gave someone a new PIN in UniFi Access"),
     "unifi.active": ("access", "Turned someone's UniFi Access on or off"),
 }

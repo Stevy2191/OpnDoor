@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit report' if r.id else 'New report' }} · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<p class="crumbs small"><a href="/reports">Reports</a> › {{ r.name or 'New report' }}</p>
+<h1>{{ 'Edit report' if r.id else 'New report' }}</h1>
+<form method="post" action="/reports/save" class="vform" id="repform">
+  {% if r.id %}<input type="hidden" name="id" value="{{ r.id }}">{% endif %}
+  <section class="card">
+    <h2>How often</h2>
+    <div class="segpick">
+      {% for k, lbl in freq.items() %}<label class="segopt"><input type="radio" name="frequency" value="{{ k }}" {% if r.frequency == k %}checked{% endif %}>
+        <span><b>{{ lbl }}</b><small class="muted">{{ {'daily': 'Covers yesterday', 'weekly': 'Covers the last 7 days', 'monthly': 'Covers last month, sent on the 1st'}[k] }}</small></span></label>{% endfor %}
+    </div>
+    <div class="fields2 mt">
+      <label data-for="weekly">Day <select name="weekday">{% for d in days %}<option value="{{ loop.index0 }}" {% if r.weekday == loop.index0 %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></label>
+      <label>Time <select name="hour">{% for h in range(24) %}<option value="{{ h }}" {% if r.hour == h %}selected{% endif %}>{{ h % 12 or 12 }}:00 {{ 'AM' if h < 12 else 'PM' }}</option>{% endfor %}</select></label>
+    </div>
+  </section>
+  <section class="card">
+    <h2>What's in it</h2>
+    <label>Site <select name="site_id">
+      {% if sites|length > 1 %}<option value="">All my sites</option>{% endif %}
+      {% for s in sites %}<option value="{{ s.id }}" {% if r.site_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select></label>
+    <div class="secpick mt">
+      {% for k, v in sections.items() %}<label class="segopt"><input type="checkbox" name="sections" value="{{ k }}" {% if k in picked %}checked{% endif %}>
+        <span><b>{{ v[0] }}</b><small class="muted">{{ v[1] }}</small></span></label>{% endfor %}
+    </div>
+  </section>
+  <section class="card">
+    <h2>Who gets it</h2>
+    <div class="peoplepick">
+      {% for u in people %}<label class="chip"><input type="checkbox" name="users" value="{{ u.id }}" {% if u.id|string in picked_users %}checked{% endif %}><span>{{ u.display }} <small class="muted">{{ u.email }}</small></span></label>{% endfor %}
+    </div>
+    <label class="mt">Other email addresses <span class="muted small">· optional, separate with commas</span><input name="emails" value="{{ r.emails }}"></label>
+  </section>
+  <section class="card">
+    <label>Name <span class="muted small">· optional</span><input name="name" value="{{ r.name }}" placeholder="e.g. Station 2 weekly"></label>
+    <label class="check mt"><input type="checkbox" name="enabled" value="1" {% if r.enabled %}checked{% endif %}> Send it on schedule</label>
+  </section>
+  <div class="btnrow"><button class="primary">Save report</button><a class="button" href="/reports">Cancel</a></div>
+</form>
+<script>
+(function () {
+  const f = document.getElementById('repform');
+  const sync = () => { const v = f.querySelector('[name=frequency]:checked').value; f.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== v); };
+  f.addEventListener('change', sync); sync();
+})();
+</script>
+{% endblock %}

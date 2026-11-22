@@ -175,6 +175,29 @@ can't open doors.
 
 If a screen's link gets out, use **New link** and the old one stops working.
 
+## Alerts and reports
+
+**Alerts** (Manage → Alerts) email the people you pick when something happens. Nothing is on by
+default: an alert only exists once someone makes it, and it stays off until they switch it on. Each
+alert has its own sites and doors, days and hours (overnight windows work), and recipients: OpnDoor
+people plus any other addresses, such as a carrier's email-to-text address for a text message.
+
+| Alert | When it fires |
+|---|---|
+| Door left open | the door sensor says it has stood open longer than N minutes |
+| Turned-away badges | N turned-away attempts at one door within M minutes |
+| Someone opens a door | every opening of the picked doors (set hours for an after-hours alert) |
+| Device offline / Console unreachable | a reader, hub, camera or console stops answering for N minutes |
+| Lockdown or evacuation | one starts, in OpnDoor or the UniFi Access app |
+| Door didn't follow its schedule | OpnDoor couldn't apply a schedule |
+| Visitor arrived / Visitor didn't come | a visitor checks in or uses their pass / a pass ends unused |
+
+Each thing is sent once, and the Alerts page lists what went out recently.
+
+**Reports** (Manage → Reports) email a daily, weekly or monthly summary to the people you pick, with
+the sections you choose: door activity, visitors, alerts, offline devices, changes (and who made
+them) and what's coming up. **Preview** shows it in the browser; **Send now** sends it straight away.
+
 ## Admin tools
 
 - **Devices** (Manage → Devices): every console, reader, hub and Protect camera per site, with

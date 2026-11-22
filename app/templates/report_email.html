@@ -1,0 +1,72 @@
+{%- set accent = brand.accent or '#0f766e' -%}
+{%- set th = 'font-size:12px;color:#646b78;text-transform:uppercase;letter-spacing:.06em;font-weight:600;padding:0 0 6px' -%}
+{%- set td = 'padding:7px 0;border-top:1px solid #e3e6eb;font-size:14px' -%}
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ d.rep.name }}: {{ d.label }}</title></head>
+<body style="margin:0;padding:0;background:#f1f3f6;font-family:Arial,Helvetica,sans-serif;color:#16191f">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f3f6"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px">
+  <tr><td style="padding:0 4px 16px">
+    {% if logo_src %}<img src="{{ logo_src }}" alt="" style="max-height:44px;max-width:220px;display:block;margin-bottom:12px">{% endif %}
+    <div style="font-size:13px;color:#646b78">{{ d.freq }} report{% if d.sites|length == 1 %} · {{ d.sites[0].name }}{% endif %}</div>
+    <div style="font-size:24px;font-weight:bold;margin-top:2px">{{ d.label }}</div>
+  </td></tr>
+
+  {% macro card(title) %}<tr><td style="background:#ffffff;border:1px solid #e3e6eb;border-radius:12px;padding:18px 20px">
+    <div style="font-size:17px;font-weight:bold;margin-bottom:12px">{{ title }}</div>{{ caller() }}</td></tr><tr><td style="height:12px"></td></tr>{% endmacro %}
+  {% macro stat(n, lbl, color='#16191f') %}<td style="padding:4px 18px 4px 0;vertical-align:top"><div style="font-size:26px;font-weight:bold;color:{{ color }}">{{ n }}</div><div style="font-size:12px;color:#646b78">{{ lbl }}</div></td>{% endmacro %}
+
+  {% if d.activity is defined %}{% set a = d.activity %}
+  {% call card('Door activity') %}
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+      {{ stat('{:,}'.format(a.opened), 'openings', accent) }}{{ stat(a.denied, 'turned away', '#b42323' if a.denied else '#16191f') }}{{ stat(a.people, 'people') }}
+      {% if a.busy_hour %}{{ stat(a.busy_hour, 'busiest hour') }}{% endif %}</tr></table>
+    {% if a.busy_day %}<p style="font-size:13px;color:#646b78;margin:10px 0 0">Busiest day: {{ a.busy_day[0] }} ({{ a.busy_day[1] }} openings)</p>{% endif %}
+    {% if a.doors %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px">
+      <tr><td style="{{ th }}">Busiest doors</td><td style="{{ th }};text-align:right">Openings</td></tr>
+      {% for name, n in a.doors %}<tr><td style="{{ td }}">{{ name }}</td><td style="{{ td }};text-align:right">{{ n }}</td></tr>{% endfor %}</table>{% endif %}
+    {% if a.denied_doors %}<p style="font-size:13px;color:#646b78;margin:12px 0 0">Most turned away: {% for name, n in a.denied_doors %}{{ name }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+  {% endcall %}{% endif %}
+
+  {% if d.visitors is defined %}{% set v = d.visitors %}
+  {% call card('Visitors') %}
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>{{ stat(v.total, 'passes') }}{{ stat(v.came, 'came', accent) }}{{ stat(v.noshow|length, "didn't come") }}</tr></table>
+    {% if v.list %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px">
+      {% for when, x, came in v.list %}<tr><td style="{{ td }};width:130px;color:#646b78">{{ when.strftime('%a %b') }} {{ when.day }}</td><td style="{{ td }}">{{ x.name }}{% if x.company %} <span style="color:#646b78">· {{ x.company }}</span>{% endif %}</td><td style="{{ td }};text-align:right;color:{{ accent if came else '#646b78' }}">{{ 'Came' if came else 'No' }}</td></tr>{% endfor %}</table>
+    {% else %}<p style="color:#646b78;margin:8px 0 0">No visitors.</p>{% endif %}
+  {% endcall %}{% endif %}
+
+  {% if d.alerts is defined %}
+  {% call card('Alerts') %}
+    {% if d.alerts.total %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      {% for subj, n in d.alerts.top %}<tr><td style="{{ td }}">{{ subj }}</td><td style="{{ td }};text-align:right;color:#646b78">{{ n }}×</td></tr>{% endfor %}</table>
+    {% else %}<p style="color:#646b78;margin:0">No alerts went out.</p>{% endif %}
+  {% endcall %}{% endif %}
+
+  {% if d.devices is defined %}
+  {% call card('Devices') %}
+    {% if d.devices.down %}<p style="margin:0 0 8px;color:#b42323;font-weight:bold">{{ d.devices.down|length }} offline right now</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">{% for site, name in d.devices.down %}<tr><td style="{{ td }}">{{ name }}</td><td style="{{ td }};text-align:right;color:#646b78">{{ site }}</td></tr>{% endfor %}</table>
+    {% else %}<p style="margin:0;color:{{ accent }};font-weight:bold">Everything is online.</p>{% endif %}
+  {% endcall %}{% endif %}
+
+  {% if d.changes is defined %}{% set c = d.changes %}
+  {% call card('Changes') %}
+    {% if c.total %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      {% for what, n in c.kinds %}<tr><td style="{{ td }}">{{ what }}</td><td style="{{ td }};text-align:right;color:#646b78">{{ n }}</td></tr>{% endfor %}</table>
+      <p style="font-size:13px;color:#646b78;margin:10px 0 0">By {% for who, n in c.people %}{{ who }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>
+    {% else %}<p style="color:#646b78;margin:0">Nothing changed.</p>{% endif %}
+  {% endcall %}{% endif %}
+
+  {% if d.upcoming is defined %}{% set u = d.upcoming %}
+  {% call card('Coming up') %}
+    {% if u.rows %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      {% for i in u.rows %}<tr><td style="{{ td }};width:150px;color:#646b78">{{ i.start.strftime('%a %b') }} {{ i.start.day }}, {{ i.start.strftime('%-I:%M %p') }}</td>
+        <td style="{{ td }}">{{ i.label }}{% if i.lock %} <span style="color:#b42323">(kept locked)</span>{% endif %}<br><span style="font-size:12px;color:#646b78">{{ i.doors|join(', ') }}</span></td></tr>{% endfor %}</table>
+      {% if u.total > u.rows|length %}<p style="font-size:13px;color:#646b78;margin:10px 0 0">and {{ u.total - u.rows|length }} more.</p>{% endif %}
+    {% else %}<p style="color:#646b78;margin:0">Nothing booked in the next 7 days.</p>{% endif %}
+  {% endcall %}{% endif %}
+
+  <tr><td style="padding:6px 4px;font-size:12px;color:#8a93a3">{{ d.rep.name }} · sent by {{ brand.name or 'OpnDoor' }}{% if base %} · <a href="{{ base }}" style="color:#8a93a3">open OpnDoor</a>{% endif %}. Someone added you to this report in OpnDoor.</td></tr>
+</table></td></tr></table>
+</body></html>
