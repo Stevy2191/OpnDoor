@@ -142,14 +142,14 @@ def find(session: Session, rule: AlertRule, now: Optional[datetime] = None) -> l
                                 f"({sites[d.site_id].name}) in the last {p['minutes']} minutes, the latest at "
                                 f"{_t(evs[-1].at, sites[d.site_id])}.", d.site_id))
     elif rule.kind in POLL:
-        from .devices import site_devices
+        from .devices import reliable, site_devices
         for site in sites.values():
             info = site_devices(site)
             down = []
             if rule.kind == "console" and not info.get("console_ok"):
                 down.append(("console", f"the UniFi Access console for {site.name}"))
             if rule.kind == "device_offline":
-                down += [(d["id"], f"{d['name']}") for d in info["access"] if d["online"] is False and d.get("adopted", True)]
+                down += [(d["id"], f"{d['name']}") for d in info["access"] if d["online"] is False and reliable(d)]
                 down += [(c["id"], c["name"]) for c in info["cameras"] if (c.get("state") or "").upper() not in ("", "CONNECTED")]
             seen = set()
             for dev_id, name in down:

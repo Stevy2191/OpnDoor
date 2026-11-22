@@ -117,7 +117,9 @@ def test_devices_use_door_names_and_skip_not_adopted(client, fake, monkeypatch):
     raw = [[{"alias": "ATS-106-SHOLLIS_VIEWER", "id": "v1", "is_adopted": False, "is_online": False,
              "location_id": "x", "name": "UA Intercom Viewer f9b5", "type": "UA-Int-Viewer"}],
            [{"alias": "", "id": "r1", "is_adopted": True, "is_online": True, "location_id": "demo-front",
-             "name": "UA-G2-7075", "type": "UA-G2-MINI"}]]
+             "name": "UA-G2-7075", "type": "UA-G2-MINI"}],
+           [{"alias": "UA Int Viewer CECC", "id": "v2", "is_adopted": True, "is_online": True,
+             "location_id": "x", "name": "UA-Int-Viewer-CECC", "type": "UA-Int-Viewer"}]]
     real = unifi.UnifiClient.__new__(unifi.UnifiClient)
     real._call = lambda method, path, **kw: raw
     monkeypatch.setattr(fake, "list_devices", real.list_devices)
@@ -126,4 +128,5 @@ def test_devices_use_door_names_and_skip_not_adopted(client, fake, monkeypatch):
     setup_admin(client)
     page = client.get("/devices").text
     assert "Front Entrance · G2 Mini reader" in page and "UA-G2-7075" in page
-    assert "isn&#39;t adopted" in page and "offline</b>" not in page
+    assert "Status not available from UniFi" in page and "offline</b>" not in page
+    assert "isn&#39;t adopted" not in page

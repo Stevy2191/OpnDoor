@@ -99,13 +99,13 @@ def build(session: Session, rep: Report, today: Optional[date] = None) -> dict:
                 if a.rule_id in mine and not a.error.startswith("Outside")]
         out["alerts"] = {"total": len(sent), "top": Counter(a.subject for a in sent).most_common(8)}
     if "devices" in secs:
-        from .devices import site_devices
+        from .devices import reliable, site_devices
         down = []
         for s in sites:
             info = site_devices(s)
             if not info.get("console_ok"):
                 down.append((s.name, "UniFi Access console"))
-            down += [(s.name, d["name"]) for d in info["access"] if d["online"] is False and d.get("adopted", True)]
+            down += [(s.name, d["name"]) for d in info["access"] if d["online"] is False and reliable(d)]
             down += [(s.name, c["name"]) for c in info["cameras"] if (c.get("state") or "").upper() not in ("", "CONNECTED")]
         out["devices"] = {"down": down}
     if "changes" in secs:

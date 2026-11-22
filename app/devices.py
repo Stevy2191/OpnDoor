@@ -24,6 +24,12 @@ _cache: dict = {}
 CACHE_SECONDS = 45
 
 
+def reliable(d: dict) -> bool:
+    """Is the API's online state worth showing? On real consoles it reports Intercom Viewers the opposite way
+    round from the UniFi app, and marks devices as not adopted when they are."""
+    return d.get("adopted", True) and not (d.get("type") or "").upper().startswith("UA-INT-VIEWER")
+
+
 def _type(t: str) -> str:
     u = (t or "").upper()
     if u in TYPES:
@@ -90,10 +96,10 @@ def devices_page(request: Request, refresh: int = 0, user: User = Depends(requir
             name, sub_name = d["name"], ""
             if not d.get("alias", d["name"]) and door:  # unnamed reader: call it by its door, like the UniFi app
                 name, sub_name = f"{door.name} · {kind}", d.get("model_name") or ""
-            adopted = d.get("adopted", True)
+            trusted = reliable(d)
             items.append({"name": name, "sub": sub_name, "kind": kind, "where": door.name if door else "",
-                          "door_id": door.id if door else None, "online": d["online"] if adopted else None,
-                          "note": "" if adopted else "UniFi says this isn't adopted", "firmware": d["firmware"]})
+                          "door_id": door.id if door else None, "online": d["online"] if trusted else None,
+                          "note": "" if trusted else "Status not available from UniFi", "firmware": d["firmware"]})
         for c in info["cameras"]:
             st = (c.get("state") or "").upper()
             items.append({"name": c["name"], "sub": "", "note": "", "kind": "Camera", "where": "", "door_id": None,
