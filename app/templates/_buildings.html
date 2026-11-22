@@ -1,5 +1,5 @@
 {% if not buildings and doors %}
-<section class="card">
+<section class="card" data-panel="buildings">
   <h2>Quick start</h2>
   <p>UniFi names doors like <code>{{ (doors|map(attribute='full_name')|select|first) or 'Event Center - 1F - North Door' }}</code>.
     OpnDoor can make buildings from those names. You can fix anything afterwards.</p>
@@ -9,40 +9,40 @@
     <form method="post" action="/buildings/auto"><input type="hidden" name="site" value="{{ site.id }}"><input type="hidden" name="part" value="1">
       <button>Group by UniFi floor name</button></form>
   </div>
-  <p class="muted small">Or type your buildings below and choose a building for each door.</p>
+  <p class="muted small">Or add your own below.</p>
 </section>
 {% endif %}
 
 <form method="post" action="/buildings" id="bform">
   <input type="hidden" name="site" value="{{ site.id }}">
 
-  <section class="card">
+  <section class="card" id="buildings" data-panel="buildings">
     <h2>Buildings</h2>
-    <p class="muted small">Group this site's doors by building, so people can pick a whole building or just some of its doors.</p>
+    <p class="muted">Group doors by building so people can pick a whole building at once.</p>
     {% if buildings %}
-    <table class="list bl">
-      <thead><tr><th>Name</th><th>Doors</th><th>Remove</th></tr></thead>
-      <tbody>
+    <div class="rowlist">
       {% for b in buildings %}
-        <tr>
-          <td><input name="name_{{ b.id }}" value="{{ b.name }}" aria-label="Building name"></td>
-          <td>{{ counts[b.id] }}</td>
-          <td><label class="check"><input type="checkbox" name="delete_{{ b.id }}"> <small class="muted">remove (doors are kept)</small></label></td>
-        </tr>
+      <div class="rowitem">
+        <input class="ri-name" name="name_{{ b.id }}" value="{{ b.name }}" aria-label="Building name">
+        <span class="muted ri-meta">{{ counts[b.id] }} door{{ '' if counts[b.id] == 1 else 's' }}</span>
+        <label class="check small ri-remove"><input type="checkbox" name="delete_{{ b.id }}"> Remove</label>
+      </div>
       {% endfor %}
-      </tbody>
-    </table>
+    </div>
     {% endif %}
-    <label>Add buildings <small class="muted">(one per line)</small>
-      <textarea name="new_buildings" rows="2" placeholder="Event Center&#10;Sales Building&#10;VIP Building"></textarea></label>
-    <div class="btnrow" style="margin-top:.75rem"><button class="primary">Save</button></div>
+    <div class="addbox">
+      <label>Add buildings
+        <input name="new_buildings" placeholder="e.g. Event Center, Sales Building" autocomplete="off">
+        <small class="hint">Separate several with commas. Removing a building keeps its doors.</small></label>
+    </div>
+    <div class="btnrow savebar"><button class="primary">Save</button></div>
   </section>
 
   {% if doors %}
-  <section class="card">
-    <div class="pagehead" style="margin-bottom:.5rem">
-      <h2 style="margin:0">Which building is each door in?</h2>
-      <input type="search" class="tablesearch" placeholder="Search {{ doors|length }} doors…" aria-label="Search doors" style="max-width:260px;margin:0">
+  <section class="card" id="doors" data-panel="doors">
+    <div class="cardhead">
+      <h2>Which building is each door in?</h2>
+      <input type="search" class="tablesearch" placeholder="Search {{ doors|length }} doors…" aria-label="Search doors">
     </div>
     {% if buildings %}
     <div class="bulkbar">
@@ -52,17 +52,18 @@
         {% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
         <option value="none">No building</option>
       </select>
-      <span class="muted small">then Save</span>
     </div>
+    {% else %}
+    <p class="muted">Add a building on the Buildings tab first.</p>
     {% endif %}
+    <div class="tablewrap">
     <table class="list assign">
-      <thead><tr><th><input type="checkbox" class="selall" aria-label="Select all"></th><th>Door</th><th>Name in UniFi</th><th>Building</th></tr></thead>
+      <thead><tr><th><input type="checkbox" class="selall" aria-label="Select all"></th><th>Door</th><th>Building</th></tr></thead>
       <tbody>
       {% for d in doors %}
         <tr>
           <td><input type="checkbox" class="rowsel" aria-label="Select {{ d.name }}"></td>
-          <td><strong>{{ d.name }}</strong></td>
-          <td class="muted small">{{ d.full_name }}</td>
+          <td><strong>{{ d.name }}</strong>{% if d.full_name and d.full_name != d.name %}<div class="muted small">{{ d.full_name }}</div>{% endif %}</td>
           <td>
             <select name="door_{{ d.id }}" aria-label="Building for {{ d.name }}">
               <option value="">No building</option>
@@ -73,8 +74,8 @@
       {% endfor %}
       </tbody>
     </table>
-    <div class="btnrow" style="margin-top:.75rem"><button class="primary">Save</button>
-      {% if not buildings %}<span class="muted small">Add buildings above first, then choose them here.</span>{% endif %}</div>
+    </div>
+    <div class="btnrow savebar"><button class="primary">Save</button></div>
   </section>
   {% endif %}
 </form>

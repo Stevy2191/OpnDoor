@@ -93,3 +93,13 @@ def test_site_admin_manages_only_their_buildings(client):
     client.post("/buildings", data={"site": str(sid), "new_buildings": "Sneaky"})
     with session_scope() as s:
         assert not s.exec(select(Building).where(Building.name == "Sneaky", Building.site_id == sid)).first()
+
+
+def test_site_page_tabs_and_comma_separated_buildings(client):
+    page = client.get("/sites/1").text
+    for tab in ('data-tab="buildings"', 'data-tab="floorplans"', 'data-tab="console"', 'data-panel="console"'):
+        assert tab in page
+    client.post("/buildings", data={"site": "1", "new_buildings": "North Hall, South Hall"})
+    with session_scope() as s:
+        names = {b.name for b in s.exec(select(Building).where(Building.site_id == 1)).all()}
+    assert {"North Hall", "South Hall"} <= names

@@ -5,71 +5,117 @@
 <div class="pagehead">
   <div>
     <h1>{{ site.name }}</h1>
-    <p class="muted">{{ doors|length }} door{{ '' if doors|length == 1 else 's' }} · {{ buildings|length }} building{{ '' if buildings|length == 1 else 's' }} · times in {{ site.timezone }}
-      {% if site.last_sync_status %}· <span class="{{ 'err' if site.last_sync_status.startswith('Error') else '' }}" style="display:inline">{{ site.last_sync_status }}</span>{% endif %}</p>
+    <p class="sitefacts">
+      <span>{{ doors|length }} door{{ '' if doors|length == 1 else 's' }}</span>
+      <span>{{ buildings|length }} building{{ '' if buildings|length == 1 else 's' }}</span>
+      <span>{{ site.timezone }}</span>
+      {% if site.last_sync_status %}
+        {% if site.last_sync_status.startswith('Error') %}<span class="pill bad" title="{{ site.last_sync_status }}">Can't reach the console</span>
+        {% else %}<span class="pill locked" title="{{ site.last_sync_status }}">Connected</span>{% endif %}
+      {% endif %}
+    </p>
   </div>
   <div class="btnrow">
     <a class="button" href="/site?id={{ site.id }}&next=/doors">View doors</a>
     <a class="button primary" href="/site?id={{ site.id }}&next=/schedules/new">+ New schedule here</a>
   </div>
 </div>
+{% if site.last_sync_status and site.last_sync_status.startswith('Error') %}
+<div class="flash error">{{ site.last_sync_status }}</div>
+{% endif %}
 
-<nav class="subtabs">
-  <a href="#buildings">Buildings and doors</a>
-  <a href="#floorplans">Floor plans</a>
-  {% if user.is_admin %}<a href="#console">Console connection</a>{% endif %}
+<nav class="subtabs sitetabs" role="tablist">
+  <a href="#buildings" data-tab="buildings">Buildings</a>
+  {% if doors %}<a href="#doors" data-tab="doors">Doors <small>{{ doors|length }}</small></a>{% endif %}
+  <a href="#floorplans" data-tab="floorplans">Floor plans <small>{{ plans_by_b.values()|map('length')|sum }}</small></a>
+  {% if hidden_doors %}<a href="#hidden" data-tab="hidden">Hidden doors <small>{{ hidden_doors|length }}</small></a>{% endif %}
+  {% if user.is_admin %}<a href="#console" data-tab="console">Console connection</a>{% endif %}
 </nav>
 
-<div id="buildings">
 {% include "_buildings.html" %}
-</div>
 
-<section class="card" id="floorplans">
+<section class="card" id="floorplans" data-panel="floorplans">
   <h2>Floor plans</h2>
-  <p class="muted small">Add a picture of each building's floor plan, then place its doors on it. Everyone sees them under <a href="/map">Map</a>.</p>
+  <p class="muted">Upload a plan, then place its doors on it. They show up under <a href="/map">Map</a>.</p>
   {% if buildings %}
-  <table class="list fp">
-    <tbody>
-    {% for b in buildings %}
-      <tr><td><strong>{{ b.name }}</strong></td>
-        <td>{% for fp in plans_by_b.get(b.id, []) %}<span class="fpitem">{{ fp.name }} <small class="muted">{{ pin_counts.get(fp.id, 0) }} doors placed</small>
-            <a class="small" href="/floorplans/{{ fp.id }}/edit">Edit</a></span>{% else %}<span class="muted small">No floor plan yet</span>{% endfor %}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <form method="post" action="/floorplans" enctype="multipart/form-data" class="fpupload">
-    <label>Building <select name="building_id" required>{% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select></label>
-    <label>Floor name <input name="name" value="Main floor" required></label>
-    <label>Picture <input type="file" name="image" accept="application/pdf,image/png,image/jpeg,image/webp" required>
-      <small class="muted">PDF, PNG, JPG or WebP, up to 15 MB. A screenshot or photo of the plan works.</small></label>
-    <div><button class="primary">Add floor plan</button></div>
+  {% set ns = namespace(any=false) %}
+  <div class="rowlist">
+    {% for b in buildings %}{% for fp in plans_by_b.get(b.id, []) %}{% set ns.any = true %}
+    <div class="rowitem">
+      <div class="ri-main"><strong>{{ fp.name }}</strong><span class="muted">{{ b.name }}</span></div>
+      <span class="muted ri-meta">{{ pin_counts.get(fp.id, 0) }} door{{ '' if pin_counts.get(fp.id, 0) == 1 else 's' }} placed</span>
+      <div class="btnrow">
+        <a class="button small" href="/map?plan={{ fp.id }}">View</a>
+        <a class="button small" href="/floorplans/{{ fp.id }}/edit">Edit</a>
+      </div>
+    </div>
+    {% endfor %}{% endfor %}
+    {% if not ns.any %}<p class="muted empty">No floor plans yet.</p>{% endif %}
+  </div>
+
+  <form method="post" action="/floorplans" enctype="multipart/form-data" class="addbox">
+    <h3>Add a floor plan</h3>
+    <div class="fields3">
+      <label>Building <select name="building_id" required>{% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select></label>
+      <label>Floor name <input name="name" value="Main floor" required></label>
+      <label>File <input type="file" name="image" accept="application/pdf,image/png,image/jpeg,image/webp" required>
+        <small class="hint">PDF or picture, up to 15 MB</small></label>
+    </div>
+    <button class="primary">Upload</button>
   </form>
   {% else %}
-  <p class="muted">Add buildings first (above), then you can add a floor plan for each.</p>
+  <p class="muted empty">Add a building first, then upload a plan for it.</p>
   {% endif %}
 </section>
 
 {% if hidden_doors %}
-<section class="card" id="hidden">
-  <h2>Hidden doors <small class="muted">{{ hidden_doors|length }}</small></h2>
-  <p class="muted small">Nobody sees or uses these in OpnDoor. They're still in UniFi Access.</p>
-  <ul class="hiddenlist">
+<section class="card" id="hidden" data-panel="hidden">
+  <h2>Hidden doors</h2>
+  <p class="muted">Hidden from everyone in OpnDoor. They're untouched in UniFi Access.</p>
+  <div class="rowlist">
     {% for d in hidden_doors %}
-    <li><span>{{ d.name }}</span>
+    <div class="rowitem">
+      <div class="ri-main"><strong>{{ d.name }}</strong></div>
       <form method="post" action="/doors/{{ d.id|urlencode }}/hide"><input type="hidden" name="hide" value="false">
-        <button class="small">Show again</button></form></li>
+        <button class="small">Show again</button></form>
+    </div>
     {% endfor %}
-  </ul>
+  </div>
 </section>
 {% endif %}
 
 {% if user.is_admin %}
-<section class="card" id="console">
-  <h2>Console connection</h2>
-  {% include "_site_connection.html" %}
-</section>
-<form method="post" action="/sites/{{ site.id }}/delete" onsubmit="return confirm('Remove {{ site.name|e }}? Its doors, buildings, their schedules and user access are removed from OpnDoor. Doors go back to their normal UniFi rules.')">
-  <button class="danger">Remove this site</button>
-</form>
+<div id="console" data-panel="console">
+  <section class="card">
+    <h2>Console connection</h2>
+    {% include "_site_connection.html" %}
+  </section>
+  <section class="card dangerzone">
+    <div>
+      <h2>Remove this site</h2>
+      <p class="muted">Takes its doors, buildings and schedules out of OpnDoor. The doors go back to their normal UniFi rules.</p>
+    </div>
+    <form method="post" action="/sites/{{ site.id }}/delete" onsubmit="return confirm('Remove {{ site.name|e }}? Its doors, buildings, their schedules and user access are removed from OpnDoor. Doors go back to their normal UniFi rules.')">
+      <button class="danger">Remove site</button>
+    </form>
+  </section>
+</div>
 {% endif %}
+
+<script>
+(function () {
+  const tabs = [...document.querySelectorAll('.sitetabs [data-tab]')];
+  const panels = [...document.querySelectorAll('[data-panel]')];
+  const names = tabs.map(t => t.dataset.tab);
+  function show(name, scroll) {
+    if (!names.includes(name)) name = names[0];
+    tabs.forEach(t => { const on = t.dataset.tab === name; t.classList.toggle('on', on); t.setAttribute('aria-selected', on); });
+    panels.forEach(p => p.hidden = p.dataset.panel !== name);
+    if (scroll === false) window.scrollTo(0, 0);
+  }
+  tabs.forEach(t => t.addEventListener('click', e => { e.preventDefault(); history.replaceState(null, '', '#' + t.dataset.tab); show(t.dataset.tab); }));
+  show(location.hash.slice(1), false);
+  addEventListener('hashchange', () => show(location.hash.slice(1)));
+})();
+</script>
 {% endblock %}

@@ -1,35 +1,61 @@
-<form method="post" action="/sites{% if site %}/{{ site.id }}{% endif %}" class="stack">
-  <label>Site name <input name="name" value="{{ site.name if site else '' }}" placeholder="e.g. Main Campus" required></label>
-  <label>Console address
-    <input name="host" value="{{ site.host if site else '' }}" placeholder="https://192.168.1.1:12445" {% if not site %}required{% endif %}>
-    <small class="muted">The UniFi Access API, usually port 12445 on the console. Enter <code>demo</code> for a pretend console.</small>
-  </label>
-  <label>API token
-    <input type="text" name="token" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
-      placeholder="{{ 'Saved: leave blank to keep' if site and site.token else 'Paste the token' }}">
-    <small class="muted">Create it in the <strong>UniFi Access</strong> app: Settings → General → Advanced → API Token, with permission to view and operate doors.
-      UniFi shows it only once, so copy it right away. (A UniFi OS / Control Plane API key won't work.)</small>
-  </label>
-  <label>Timezone
-    <input name="timezone" list="tzs" value="{{ site.timezone if site else config.TZ_NAME }}" required>
-    <datalist id="tzs">{% for tz in timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
-  </label>
-  <label class="check"><input type="checkbox" name="verify_tls" value="true" {% if site and site.verify_tls %}checked{% endif %}>
-    Verify the console's HTTPS certificate <small class="muted">(leave off for the console's built-in self-signed certificate)</small></label>
-  <details class="protectbox" {% if site and site.protect_key %}open{% endif %}>
-    <summary><strong>Cameras (optional)</strong> <span class="muted small">· show each door's camera from UniFi Protect</span></summary>
+<form method="post" action="/sites{% if site %}/{{ site.id }}{% endif %}" class="connform">
+  <div class="fields2">
+    <label>Site name <input name="name" value="{{ site.name if site else '' }}" placeholder="e.g. Main Campus" required></label>
+    <label>Timezone
+      <input name="timezone" list="tzs" value="{{ site.timezone if site else config.TZ_NAME }}" required>
+      <datalist id="tzs">{% for tz in timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
+    </label>
+  </div>
+
+  <fieldset class="group">
+    <legend>UniFi Access</legend>
+    <label>Console address
+      <input name="host" value="{{ site.host if site else '' }}" placeholder="https://192.168.1.1:12445" {% if not site %}required{% endif %}>
+      <small class="hint">Usually port 12445. Type <code>demo</code> to try OpnDoor with pretend doors.</small>
+    </label>
+    <label>API token
+      <input type="text" name="token" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
+        placeholder="{{ 'Saved · leave blank to keep it' if site and site.token else 'Paste the token' }}">
+    </label>
+    <details class="help">
+      <summary>How do I get a token?</summary>
+      <ol>
+        <li>In the <strong>UniFi Access</strong> app, go to Settings → General → Advanced → API Token.</li>
+        <li>Give it these permissions:
+          <ul class="perms">
+            <li><b>Locations</b> Edit</li><li><b>Device</b> View</li><li><b>System Log</b> View</li>
+            <li><b>People &amp; Groups</b> View</li><li><b>Access Policy</b> View</li>
+          </ul></li>
+        <li>Copy it straight away. UniFi only shows it once.</li>
+      </ol>
+      <p class="muted small">It must be an Access token. A UniFi OS / Control Plane key won't work here.</p>
+    </details>
+    <label class="check"><input type="checkbox" name="verify_tls" value="true" {% if site and site.verify_tls %}checked{% endif %}>
+      Check the console's HTTPS certificate</label>
+    <small class="hint indent">Leave off unless you've put a real certificate on the console.</small>
+  </fieldset>
+
+  <fieldset class="group">
+    <legend>Cameras <span class="muted">· optional</span></legend>
     <label>UniFi Protect API key
       <input type="text" name="protect_key" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
-        placeholder="{{ 'Saved: leave blank to keep' if site and site.protect_key else 'Paste the key' }}">
-      <small class="muted">Make it in <strong>UniFi OS</strong>: Settings → Control Plane → Integrations → Create API Key.
-        This one <em>is</em> a UniFi OS key (not the Access token). OpnDoor only reads camera pictures with it.</small>
+        placeholder="{{ 'Saved · leave blank to keep it' if site and site.protect_key else 'Paste the key' }}">
     </label>
-    <label>Protect console address <small class="muted">(only if Protect runs on a different console)</small>
+    <details class="help">
+      <summary>How do I get a Protect key?</summary>
+      <ol>
+        <li>In <strong>UniFi OS</strong>, go to Settings → Control Plane → Integrations → Create API Key.</li>
+        <li>Paste it here. OpnDoor only uses it to show camera pictures and video.</li>
+      </ol>
+      <p class="muted small">This one is a UniFi OS key, not the Access token.</p>
+    </details>
+    <label>Protect console address <span class="muted small">· only if Protect is on a different console</span>
       <input name="protect_host" value="{{ site.protect_host if site else '' }}" placeholder="https://192.168.1.10"></label>
     {% if site and site.protect_key %}<label class="check"><input type="checkbox" name="protect_clear" value="true"> Remove the saved Protect key</label>{% endif %}
-  </details>
+  </fieldset>
+
   {% if site %}
-  <label class="check"><input type="checkbox" name="enabled" value="true" {% if site.enabled %}checked{% endif %}> Active</label>
+  <label class="check"><input type="checkbox" name="enabled" value="true" {% if site.enabled %}checked{% endif %}> Site is active</label>
   {% endif %}
   <div class="btnrow">
     <button class="primary">{{ 'Save and test' if site else 'Add and load doors' }}</button>
