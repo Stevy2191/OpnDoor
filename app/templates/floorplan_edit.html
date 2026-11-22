@@ -60,7 +60,7 @@
     </form>
     <div class="mapwrap names editing" id="mapwrap">
       <div class="mapinner" id="mapinner">
-        <img src="/floorplans/{{ plan.id }}/image" alt="Floor plan" draggable="false">
+        <img src="/floorplans/{{ plan.id }}/image?v={{ plan.filename[:12] }}" alt="Floor plan" draggable="false">
         {% for d in doors %}{% set p = pins.get(d.id) %}{% if p and p.plan_id == plan.id %}
         <button type="button" class="pin normal" data-id="{{ d.id }}" style="left: {{ p.x }}%; top: {{ p.y }}%"><span class="pinlbl">{{ d.name }}</span></button>
         {% endif %}{% endfor %}

@@ -163,3 +163,15 @@ def test_pdf_plan_crop_and_rotate(client):
     assert "PDF couldn" in client.post(
         "/floorplans", data={"building_id": str(bid)}, files={"image": ("x.pdf", b"%PDF-1.4 broken", "application/pdf")},
         follow_redirects=True).text
+
+
+def test_cropped_plan_gets_a_new_image_address(client):
+    """Browsers keep plan images for a day, so the address must change when the picture does."""
+    import re
+    bid, pid = building_with_plan(client)
+    before = re.search(r'/floorplans/%d/image\?v=[0-9a-f]+' % pid, client.get(f"/floorplans/{pid}/edit").text).group(0)
+    client.post(f"/floorplans/{pid}/crop", data={"x": "10", "y": "10", "w": "50", "h": "50"})
+    after_edit = client.get(f"/floorplans/{pid}/edit").text
+    after_map = client.get(f"/map?plan={pid}").text
+    assert before not in after_edit and before not in after_map
+    assert re.search(r'/floorplans/%d/image\?v=[0-9a-f]+' % pid, after_map)
