@@ -115,3 +115,9 @@ def test_squares_show_dates_and_open_the_people_behind_them(client, fake):
 def test_hour_span():
     assert activity.hour_span(8) == "8–9 AM" and activity.hour_span(11) == "11 AM–12 PM"
     assert activity.hour_span(23) == "11 PM–12 AM" and activity.hour_span(12) == "12–1 PM"
+
+
+def test_filters_dont_jump_to_the_list(client):
+    # a form with no action keeps the page's #recent, so changing the period scrolled to the bottom
+    setup_admin(client)
+    assert '<form method="get" action="/door-activity" class="card actfilters">' in client.get("/door-activity").text
