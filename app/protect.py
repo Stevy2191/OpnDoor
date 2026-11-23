@@ -182,7 +182,9 @@ def match(session: Session, site: Site, cams: Optional[list[dict]] = None) -> in
 
 
 def _demo_picture(name: str) -> bytes:
-    t = time.strftime("%-I:%M:%S %p")
+    from datetime import datetime
+    from . import config
+    t = datetime.now(config.TZ).strftime("%-I:%M:%S %p")  # the site's time, not the container's
     hue = sum(map(ord, name)) % 360
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" width="320" height="180">
 <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl({hue},35%,62%)"/>

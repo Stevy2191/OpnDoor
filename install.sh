@@ -3,9 +3,10 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/Stevy2191/OpnDoor/main/install.sh | sudo bash
 #
-# Sets up everything: Docker (if needed), ports, HTTPS, your UniFi Access console,
-# optional Microsoft sign-in, and starts OpnDoor. All you do afterwards is open the
-# web address it prints and create the main admin account with the setup code.
+# Sets up everything: Docker (if needed), ports, HTTPS, your UniFi Access console, optional
+# live video and the Update button, and starts OpnDoor. All you do afterwards is open the web
+# address it prints and create the main admin account with the setup code. Everything else
+# (Microsoft sign-in, email, branding, backups) is set up in OpnDoor under Settings.
 #
 # Run it again any time to update, change settings, or uninstall.
 #   sudo bash install.sh            # install, or menu if already installed
@@ -278,7 +279,7 @@ main() {
   if [ -f "$INSTALL_DIR/.env" ]; then
     step "OpnDoor is already installed in $INSTALL_DIR"
     say "  1) Update to the newest version (keeps everything)"
-    say "  2) Change settings (HTTPS, ports, Microsoft sign-in, ...). Keeps your data."
+    say "  2) Change settings (HTTPS, ports, live video, Update button). Keeps your data."
     say "  3) Uninstall"
     say "  4) Cancel"
     choose "1 2 3 4" 1
@@ -376,10 +377,12 @@ main() {
     note "Consoles are managed in OpnDoor under Sites now; skipping."
   else
     say "  OpnDoor needs your console's address and an API token to see and control doors."
-    note "Make the token in UniFi Access: Settings → General → Advanced → API Token"
-    note "(Locations: Edit, Devices: View; add Users: View and Access Policies: View to let"
-    note "people's doors follow their UniFi Access permissions). You can also skip this and add consoles later"
-    note "in OpnDoor: it asks for them right after you first sign in."
+    note "Make the token in UniFi Access: Settings → General → Advanced → API Token, with:"
+    note "  Locations: Edit · Device: View · System Log: View · People & Groups: Edit"
+    note "  Access Policy: View · Visitor: Edit · Credentials: Edit"
+    note "(Locations and Device are enough to start; the rest turn on activity, people's own"
+    note "permissions, visitor passes, PINs and cards.) You can also skip this and add consoles"
+    note "later in OpnDoor: it asks for them right after you first sign in."
     if yes_no "  Connect a console now?" Y; then
       while true; do
         ask "  Console IP address or name (e.g. 192.168.1.1)" "${UNIFI_HOST#https://}"
@@ -411,34 +414,20 @@ main() {
     fi
   fi
 
-  # -------- Microsoft sign-in
-  step "Sign in with Microsoft (optional)"
+  # -------- Microsoft sign-in (set up in OpnDoor: Settings → Sign-in)
+  # Older installs kept it in .env; keep those values so nothing changes for them.
   MS_TENANT="$(env_get MS_TENANT_ID)"; MS_CLIENT="$(env_get MS_CLIENT_ID)"; MS_SECRET="$(env_get MS_CLIENT_SECRET)"
   local redirect="$PUBLIC_URL/auth/microsoft/callback"
+  [ "$MODE" = http ] && { MS_TENANT=""; MS_CLIENT=""; MS_SECRET=""; }
+
+  # -------- who may say who the visitor is (X-Forwarded-For)
+  FWD_IPS="*"
   if [ "$MODE" = http ]; then
-    note "Needs HTTPS, so it's skipped in testing mode."
-    MS_TENANT=""; MS_CLIENT=""; MS_SECRET=""
-  else
-    say "  Lets people sign in with their work Microsoft account. You can set it up later too."
-    local def_ms=N; [ -n "$MS_CLIENT" ] && def_ms=Y
-    if yes_no "  Set up Microsoft sign-in now?" "$def_ms"; then
-      say ""
-      say "  In ${B}https://entra.microsoft.com${R} → Applications → App registrations → New registration:"
-      say "    Name: OpnDoor · Accounts in this organizational directory only"
-      say "    Redirect URI: Web → ${B}$redirect${R}"
-      say "  Then Certificates & secrets → New client secret."
-      say ""
-      ask "  Directory (tenant) ID" "$MS_TENANT"; MS_TENANT="$REPLY"
-      ask "  Application (client) ID" "$MS_CLIENT"; MS_CLIENT="$REPLY"
-      ask_secret "  Client secret value${MS_SECRET:+ (press Enter to keep the current one)}"
-      [ -n "$REPLY" ] && MS_SECRET="$REPLY"
-      if [ -z "$MS_TENANT" ] || [ -z "$MS_CLIENT" ] || [ -z "$MS_SECRET" ]; then
-        warn "Something was left blank, so Microsoft sign-in stays off for now."
-        MS_TENANT=""; MS_CLIENT=""; MS_SECRET=""
-      fi
-    else
-      MS_TENANT=""; MS_CLIENT=""; MS_SECRET=""
-    fi
+    FWD_IPS="127.0.0.1"  # no proxy in front: don't believe anyone's forwarded headers
+  elif [ "$MODE" = proxy ] && [ "$BIND" != 127.0.0.1 ]; then
+    step "Your reverse proxy"
+    ask "  Your reverse proxy's IP address (so only it can pass on visitors' addresses; blank = trust any)" "$( [ "$(env_get FORWARDED_ALLOW_IPS)" != "*" ] && env_get FORWARDED_ALLOW_IPS)"
+    [ -n "$REPLY" ] && FWD_IPS="$REPLY"
   fi
 
   # -------- live video
@@ -487,7 +476,11 @@ UNIFI_ACCESS_TOKEN=${UNIFI_TOKEN:-changeme}
 UNIFI_VERIFY_TLS=false
 UNIFI_SITE_NAME=${SITE_NAME:-Main site}
 
-# Sign in with Microsoft (blank = off)
+# Which proxies may pass on the visitor's address (X-Forwarded-For)
+FORWARDED_ALLOW_IPS=$FWD_IPS
+
+# Sign in with Microsoft: set up in OpnDoor under Settings → Sign-in.
+# (Older installs kept it here; OpnDoor still reads these if Settings → Sign-in is empty.)
 MS_TENANT_ID=$MS_TENANT
 MS_CLIENT_ID=$MS_CLIENT
 MS_CLIENT_SECRET=$MS_SECRET
@@ -710,8 +703,9 @@ EOF
     say "  address and API token."
     say ""
   fi
-  if [ -n "$MS_CLIENT" ]; then
-    say "  Microsoft sign-in is on. Redirect URL registered in Entra: $redirect"
+  if [ "$MODE" != http ]; then
+    say "  Next, in OpnDoor under ${B}Settings${R}: Microsoft sign-in (redirect address"
+    say "  $redirect), email for visitor passes and alerts, your logo, and backups."
     say ""
   fi
   say "  ${DIM}Files:      $INSTALL_DIR${R}"
