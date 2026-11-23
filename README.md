@@ -6,13 +6,6 @@ Connect a calendar and every booking on it unlocks the right doors automatically
 
 Runs as a single Docker container (FastAPI + SQLite). Images are built by GitHub Actions and published to GHCR.
 
-## How-to guides
-
-Printable step-by-step guides with screenshots:
-
-- [Give someone access to schedule doors](docs/guides/OpnDoor%20-%20Give%20someone%20access%20to%20schedule%20doors.pdf): add a Door operator who signs in with Microsoft.
-- [Create a schedule (Expo example)](docs/guides/OpnDoor%20-%20Create%20a%20schedule%20(Expo%20example).pdf): a one-day move-in and a Friday-to-Sunday event.
-
 ## Features
 
 - **Regular hours + overrides.** Give each door its normal weekly unlocked hours. Then add
