@@ -17,7 +17,10 @@ ENV APP_VERSION=${APP_VERSION} \
     PYTHONPATH=/srv/app/deps \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    TZ=America/Chicago
+    TZ=America/Chicago \
+    # Which proxies may say who the visitor is (X-Forwarded-For/Proto). "*" trusts any; set it to your
+    # proxy's address (e.g. 172.18.0.0/16) in .env if port 8080 is reachable without the proxy.
+    FORWARDED_ALLOW_IPS=*
 
 WORKDIR /srv/app
 COPY --from=build /deps ./deps
@@ -33,4 +36,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
     CMD ["/usr/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"]
 
 ENTRYPOINT ["/usr/bin/python3", "-m", "uvicorn"]
-CMD ["app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers"]

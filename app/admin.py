@@ -141,6 +141,7 @@ def logo_png() -> Optional[bytes]:
 BACKUP_DIR = config.DATA_DIR / "backups"
 RESTORE_FILE = config.DATA_DIR / "restore-pending.zip"
 NAME = re.compile(r"^opndoor-[\w.-]+\.zip$")
+MAX_RESTORE = 1024 * 1024 * 1024  # 1 GB
 
 
 def _db_path() -> Optional[Path]:
@@ -310,7 +311,10 @@ def backups_delete(request: Request, name: str, user: User = Depends(require_adm
 async def restore(request: Request, name: str = Form(""), file: Optional[UploadFile] = File(None),
                   user: User = Depends(require_admin), session: Session = Depends(get_session)):
     if file is not None and file.filename:
-        data = await file.read()
+        data = await file.read(MAX_RESTORE + 1)
+        if len(data) > MAX_RESTORE:
+            flash(request, "That file is too big to be an OpnDoor backup.", "error")
+            return redirect("/settings/backups")
     elif NAME.match(name) and (BACKUP_DIR / name).exists():
         data = (BACKUP_DIR / name).read_bytes()
     else:

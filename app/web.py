@@ -285,7 +285,15 @@ def login_page(request: Request, session: Session = Depends(get_session)):
 def login(request: Request, email: str = Form(...), password: str = Form(...),
           session: Session = Depends(get_session)):
     """Sign in with a password, using the email address or the username."""
-    email = email.strip().lower()
+    from . import security
+    email = email.strip().lower()[:200]
+    ip = request.client.host if request.client else ""
+    wait = security.login_blocked(email, ip)
+    if wait:
+        audit.record(session, "signin.fail", f"Password sign-in for {email} refused: too many wrong tries", actor=email)
+        session.commit()
+        flash(request, f"Too many wrong tries. Wait {wait} minute{'s' if wait != 1 else ''} and try again.", "error")
+        return redirect("/login")
     if "@" in email:
         user = session.exec(select(User).where(User.email == email)).first()
     else:
@@ -296,10 +304,12 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
                   else "the password was wrong" if user else "there's no such person")
         audit.record(session, "signin.fail", f"Password sign-in for {email} refused: {reason}", actor=email)
         session.commit()
+        security.login_failed(email, ip)
         flash(request, "This account signs in with Microsoft. Use the Microsoft button."
               if user and user.active and not user.password_hash and config.SSO_ENABLED
               else "That email or username and password didn't match.", "error")
         return redirect("/login")
+    security.login_ok(email)
     login_user(request, session, user, "a password")
     return redirect(safe_next(request.query_params.get("next")))
 

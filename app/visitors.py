@@ -212,8 +212,9 @@ def visitor_new(request: Request, user: User = Depends(require_scheduler), sessi
 async def visitor_create(request: Request, bg: BackgroundTasks, user: User = Depends(require_scheduler),
                          session: Session = Depends(get_session)):
     form = await request.form()
-    f = {k: str(form.get(k, "")).strip() for k in ("first_name", "last_name", "email", "phone", "company",
-                                                    "reason", "host", "date", "start", "end", "creds")}
+    f = {k: " ".join(str(form.get(k, "")).split())[:120] for k in ("first_name", "last_name", "email", "phone",
+                                                                  "company", "reason", "host", "date", "start", "end",
+                                                                  "creds")}
     f["doors"] = [str(x) for x in form.getlist("doors")]
     f["send"] = bool(form.get("send"))
     f["tell_me"] = bool(form.get("tell_me"))

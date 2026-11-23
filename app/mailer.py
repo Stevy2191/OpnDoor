@@ -56,6 +56,9 @@ def send(cfg: dict, to: str, subject: str, text: str, html: str = "",
     """Send one message. images: {name: png bytes} shown inline in the html as cid:name."""
     if not (cfg.get("host") and cfg.get("sender")):
         raise MailError("Email isn't set up yet. An admin can add an email server under Manage → Email.")
+    def one_line(v: str) -> str:
+        return " ".join(str(v).split())[:250]
+    subject, to = one_line(subject), one_line(to)
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = formataddr((cfg.get("sender_name") or "OpnDoor", cfg["sender"]))

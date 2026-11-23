@@ -244,6 +244,21 @@ Do this once, as someone who can register apps in your Microsoft 365 tenant.
 
 Keep at least one admin with a password, so you can still get in if the Microsoft settings change.
 
+## Security
+
+- The image is **distroless** (Python and its libraries only: no shell, package manager or system tools)
+  and runs as a non-root user. It's rebuilt every week so Debian and Python security fixes arrive even
+  when OpnDoor hasn't changed, and Dependabot proposes package updates. Every build checks the Python
+  packages with `pip-audit`.
+- Pages can't be shown inside another site's frame, and form posts from other websites are refused
+  (on top of the SameSite session cookie).
+- Password sign-in pauses after 5 wrong tries for an account (or 20 from one address) in 15 minutes.
+- Calendar links can't point inside the server (localhost, the helper containers, cloud metadata
+  addresses); they're limited to 10 MB and checked again on every redirect.
+- If port 8080 is reachable without your proxy, set `FORWARDED_ALLOW_IPS` in `.env` to the proxy's
+  address so nobody else can claim to be forwarding for another visitor.
+- Backups contain your UniFi API tokens and email password: keep downloaded copies safe.
+
 ## Local development
 
 ```bash
