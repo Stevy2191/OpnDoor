@@ -1,5 +1,5 @@
 # Build stage: install the Python packages with the same Python minor version as the runtime image.
-FROM python:3.13-slim-trixie AS build
+FROM python:3.15-slim-trixie AS build
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --target /deps -r /tmp/requirements.txt \
