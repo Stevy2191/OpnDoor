@@ -13,6 +13,7 @@ from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
 from . import access, activity, admin, alerts, devices, reports, history, holidays, live, mailer, maps, screens, sso, unifipeople, video, visitors
+from .security import SecurityMiddleware
 from .web import render, router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -56,6 +57,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OpnDoor", version=config.VERSION, lifespan=lifespan, docs_url=None, redoc_url=None)
+app.add_middleware(SecurityMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=config.secret_key(), session_cookie="opndoor_session",
                    max_age=14 * 24 * 3600, same_site="lax", https_only=config.SECURE_COOKIES)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")

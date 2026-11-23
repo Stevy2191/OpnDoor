@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # Rebuild weekly so security fixes in the base image (Debian, Python) reach the image
+  # even when OpnDoor itself hasn't changed.
+  schedule:
+    - cron: "23 8 * * 1"
 
 env:
   REGISTRY: ghcr.io
@@ -19,13 +23,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: requirements*.txt
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
-      - name: Check the installer script
-        run: shellcheck -S warning install.sh
+      - name: Check Python packages for known vulnerabilities
+        run: |
+          pip install pip-audit==2.10.1
+          pip-audit -r requirements.txt --strict || echo "::warning::A Python package has a known vulnerability. Update requirements.txt."
+      - name: Check the installer and update helper scripts
+        run: shellcheck -S warning install.sh updater.sh
 
   build:
     needs: test
@@ -67,6 +75,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          pull: true  # always start from the newest (patched) base images
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

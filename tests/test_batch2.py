@@ -140,6 +140,7 @@ def test_pdf_plan_crop_and_rotate(client):
                     files={"image": ("plan.pdf", _pdf_bytes(), "application/pdf")}, follow_redirects=False)
     assert r.headers["location"].endswith("/edit")
     pid = int(r.headers["location"].split("/")[2])
+    client.get(r.headers["location"])
     with session_scope() as s:
         plan = s.get(FloorPlan, pid)
         assert plan.filename.endswith(".png")

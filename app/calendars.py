@@ -61,9 +61,8 @@ def _local(v) -> tuple[datetime, bool]:
 def fetch_ics(url: str) -> bytes:
     if url.startswith("webcal://"):
         url = "https://" + url.removeprefix("webcal://")
-    resp = httpx.get(url, timeout=20, follow_redirects=True)
-    resp.raise_for_status()
-    return resp.content
+    from .security import fetch
+    return fetch(url)
 
 
 def parse_bookings(ics: bytes, start: datetime, end: datetime) -> list[Booking]:
