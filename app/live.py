@@ -16,6 +16,7 @@ from fastapi import APIRouter, WebSocket
 from fastapi.concurrency import run_in_threadpool
 from starlette.websockets import WebSocketDisconnect
 
+from .sso import public_url
 from . import config, protect
 from .auth import allowed_door_ids, current_user
 from .db import session_scope
@@ -45,7 +46,7 @@ def _same_origin(ws: WebSocket) -> bool:
     if not origin:
         return True  # not a browser
     host = ws.headers.get("host", "")
-    return urlsplit(origin).netloc == host or (config.PUBLIC_URL and origin == config.PUBLIC_URL)
+    return urlsplit(origin).netloc == host or (public_url() and origin == public_url())
 
 
 @router.websocket("/doors/{door_id}/live")

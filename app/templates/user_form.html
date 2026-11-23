@@ -11,7 +11,7 @@
 <form method="post" action="/users{% if target %}/{{ target.id }}{% endif %}" class="card stack" id="userform">
   <label>Name <input name="name" value="{{ target.name if target else '' }}" required {% if not full %}readonly{% endif %}></label>
   <label>Email <input type="email" name="email" value="{{ target.email if target else '' }}" required {% if not full %}readonly{% endif %}>
-    {% if config.SSO_ENABLED and full %}<small class="muted">Use the email they sign in to Microsoft with.</small>{% endif %}</label>
+    {% if sso_on() and full %}<small class="muted">Use the email they sign in to Microsoft with.</small>{% endif %}</label>
   <label>Username <small class="muted">(optional; they can sign in with this instead of their email)</small>
     <input name="username" value="{{ target.username or '' if target else '' }}" placeholder="e.g. jsmith" autocomplete="off"
            autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{1,31}" {% if not full %}readonly{% endif %}></label>
@@ -88,8 +88,8 @@
   {{ start_select(target, user) }}
   <fieldset>
     <legend>How do they sign in?</legend>
-    {% set pw = (target and target.password_hash) or not config.SSO_ENABLED %}
-    {% if config.SSO_ENABLED %}
+    {% set pw = (target and target.password_hash) or not sso_on() %}
+    {% if sso_on() %}
     <div class="seg">
       <label><input type="radio" name="signin" value="microsoft" {% if not pw %}checked{% endif %}><span>Microsoft account</span></label>
       <label><input type="radio" name="signin" value="password" {% if pw %}checked{% endif %}><span>Password</span></label>

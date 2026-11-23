@@ -417,3 +417,53 @@ def updates_save(request: Request, auto: bool = Form(False), user: User = Depend
     session.commit()
     flash(request, "Saved.")
     return redirect("/settings/updates")
+
+
+# ---------- sign in with Microsoft ----------
+
+GUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+@router.get("/settings/signin")
+def signin_page(request: Request, user: User = Depends(require_admin)):
+    from .sso import ms, redirect_uri
+    return render(request, "settings_signin.html", user, tab="signin", m=ms(), redirect_url=redirect_uri(request),
+                  env_set=config.SSO_ENABLED)
+
+
+@router.post("/settings/signin")
+def signin_save(request: Request, tenant: str = Form(""), client_id: str = Form(""), secret: str = Form(""),
+                public_url: str = Form(""), on: bool = Form(False), clear: bool = Form(False),
+                user: User = Depends(require_admin), session: Session = Depends(get_session)):
+    from . import sso
+    tenant, client_id, public_url = tenant.strip(), client_id.strip(), public_url.strip().rstrip("/")
+    if public_url and not public_url.startswith(("http://", "https://")):
+        public_url = "https://" + public_url
+    if clear:
+        for k in ("tenant", "client_id", "secret", "on"):
+            put(session, "sso." + k, "")
+        msg = "Microsoft sign-in settings removed from OpnDoor." + (
+            " The ones in the .env file are used again." if config.SSO_ENABLED else "")
+    else:
+        if (tenant and not GUID.match(tenant) and "." not in tenant) or (client_id and not GUID.match(client_id)):
+            flash(request, "The Directory (tenant) ID and Application (client) ID look like "
+                           "12345678-90ab-cdef-1234-567890abcdef. Copy them from the app's Overview page in Microsoft Entra.",
+                  "error")
+            return redirect("/settings/signin")
+        put(session, "sso.tenant", tenant)
+        put(session, "sso.client_id", client_id)
+        if secret.strip():
+            put(session, "sso.secret", secret.strip())
+        put(session, "sso.on", "1" if on else "0")
+        msg = "Sign-in settings saved."
+    put(session, "sso.public_url", public_url)
+    audit.record(session, "settings.signin", "Changed the Microsoft sign-in settings", user=user)
+    session.commit()
+    sso.forget()
+    m = sso.ms()
+    if not clear and on and not m["complete"]:
+        flash(request, "Saved, but Microsoft sign-in stays off until the tenant ID, client ID and secret are all filled in.",
+              "error")
+    else:
+        flash(request, msg + (" Microsoft sign-in is on." if m["enabled"] else ""))
+    return redirect("/settings/signin")

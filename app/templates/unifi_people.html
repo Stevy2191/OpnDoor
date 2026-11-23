@@ -19,7 +19,7 @@
 {% if error %}<div class="flash error">{{ error }}{% if 'View' in error or '403' in error %} The token needs People &amp; Groups: Edit and Credentials: Edit.{% endif %}</div>{% endif %}
 
 <section class="card">
-  <p class="muted" style="margin-top:0">Give someone a new PIN, or turn off all their access at {{ st.name if st else 'this site' }} (cards, PIN and phone) and back on, without opening the UniFi app.</p>
+  <p class="muted" style="margin-top:0">Add or remove someone's cards, give them a new PIN, or turn off all their access at {{ st.name if st else 'this site' }} (cards, PIN and phone) and back on, without opening the UniFi app.</p>
   {% if rows %}
   <div class="rowlist">
     {% for r in rows %}
@@ -30,6 +30,7 @@
       <span class="muted small upcred">{{ [('PIN' if r.has_pin else ''), ((r.cards ~ ' card' ~ ('' if r.cards == 1 else 's')) if r.cards else '')]|select|join(' · ') or 'No PIN or card' }}</span>
       <div class="btnrow">
         {% if r.active %}
+        <a class="button small" href="/unifi-people/{{ st.id }}/{{ r.id|urlencode }}/card">Cards</a>
         <form method="post" action="/unifi-people/{{ st.id }}/{{ r.id }}/pin" onsubmit="return confirm('Give {{ r.name|e }} a new PIN? Their current PIN stops working.')">
           {% if r.email and mail_ready %}<input type="hidden" name="send" value="true">{% endif %}
           <button class="small">New PIN{% if r.email and mail_ready %} + email{% endif %}</button></form>

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Cards · {{ person.name }} · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<p class="crumbs small"><a href="/unifi-people?site={{ st.id }}">People in UniFi Access</a> › {{ person.name }}</p>
+<h1>{{ person.name }}'s cards</h1>
+<p class="muted">{{ st.name }}{% if person.email %} · {{ person.email }}{% endif %}</p>
+
+<section class="card">
+  <h2>Cards</h2>
+  {% if person.card_list %}
+  <div class="rowlist">
+    {% for c in person.card_list %}
+    <div class="rowitem">
+      <div class="ri-main"><strong>Card {{ c.id or '(no number)' }}</strong></div>
+      <form method="post" action="/unifi-people/{{ st.id }}/{{ person.id }}/card-remove" onsubmit="return confirm('Remove card {{ c.id }} from {{ person.name|e }}? It stops opening doors right away.')">
+        <input type="hidden" name="token" value="{{ c.token }}"><button class="small danger">Remove</button></form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted empty">No cards yet.</p>{% endif %}
+</section>
+
+<section class="card" id="enroll">
+  <h2>Add a card</h2>
+  {% if error %}<div class="flash error">{{ error }}</div>
+  {% elif not readers %}<p class="muted">No reader that can register cards is online. The token needs <b>Device: View</b>, and the reader must support adding cards (most G2, G3 and Pro readers do).</p>
+  {% else %}
+  <ol class="steps">
+    <li>Pick a reader you're standing next to.</li>
+    <li>Press <b>Start</b>, then tap the new card on that reader within a minute.</li>
+  </ol>
+  <div class="cardstart mt">
+    <label>Reader <select id="reader">
+      {% for r in readers %}<option value="{{ r.id }}" {% if r.id == last_reader %}selected{% endif %}>{{ r.label }}{% if r.sub and r.sub != r.label %} ({{ r.sub }}){% endif %}</option>{% endfor %}
+    </select></label>
+    <button class="primary" id="start">Start</button>
+  </div>
+  <div class="tapbox" id="tap" hidden>
+    <div class="tapicon" aria-hidden="true"></div>
+    <div><strong id="tapmsg">Tap the card on the reader now…</strong>
+      <div class="muted small" id="tapsub"></div></div>
+    <button class="small" id="cancel">Cancel</button>
+  </div>
+  {% endif %}
+  <p class="hint mt">The card is added to {{ person.name }} in UniFi Access and opens the same doors as their phone or PIN. The token needs <b>Credentials: Edit</b>.</p>
+</section>
+<script>
+(function () {
+  const start = document.getElementById('start'); if (!start) return;
+  const base = '/unifi-people/{{ st.id }}/{{ person.id|urlencode }}/card';
+  const tap = document.getElementById('tap'), msg = document.getElementById('tapmsg'), sub = document.getElementById('tapsub');
+  let sid = null, timer = null, left = 0;
+  const post = (url, body) => fetch(url, { method: 'POST', body, headers: { 'X-OpnDoor': 'fetch' } }).then(r => r.json());
+  function stop(text, ok) {
+    clearInterval(timer); sid = null; start.disabled = false;
+    tap.classList.toggle('done', !!ok); tap.classList.toggle('bad', !ok);
+    msg.textContent = text; sub.textContent = ''; document.getElementById('cancel').hidden = true;
+    if (ok) setTimeout(() => location.reload(), 1500);
+  }
+  start.addEventListener('click', async () => {
+    start.disabled = true; tap.hidden = false; tap.className = 'tapbox'; document.getElementById('cancel').hidden = false;
+    msg.textContent = 'Getting the reader ready…'; sub.textContent = '';
+    const fd = new FormData(); fd.append('device', document.getElementById('reader').value);
+    let r; try { r = await post(base + '/start', fd); } catch (e) { return stop("Couldn't reach OpnDoor.", false); }
+    if (r.state !== 'waiting') return stop(r.message || "The reader isn't ready.", false);
+    sid = r.session; left = r.seconds || 60; msg.textContent = 'Tap the card on the reader now…';
+    timer = setInterval(async () => {
+      left -= 1.5; sub.textContent = Math.max(0, Math.round(left)) + ' seconds left';
+      let p; try { p = await fetch(base + '/' + sid).then(x => x.json()); } catch (e) { return; }
+      if (p.state === 'done') stop('Card ' + (p.card || '') + ' added.', true);
+      else if (p.state === 'error') stop(p.message || 'Something went wrong.', false);
+    }, 1500);
+  });
+  document.getElementById('cancel').addEventListener('click', async () => {
+    if (sid) await post(base + '/' + sid + '/cancel', new FormData()).catch(() => {});
+    clearInterval(timer); sid = null; start.disabled = false; tap.hidden = true;
+  });
+})();
+</script>
+{% endblock %}

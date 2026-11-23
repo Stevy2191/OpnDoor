@@ -20,6 +20,8 @@ import logging
 import math
 from dataclasses import dataclass
 
+from typing import Optional
+
 import httpx
 
 from . import config
@@ -203,7 +205,8 @@ class UnifiClient:
                             "name": dev.get("alias") or dev.get("name") or dev.get("id", ""),
                             "model_name": dev.get("name") or "", "adopted": dev.get("is_adopted", True) is not False,
                             "type": dev.get("type") or dev.get("device_type") or "", "door_id": dev.get("location_id") or "",
-                            "online": online, "firmware": dev.get("firmware") or dev.get("version") or ""})
+                            "online": online, "firmware": dev.get("firmware") or dev.get("version") or "",
+                            "can_enroll": "support_register_card" in (dev.get("capabilities") or [])})
         return out
 
     def door_devices(self) -> dict[str, list[str]]:
@@ -238,6 +241,54 @@ class UnifiClient:
             if "403" in str(e) or "permission" in str(e).lower():
                 raise UnifiError("The API token can't change PINs. Set Credentials and People & Groups to Edit.") from e
             self._call("PUT", f"/users/{user_id}/pin_code", json={"pin_code": pin})  # older Access versions
+
+    # --- NFC cards (needs Credentials: Edit and Device: View) ---
+
+    def _cards(self, method: str, tail: str, **kw):
+        """The card-enrollment paths moved between Access versions; try the current one, then the older one."""
+        last = None
+        for base in ("/credentials/nfc_cards", "/nfc_cards"):
+            try:
+                return self._call(method, base + tail, **kw)
+            except UnifiError as e:
+                if "403" in str(e) or "permission" in str(e).lower():
+                    raise UnifiError("The API token can't enroll cards. Set Credentials to Edit on the token.") from e
+                last = e
+        raise last
+
+    def card_session_start(self, device_id: str) -> str:
+        """Ask a reader to wait for a card. Returns the enrollment session id."""
+        data = self._cards("POST", "/sessions", json={"device_id": device_id, "reset_ua_card": False}) or {}
+        return str(data.get("session_id") or data.get("id") or "")
+
+    def card_session_poll(self, session_id: str) -> Optional[dict]:
+        """{token, card_id} once a card was tapped; None while still waiting."""
+        try:
+            data = self._cards("GET", f"/sessions/{session_id}") or {}
+        except UnifiError as e:
+            if any(k in str(e).upper() for k in ("EMPTY", "WAIT", "NOT_READY", "TIMEOUT")):
+                return None
+            raise
+        if not isinstance(data, dict) or not data.get("token"):
+            return None
+        return {"token": data["token"], "card_id": str(data.get("card_id") or data.get("display_id") or "")}
+
+    def card_session_cancel(self, session_id: str) -> None:
+        try:
+            self._cards("DELETE", f"/sessions/{session_id}")
+        except UnifiError:
+            pass
+
+    def add_user_card(self, user_id: str, token: str) -> None:
+        try:
+            self._call("PUT", f"/users/{user_id}/nfc_cards", json={"token": token, "force_add": False})
+        except UnifiError as e:
+            if "EXIST" in str(e).upper() or "already" in str(e).lower():
+                raise UnifiError("That card already belongs to someone in UniFi Access. Remove it from them first.") from e
+            raise
+
+    def remove_user_card(self, user_id: str, token: str) -> None:
+        self._call("PUT", f"/users/{user_id}/nfc_cards/delete", json={"token": token})
 
     def set_user_active(self, user_id: str, active: bool) -> None:
         try:
@@ -370,6 +421,47 @@ class FakeUnifiClient:
                 u["pin_code"] = {"token": pin}
         self.calls.append(("user_pin", user_id))
 
+    card_sessions: dict = None
+    next_card: str = ""  # tests set the token the next tap gives; the demo makes one up
+
+    def card_session_start(self, device_id: str) -> str:
+        import secrets
+        if self.card_sessions is None:
+            self.card_sessions = {}
+        sid = secrets.token_hex(6)
+        self.card_sessions[sid] = {"device": device_id, "polls": 0}
+        return sid
+
+    def card_session_poll(self, session_id: str):
+        s = (self.card_sessions or {}).get(session_id)
+        if not s:
+            raise UnifiError("UniFi Access error 404: CODE_CREDS_NFC_READ_SESSION_NOT_FOUND")
+        s["polls"] += 1
+        if s["polls"] < 2:
+            return None
+        import secrets
+        token = self.next_card or secrets.token_hex(16)
+        import zlib
+        return {"token": token, "card_id": str(zlib.crc32(token.encode()) % 1000000).zfill(6)}
+
+    def card_session_cancel(self, session_id: str) -> None:
+        (self.card_sessions or {}).pop(session_id, None)
+
+    def add_user_card(self, user_id: str, token: str) -> None:
+        for u in self.users:
+            if any(c.get("token") == token for c in u.get("nfc_cards") or []):
+                raise UnifiError("That card already belongs to someone in UniFi Access. Remove it from them first.")
+        for u in self.users:
+            if u["id"] == user_id:
+                import zlib
+                u.setdefault("nfc_cards", []).append({"id": str(zlib.crc32(token.encode()) % 1000000).zfill(6),
+                                                      "token": token})
+
+    def remove_user_card(self, user_id: str, token: str) -> None:
+        for u in self.users:
+            if u["id"] == user_id:
+                u["nfc_cards"] = [c for c in u.get("nfc_cards") or [] if c.get("token") != token]
+
     def set_user_active(self, user_id: str, active: bool) -> None:
         for u in self.users:
             if u["id"] == user_id:
@@ -387,7 +479,7 @@ class FakeUnifiClient:
                 "firmware": "1.24.5"}]
         for i, d in enumerate(self.doors):
             out.append({"id": f"rdr-{d.id}", "name": f"{d.name} Reader", "type": "UA-G2-Pro", "door_id": d.id,
-                        "online": i != 1, "firmware": "2.3.11"})
+                        "online": i != 1, "firmware": "2.3.11", "can_enroll": True})
         return out
 
     def user_policies(self, user_id: str) -> list[dict]:

@@ -91,6 +91,8 @@ def _asset_version() -> str:
 
 
 templates.env.globals["asset_v"] = _asset_version()
+from .sso import enabled as sso_on  # noqa: E402  (Microsoft sign-in may be set up in the web or .env)
+templates.env.globals["sso_on"] = sso_on
 templates.env.globals["live_on"] = lambda: bool(config.LIVE_VIDEO_URL)
 
 def flash(request: Request, msg: str, kind: str = "ok") -> None:
@@ -306,7 +308,7 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
         session.commit()
         security.login_failed(email, ip)
         flash(request, "This account signs in with Microsoft. Use the Microsoft button."
-              if user and user.active and not user.password_hash and config.SSO_ENABLED
+              if user and user.active and not user.password_hash and sso_on()
               else "That email or username and password didn't match.", "error")
         return redirect("/login")
     security.login_ok(email)
@@ -1484,7 +1486,7 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
         role = "operator"  # site admins add and change door operators and openers only
     role = role if role in {"admin", "site_admin", "operator", "opener"} else "operator"
     door_source = "unifi" if door_source == "unifi" and role in {"operator", "opener"} else "opndoor"
-    use_password = signin == "password" or not config.SSO_ENABLED
+    use_password = signin == "password" or not sso_on()
 
     target = session.get(User, uid) if uid else None
     if uid and (not target or not can_manage_person(session, user, target)):

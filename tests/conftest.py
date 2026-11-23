@@ -17,6 +17,8 @@ def fresh_db(tmp_path):
     db.apply_pragmas(engine)  # enforce foreign keys like production
     db.set_engine(engine)
     SQLModel.metadata.create_all(engine)
+    from app import sso
+    sso.forget()  # Microsoft sign-in settings are cached
     fake = unifi.FakeUnifiClient()
     unifi.set_factory(lambda site: fake)  # every site shares one recorder
     yield fake
