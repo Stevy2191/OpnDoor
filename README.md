@@ -1,10 +1,42 @@
 # OpnDoor
 
-Door scheduling for **UniFi Access**. People sign in, pick the doors they're allowed to use,
-and set when they unlock and lock again: one-off events, weekly repeats, or a quick "unlock now".
-Connect a calendar and every booking on it unlocks the right doors automatically.
+Door scheduling and everyday access control for **UniFi Access**, built to be simple enough for
+anyone. People sign in, see only the doors they're allowed to use, open them, and set when they
+unlock and lock again: one-off events, weekly hours, closures, or a booking calendar that does it
+automatically. It also covers lockdown and evacuation, live door cameras, floor-plan maps, door
+activity, visitor passes, lobby and room screens, alerts and emailed reports.
 
-Runs as a single Docker container (FastAPI + SQLite). Images are built by GitHub Actions and published to GHCR.
+Runs as a small Docker container (FastAPI + SQLite) with a one-command installer. Images are built
+by GitHub Actions and published to GHCR.
+
+## Screenshots
+
+![Home: what's unlocked right now and why, today's events, and emergency buttons](docs/screenshots/home.png)
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/doors.png" alt="Doors as tiles with camera pictures and an Open button on each"><br><b>Doors</b>: every door as a tile with its camera and its own Open button.</td>
+<td width="50%"><img src="docs/screenshots/schedules.png" alt="Schedules week view"><br><b>Schedules</b>: the week at a glance; click an event to change it.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/new-schedule.png" alt="New schedule form"><br><b>New schedule</b>: what, which doors, when. The summary says it in plain words.</td>
+<td><img src="docs/screenshots/map.png" alt="Floor plan with door pins"><br><b>Map</b>: doors on your floor plans, coloured by what they're doing.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/activity.png" alt="Door activity with busy hours"><br><b>Activity</b>: busy hours, busiest doors and who came through, from UniFi Access.</td>
+<td><img src="docs/screenshots/visitors.png" alt="Visitor passes"><br><b>Visitors</b>: passes with a PIN or QR code for chosen doors and times.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/room-screen.png" alt="Room screen on a tablet showing In use"><br><b>Room screen</b>: a tablet outside a meeting room shows if it's free.</td>
+<td><img src="docs/screenshots/devices.png" alt="Devices online"><br><b>Devices</b>: every reader, hub and camera, offline ones first.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/home-dark.png" alt="Home in dark mode"><br><b>Dark mode</b>, automatic or by choice.</td>
+<td align="center"><img src="docs/screenshots/phone.png" alt="Doors on a phone" width="210"><br><b>Phones</b>: open a door from wherever you are.</td>
+</tr>
+</table>
+
+<sub>Screenshots use a demo site; names and numbers are made up.</sub>
 
 ## Features
 
@@ -84,18 +116,19 @@ The installer does everything except sign in for you:
    - **No HTTPS**, for testing only.
 4. Connects your UniFi Access console (and tests the API token), or skips it so you can add
    consoles later under **Sites**.
-5. Optionally sets up Microsoft sign-in.
+5. Optionally turns on live camera video and the **Update now** button.
 6. Opens the firewall port if `ufw` or `firewalld` is on, downloads OpnDoor and starts it.
 
 At the end it prints the web address and a **setup code**. Open the address, enter the code and
 create your account: that first account is the **main admin**, which nobody else can change or remove.
+Everything else (Microsoft sign-in, email, branding, backups) is set up in OpnDoor under **Settings**.
 
 Everything lives in `/srv/docker/opndoor` (settings in `.env`, data in `data/`).
 
 | To... | Run |
 | --- | --- |
-| Update to the newest version | `sudo /srv/docker/opndoor/update.sh` |
-| Change settings (HTTPS, ports, Microsoft sign-in) | the install command again → *Change settings* |
+| Update to the newest version | **Settings → Updates → Update now** in OpnDoor, or `sudo /srv/docker/opndoor/update.sh` |
+| Change settings (HTTPS, ports, live video, Update button) | the install command again → *Change settings* |
 | Uninstall (keeps data unless you say otherwise) | the install command again → *Uninstall* |
 | See logs | `cd /srv/docker/opndoor && sudo docker compose logs -f` |
 
