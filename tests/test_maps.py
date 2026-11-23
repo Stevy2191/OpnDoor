@@ -28,6 +28,7 @@ def building_with_plan(c):
                files={"image": ("plan.png", png(), "image/png")}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].endswith("/edit")
     pid = int(r.headers["location"].split("/")[2])
+    c.get(r.headers["location"])  # show the "Added" message, like a browser would
     return bid, pid
 
 

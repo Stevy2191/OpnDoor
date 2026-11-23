@@ -1,29 +1,36 @@
-FROM python:3.12-slim
+# Build stage: install the Python packages with the same Python minor version as the runtime image.
+FROM python:3.13-slim-trixie AS build
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --target /deps -r /tmp/requirements.txt \
+    && find /deps -depth -name '__pycache__' -exec rm -rf {} + \
+    && mkdir -p /data
+
+# Runtime: distroless Python (no shell, package manager or system tools), running as a non-root user.
+# Fewer packages means fewer CVEs and less for an attacker to use.
+FROM gcr.io/distroless/python3-debian13:nonroot
 
 ARG APP_VERSION=dev
 ARG APP_COMMIT=
 ENV APP_VERSION=${APP_VERSION} \
     APP_COMMIT=${APP_COMMIT} \
+    PYTHONPATH=/srv/app/deps \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     TZ=America/Chicago
 
 WORKDIR /srv/app
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
+COPY --from=build /deps ./deps
 COPY app ./app
-
-RUN useradd --system --uid 10001 appuser \
-    && mkdir -p /data && chown appuser /data
-USER appuser
+# uid 10001 matches earlier images, so existing data folders keep working
+COPY --from=build --chown=10001:10001 /data /data
+USER 10001
 
 VOLUME ["/data"]
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"]
+    CMD ["/usr/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"]
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
+ENTRYPOINT ["/usr/bin/python3", "-m", "uvicorn"]
+CMD ["app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
