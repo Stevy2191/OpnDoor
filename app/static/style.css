@@ -1117,3 +1117,15 @@ pre.out { background: var(--bg); border-radius: 8px; padding: .7rem .9rem; font-
 .sw.on { outline: 3px solid var(--text); outline-offset: 2px; }
 .cphex { display: flex; align-items: center; gap: .6rem; font-weight: 400; font-size: .9rem; color: var(--muted); }
 .cphex input { width: 7.5rem; margin: 0; font-family: ui-monospace, monospace; }
+ol.steps { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .5rem; }
+ol.steps .linkbox input { max-width: 520px; }
+.cardstart { display: flex; gap: .8rem; align-items: flex-end; flex-wrap: wrap; }
+.cardstart label { flex: 1 1 260px; }
+.cardstart select { margin-top: .35rem; }
+.tapbox { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; padding: 1rem 1.1rem; border-radius: 12px; background: var(--accent-soft); }
+.tapbox .tapicon { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--accent); flex: none; animation: tappulse 1.4s ease-in-out infinite; }
+.tapbox > div:nth-child(2) { flex: 1; }
+.tapbox.done { background: var(--ok-soft); } .tapbox.done .tapicon { border-color: var(--ok); background: var(--ok); animation: none; }
+.tapbox.bad { background: var(--err-soft); } .tapbox.bad .tapicon { border-color: var(--err); animation: none; }
+@keyframes tappulse { 0%, 100% { transform: scale(.85); opacity: .6; } 50% { transform: scale(1.05); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tapbox .tapicon { animation: none; } }

@@ -34,15 +34,6 @@
 </div>
 
 {% if user.is_admin %}
-<details class="card help">
-  <summary>Sign in with Microsoft: {{ 'on' if config.SSO_ENABLED else 'not set up yet' }}</summary>
-  {% if config.SSO_ENABLED %}
-    <p>People sign in with their work Microsoft account. Their email in OpnDoor must match their Microsoft email.</p>
-  {% else %}
-    <p>To turn it on, register OpnDoor in Microsoft Entra and add three settings to OpnDoor's <code>.env</code> file
-    (<code>MS_TENANT_ID</code>, <code>MS_CLIENT_ID</code>, <code>MS_CLIENT_SECRET</code>). Step-by-step instructions are in the README.</p>
-  {% endif %}
-  <p class="small">Redirect URL to give Microsoft: <code>{{ redirect_url }}</code>{% if not config.PUBLIC_URL %}<br><span class="muted">Set <code>PUBLIC_URL</code> if people reach OpnDoor through a different address.</span>{% endif %}</p>
-</details>
+<p class="small muted">Sign in with Microsoft is {{ 'on' if sso_on() else 'off' }}. <a href="/settings/signin">{{ 'Change it' if sso_on() else 'Set it up' }} in Settings → Sign-in</a>.</p>
 {% endif %}
 {% endblock %}

@@ -43,8 +43,9 @@ def same_site(headers: dict) -> bool:
     if not src:
         return True
     want = {_host(headers.get("host", "")), _host(headers.get("x-forwarded-host", "").split(",")[0])}
-    if config.PUBLIC_URL:
-        want.add(_host(config.PUBLIC_URL))
+    from .sso import public_url
+    if public_url():
+        want.add(_host(public_url()))
     want.discard("")
     return _host(src) in want
 

@@ -136,8 +136,9 @@ def build(session: Session, rep: Report, today: Optional[date] = None) -> dict:
 def render_html(session: Session, rep: Report, logo_src: str, today: Optional[date] = None) -> tuple[str, dict]:
     data = build(session, rep, today)
     from .admin import brand
+    from .sso import public_url
     html = templates.get_template("report_email.html").render(d=data, sections=SECTIONS, logo_src=logo_src,
-                                                              brand=brand(), base=config.PUBLIC_URL)
+                                                              brand=brand(), base=public_url())
     return html, data
 
 

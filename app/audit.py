@@ -53,6 +53,7 @@ ACTIONS = {
     "screen.newlink": ("site", "Made a new screen link"),
     "settings.email": ("site", "Changed email settings"),
     "settings.branding": ("site", "Changed the branding"),
+    "settings.signin": ("site", "Changed the Microsoft sign-in settings"),
     "settings.backup": ("site", "Made a backup"),
     "settings.restore": ("site", "Restored a backup"),
     "settings.update": ("site", "Started an update"),
@@ -61,6 +62,7 @@ ACTIONS = {
     "report.save": ("site", "Changed a report"),
     "report.delete": ("site", "Deleted a report"),
     "unifi.pin": ("access", "Gave someone a new PIN in UniFi Access"),
+    "unifi.card": ("access", "Added or removed someone's card in UniFi Access"),
     "unifi.active": ("access", "Turned someone's UniFi Access on or off"),
 }
 

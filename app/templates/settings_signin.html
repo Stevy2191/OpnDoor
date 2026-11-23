@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Sign-in · Settings · OpnDoor{% endblock %}
+{% block content %}
+{% include "_settingstabs.html" %}
+<form method="post" action="/settings/signin" class="card connform">
+  <div class="cardhead">
+    <div><h2>Sign in with Microsoft</h2>
+      <p class="muted" style="margin:.3rem 0 0">People sign in with their work Microsoft account. Only people already added in OpnDoor can sign in, matched by email.</p></div>
+    {% if m.enabled %}<span class="pill locked">On</span>{% elif m.complete %}<span class="pill closed">Off</span>{% else %}<span class="pill closed">Not set up</span>{% endif %}
+  </div>
+  {% if m.source == 'env' %}<div class="flash info">These settings come from OpnDoor's <code>.env</code> file. Save them here to manage them in OpnDoor from now on; the .env values are then ignored.</div>{% endif %}
+
+  <fieldset class="group">
+    <legend>1 · Register OpnDoor in Microsoft Entra</legend>
+    <ol class="steps">
+      <li>Open <b>entra.microsoft.com</b> → Applications → <b>App registrations</b> → <b>New registration</b>.</li>
+      <li>Name: <b>OpnDoor</b>. Who can use it: <b>Accounts in this organizational directory only</b>.</li>
+      <li>Redirect URI: platform <b>Web</b>, and this address:
+        <div class="linkbox"><input readonly id="redir" value="{{ redirect_url }}" onclick="this.select()" aria-label="Redirect URI"><button type="button" class="small" id="copyredir">Copy</button></div></li>
+      <li>Register. Then under <b>Certificates &amp; secrets</b> → <b>New client secret</b>, copy its <b>Value</b> (not the Secret ID).</li>
+    </ol>
+    <label>OpnDoor's address <span class="muted small">· the address people type to reach OpnDoor; the redirect address above uses it</span>
+      <input name="public_url" value="{{ m.public_url }}" placeholder="https://doors.example.org"></label>
+    <p class="hint" style="margin-top:-.6rem">Leave it blank to use the address you're on now. Microsoft needs an <b>https</b> address unless it's <code>localhost</code>.</p>
+  </fieldset>
+
+  <fieldset class="group">
+    <legend>2 · Paste the IDs</legend>
+    <div class="fields2">
+      <label>Directory (tenant) ID <input name="tenant" value="{{ m.tenant if m.source == 'web' else '' }}" placeholder="{{ m.tenant or '12345678-90ab-…' }}" spellcheck="false" autocomplete="off"></label>
+      <label>Application (client) ID <input name="client_id" value="{{ m.client_id if m.source == 'web' else '' }}" placeholder="{{ m.client_id or '12345678-90ab-…' }}" spellcheck="false" autocomplete="off"></label>
+    </div>
+    <label>Client secret value
+      <input type="text" name="secret" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
+        placeholder="{{ 'Saved · leave blank to keep it' if m.secret and m.source == 'web' else 'Paste the secret value' }}"></label>
+    <p class="hint" style="margin-top:-.6rem">Both IDs are on the app's <b>Overview</b> page. Secrets expire (Microsoft's default is 6 months to 2 years); paste a new one here before it does.</p>
+  </fieldset>
+
+  <label class="check"><input type="checkbox" name="on" value="true" {% if m.enabled or (not m.complete) %}checked{% endif %}> Show “Sign in with Microsoft” on the sign-in page</label>
+  <div class="btnrow">
+    <button class="primary">Save</button>
+    {% if m.enabled %}<a class="button" href="/auth/microsoft" target="_blank" rel="noopener">Try it</a>{% endif %}
+    {% if m.source == 'web' %}<button class="danger" name="clear" value="true" onclick="return confirm('Remove the Microsoft sign-in settings from OpnDoor?')">Remove</button>{% endif %}
+  </div>
+  <p class="hint">Password sign-in keeps working for anyone who has a password, so an admin can always get in.</p>
+</form>
+<script>
+(function () {
+  const redir = document.getElementById('redir'), addr = document.querySelector('[name=public_url]');
+  const here = location.origin;
+  addr.addEventListener('input', () => {
+    let v = addr.value.trim().replace(/\/+$/, '');
+    if (v && !/^https?:\/\//.test(v)) v = 'https://' + v;
+    redir.value = (v || here) + '/auth/microsoft/callback';
+  });
+  document.getElementById('copyredir').addEventListener('click', e => {
+    navigator.clipboard?.writeText(redir.value).then(() => { e.target.textContent = 'Copied'; setTimeout(() => e.target.textContent = 'Copy', 1500); });
+  });
+})();
+</script>
+{% endblock %}

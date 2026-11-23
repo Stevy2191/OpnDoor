@@ -26,6 +26,7 @@
             <li><b>Locations</b> Edit</li><li><b>Device</b> View</li><li><b>System Log</b> View</li>
             <li><b>People &amp; Groups</b> View</li><li><b>Access Policy</b> View</li>
             <li><b>Visitor</b> Edit <span class="muted">· for visitor passes</span></li>
+            <li><b>Credentials</b> Edit <span class="muted">· new PINs and cards</span></li>
           </ul></li>
         <li>Copy it straight away. UniFi only shows it once.</li>
       </ol>
@@ -61,7 +62,7 @@
       Devices page, alerts and reports ask UniFi Network instead (it knows what's connected, and shows each device's IP).</p>
     <label class="check"><input type="checkbox" name="network_on" value="true" {% if site and site.network_on %}checked{% endif %}> Check whether devices are online with UniFi Network</label>
     <label>UniFi Network console address <span class="muted small">· leave blank if UniFi Network runs on the Access console</span>
-      <input name="network_host" value="{{ site.network_host if site else '' }}" placeholder="https://10.245.10.1"></label>
+      <input name="network_host" value="{{ site.network_host if site else '' }}" placeholder="https://192.168.1.1"></label>
     <label>API key <span class="muted small">· leave blank to use the Protect key{% if site and site.network_key %} · a key is saved{% endif %}</span>
       <input type="text" name="network_key" class="secret" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore
         placeholder="{{ 'Saved · leave blank to keep it' if site and site.network_key else 'Paste a UniFi OS API key' }}"></label>

@@ -220,27 +220,27 @@ them) and what's coming up. **Preview** shows it in the browser; **Send now** se
 
 ## Sign in with Microsoft
 
-Do this once, as someone who can register apps in your Microsoft 365 tenant.
+Set it up in OpnDoor under **Settings → Sign-in** (admins). The page walks through it:
 
-1. Go to <https://entra.microsoft.com> → **Applications** → **App registrations** → **New registration**.
-2. **Name:** `OpnDoor`. **Supported account types:** *Accounts in this organizational directory only*.
-   **Redirect URI:** platform *Web*, address `https://<your OpnDoor address>/auth/microsoft/callback`.
-   (OpnDoor shows this exact address on its **People** page. Microsoft requires `https://`, so put
-   OpnDoor behind a reverse proxy with a certificate first.)
-3. On the app's **Overview** page, copy the **Application (client) ID** and **Directory (tenant) ID**.
-4. **Certificates & secrets** → **New client secret** → copy the secret's **Value** (not its ID).
-   Note when it expires and make a new one before then.
-5. Run the installer again → *Change settings* and paste them in when it asks. (Or add them to
-   `/srv/docker/opndoor/.env` yourself and run `sudo docker compose up -d` in that folder):
-   ```
-   MS_TENANT_ID=<Directory (tenant) ID>
-   MS_CLIENT_ID=<Application (client) ID>
-   MS_CLIENT_SECRET=<secret Value>
-   PUBLIC_URL=https://<your OpnDoor address>
-   SECURE_COOKIES=true
-   ```
-6. In OpnDoor, add each person under **People** with the email they use for Microsoft, and choose
-   *Microsoft account*. Only people added there can sign in. Accounts outside your tenant can't.
+1. In <https://entra.microsoft.com> → **App registrations** → **New registration**: name `OpnDoor`,
+   *Accounts in this organizational directory only*, redirect URI platform *Web* with the address
+   the Sign-in page shows (it updates as you type OpnDoor's address). Microsoft requires `https://`,
+   so OpnDoor needs to be behind a proxy with a certificate first.
+2. Copy the **Directory (tenant) ID** and **Application (client) ID** from the app's Overview page,
+   and a new client secret's **Value**, into the Sign-in page. Save.
+3. Add each person under **People** with the email they use for Microsoft and choose *Microsoft
+   account*. Only people added there can sign in. Accounts outside your tenant can't.
+
+Settings from an older install's `.env` (`MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`,
+`PUBLIC_URL`) still work; once you save them on the Sign-in page, those are used instead.
+Secrets expire, so paste a new one before the old one does.
+
+## NFC cards
+
+**People → People in UniFi Access → Cards** shows a person's cards and adds new ones: pick a reader
+you're next to, press **Start**, and tap the card within a minute. OpnDoor gives it to that person in
+UniFi Access. Cards can be removed there too. The API token needs **Credentials: Edit** and
+**Device: View**.
 
 Keep at least one admin with a password, so you can still get in if the Microsoft settings change.
 

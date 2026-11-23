@@ -26,7 +26,7 @@ def enabled(site: Optional[Site]) -> bool:
 
 
 def mac(value: str) -> str:
-    """'58:d6:1f:29:f9:b5' or '58d61f29f9b5' -> '58d61f29f9b5' ('' if it isn't a MAC)."""
+    """'0a:1b:2c:3d:4e:5f' or '0a1b2c3d4e5f' -> '0a1b2c3d4e5f' ('' if it isn't a MAC)."""
     v = re.sub(r"[^0-9a-f]", "", (value or "").lower())
     return v if len(v) == 12 else ""
 

@@ -3,6 +3,7 @@ import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
 from . import audit, mailer, unifi
@@ -27,7 +28,9 @@ def _people(site: Site, fresh: bool = False) -> list[dict]:
         rows.append({"id": u.get("id", ""), "name": name, "email": u.get("user_email") or u.get("email") or "",
                      "status": status, "active": status == "ACTIVE",
                      "has_pin": bool(pin.get("token") if isinstance(pin, dict) else pin),
-                     "cards": len(u.get("nfc_cards") or []), "employee": u.get("employee_number") or ""})
+                     "cards": len(u.get("nfc_cards") or []), "employee": u.get("employee_number") or "",
+                     "card_list": [{"id": str(c.get("id") or c.get("display_id") or ""), "token": c.get("token", "")}
+                                   for c in u.get("nfc_cards") or [] if isinstance(c, dict)]})
     rows.sort(key=lambda r: (not r["active"], r["name"].lower()))
     _cache[site.id] = (time.monotonic(), rows)
     return rows
@@ -118,4 +121,132 @@ def set_active(request: Request, site_id: int, uid: str, active: bool = Form(Fal
     session.commit()
     flash(request, f"{person['name']} can open doors again." if active else
           f"{person['name']} can't open any doors at {st.name} now. Their cards, PIN and phone stop working.")
+    return redirect(back)
+
+
+# ---------- adding NFC cards ----------
+
+CARD_WAIT = 60  # seconds a reader waits for a card
+
+
+def _managed(session: Session, user: User, site_id: int) -> Optional[Site]:
+    st = session.get(Site, site_id)
+    return st if st and site_id in managed_site_ids(session, user) else None
+
+
+def _readers(session: Session, st: Site) -> list[dict]:
+    from .models import Door
+    doors = {d.remote_id: d.name for d in session.exec(select(Door).where(Door.site_id == st.id)).all()}
+    out = []
+    for d in unifi.get_client(st).list_devices():
+        if d.get("can_enroll") and d.get("online") is not False:
+            where = doors.get(d.get("door_id", ""), "")
+            label = d.get("alias") or (f"{where} reader" if where else d["name"])
+            out.append({"id": d["id"], "label": label, "sub": d.get("model_name") or d["name"]})
+    return sorted(out, key=lambda r: r["label"].lower())
+
+
+@router.get("/unifi-people/{site_id}/{uid}/card")
+def card_page(request: Request, site_id: int, uid: str, user: User = Depends(require_manager),
+              session: Session = Depends(get_session)):
+    st = _managed(session, user, site_id)
+    person = _find(st, uid) if st else None
+    if not person:
+        return redirect("/unifi-people")
+    readers, error = [], ""
+    try:
+        readers = _readers(session, st)
+    except unifi.UnifiError as e:
+        error = str(e)
+    return render(request, "unifi_card.html", user, st=st, person=person, readers=readers, error=error,
+                  last_reader=request.session.get("card_reader", ""))
+
+
+@router.post("/unifi-people/{site_id}/{uid}/card/start")
+def card_start(request: Request, site_id: int, uid: str, device: str = Form(...), user: User = Depends(require_manager),
+               session: Session = Depends(get_session)):
+    st = _managed(session, user, site_id)
+    if not st or not _find(st, uid):
+        return JSONResponse({"state": "error", "message": "That person isn't available."}, status_code=404)
+    if device not in {r["id"] for r in _readers(session, st)}:
+        return JSONResponse({"state": "error", "message": "Pick one of the readers."}, status_code=400)
+    try:
+        sid = unifi.get_client(st).card_session_start(device)
+    except unifi.UnifiError as e:
+        return JSONResponse({"state": "error", "message": str(e)})
+    pending = request.session.get("cards", {})
+    pending = {k: v for k, v in pending.items() if time.time() - v["at"] < CARD_WAIT * 2}
+    pending[sid] = {"site": site_id, "uid": uid, "at": time.time()}
+    request.session["cards"] = pending
+    request.session["card_reader"] = device
+    return JSONResponse({"state": "waiting", "session": sid, "seconds": CARD_WAIT})
+
+
+@router.get("/unifi-people/{site_id}/{uid}/card/{sid}")
+def card_poll(request: Request, site_id: int, uid: str, sid: str, user: User = Depends(require_manager),
+              session: Session = Depends(get_session)):
+    mine = request.session.get("cards", {}).get(sid)
+    st = _managed(session, user, site_id)
+    if not st or not mine or mine["site"] != site_id or mine["uid"] != uid:
+        return JSONResponse({"state": "error", "message": "That card reading isn't yours or has ended."}, status_code=404)
+    client = unifi.get_client(st)
+
+    def finish():
+        pending = request.session.get("cards", {})
+        pending.pop(sid, None)
+        request.session["cards"] = pending
+    if time.time() - mine["at"] > CARD_WAIT:
+        client.card_session_cancel(sid)
+        finish()
+        return JSONResponse({"state": "error", "message": "No card was tapped in time. Try again."})
+    try:
+        got = client.card_session_poll(sid)
+    except unifi.UnifiError as e:
+        finish()
+        return JSONResponse({"state": "error", "message": str(e)})
+    if not got:
+        return JSONResponse({"state": "waiting"})
+    finish()
+    person = _find(st, uid)
+    try:
+        client.add_user_card(uid, got["token"])
+    except unifi.UnifiError as e:
+        return JSONResponse({"state": "error", "message": str(e)})
+    _cache.pop(st.id, None)
+    audit.record(session, "unifi.card", f"Added card {got['card_id'] or ''} for {person['name'] if person else uid} "
+                 f"at {st.name}".replace("  ", " "), user=user, site_ids=[st.id])
+    session.commit()
+    return JSONResponse({"state": "done", "card": got["card_id"]})
+
+
+@router.post("/unifi-people/{site_id}/{uid}/card/{sid}/cancel")
+def card_cancel(request: Request, site_id: int, uid: str, sid: str, user: User = Depends(require_manager),
+                session: Session = Depends(get_session)):
+    pending = request.session.get("cards", {})
+    st = _managed(session, user, site_id)
+    if st and sid in pending:
+        unifi.get_client(st).card_session_cancel(sid)
+        pending.pop(sid, None)
+        request.session["cards"] = pending
+    return JSONResponse({"state": "cancelled"})
+
+
+@router.post("/unifi-people/{site_id}/{uid}/card-remove")
+def card_remove(request: Request, site_id: int, uid: str, token: str = Form(...), user: User = Depends(require_manager),
+                session: Session = Depends(get_session)):
+    st = _managed(session, user, site_id)
+    person = _find(st, uid) if st else None
+    back = f"/unifi-people/{site_id}/{uid}/card"
+    if not person or token not in {c["token"] for c in person["card_list"]}:
+        return redirect(back if person else "/unifi-people")
+    card = next(c["id"] for c in person["card_list"] if c["token"] == token)
+    try:
+        unifi.get_client(st).remove_user_card(uid, token)
+    except unifi.UnifiError as e:
+        flash(request, f"UniFi Access didn't remove the card: {e}", "error")
+        return redirect(back)
+    _cache.pop(st.id, None)
+    audit.record(session, "unifi.card", f"Removed card {card} from {person['name']} at {st.name}", user=user, site_ids=[st.id])
+    session.commit()
+    flash(request, f"Card {card} removed. It no longer opens doors for {person['name']}.")
     return redirect(back)
