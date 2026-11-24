@@ -100,6 +100,7 @@
     <h2>Summary</h2>
     <p class="sumtext">Choose what to do, the doors and the time.</p>
     <ul class="needed small"></ul>
+    <div class="unifiwarn small" hidden></div>
     <button class="primary wide savebtn">{{ 'Save changes' if sched else 'Save' }}</button>
     <a class="button wide cancel" href="/schedules">Cancel</a>
   </aside>
@@ -199,6 +200,12 @@
       : 'on ' + dayname(day) + ', ' + t12(s) + ' – ' + t12(e) + (e && s && e <= s ? ' (next day)' : '');
     sum.innerHTML = mode ? verb + ' ' + what + ' ' + when + '.' + (mode === 'default' ? '<br><small class="muted">Outside these hours the doors stay locked.</small>' : '') : 'Choose what you want to do, then the doors and the time.';
     need.innerHTML = missing.map(m => '<li>' + m + '</li>').join('');
+    const UNIFI = {{ unifi_pats|tojson }}, uw = $('.unifiwarn');
+    const hits = $$('input[name=door_ids]:checked').filter(x => UNIFI[x.value])
+      .map(x => '<li><b>' + x.closest('label').textContent.trim() + '</b>: ' + UNIFI[x.value] + '</li>');
+    uw.hidden = !hits.length;
+    uw.innerHTML = hits.length ? '<b>Also unlocked by UniFi Access</b> on its own schedule:<ul>' + hits.join('')
+      + '</ul>While this schedule is on it takes over; afterwards the UniFi schedule is back in charge.' : '';
     save.disabled = missing.length > 0;
   }
   f.querySelectorAll('[data-days]').forEach(b => b.addEventListener('click', () => {

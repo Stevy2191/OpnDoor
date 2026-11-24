@@ -208,6 +208,22 @@ can't open doors.
 
 If a screen's link gets out, use **New link** and the old one stops working.
 
+## Schedules already in UniFi Access
+
+UniFi Access's API doesn't hand out a door's own **Unlock Schedule**, but it does say what each door is
+doing right now. OpnDoor checks every minute and records when UniFi itself (not OpnDoor) has a door
+unlocked on its schedule, or set in the UniFi app. From that it learns each door's weekly UniFi
+pattern (for example "Mon–Fri 7 AM–6 PM") and shows it:
+
+- on the door's page (**Also set in UniFi Access**), and as a **UniFi schedule** tag on the Doors page;
+- as striped **UniFi unlock schedule** blocks in the Schedules week;
+- as a warning on the schedule form when you pick a door UniFi also unlocks.
+
+While an OpnDoor schedule is on, it takes over the door; when it ends, UniFi's schedule is back in
+charge. The simplest setup is to move those hours into OpnDoor (**Set regular hours**) and clear the
+Unlock Schedule in UniFi. Holidays set up in UniFi Access can be brought over under
+**Holidays → See UniFi's holidays**.
+
 ## Alerts and reports
 
 **Alerts** (Manage → Alerts) email the people you pick when something happens. Nothing is on by

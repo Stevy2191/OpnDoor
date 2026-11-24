@@ -75,13 +75,28 @@ def site_devices(site: Site) -> dict:
 
 
 @router.get("/devices/raw")
-def devices_raw(site: int, user: User = Depends(require_admin), session: Session = Depends(get_session)):
-    """Exactly what the console says about its devices, to compare with the UniFi app (admins only)."""
+def devices_raw(site: int, what: str = "devices", user: User = Depends(require_admin),
+                session: Session = Depends(get_session)):
+    """Exactly what the console says (devices, doors, what each door is doing, holidays), to compare with the
+    UniFi app (admins only)."""
     st = session.get(Site, site)
     if not st:
         return JSONResponse({"error": "no such site"}, status_code=404)
+    client = unifi.get_client(st)
     try:
-        data = unifi.get_client(st).raw_devices()
+        if what == "doors":
+            data = client._call("GET", "/doors") if hasattr(client, "_call") else [d.__dict__ for d in client.list_doors()]
+        elif what == "rules":
+            data = {}
+            for d in session.exec(select(Door).where(Door.site_id == st.id, Door.present == True)).all():  # noqa: E712
+                try:
+                    data[d.name] = client.lock_rule(d.remote_id)
+                except unifi.UnifiError as e:
+                    data[d.name] = {"error": str(e)}
+        elif what == "holidays":
+            data = [dict(g, detail=client.holiday_group(g.get("id", ""))) for g in client.holiday_groups()]
+        else:
+            data = client.raw_devices()
     except unifi.UnifiError as e:
         data = {"error": str(e)}
     return JSONResponse(data, headers={"Content-Disposition": f'inline; filename="devices-{st.id}.json"'})

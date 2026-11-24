@@ -101,6 +101,21 @@
     {% endfor %}
   </section>
 
+  {% if unifi.pattern or unifi.now or unifi.error %}
+  <section class="card unifibox">
+    <h2>Also set in UniFi Access</h2>
+    {% if unifi.now == 'schedule' %}<p><span class="pill unl">Unlocked by UniFi right now</span> its own Unlock Schedule is open.</p>
+    {% elif unifi.now == 'app_unlock' %}<p><span class="pill unl">Unlocked in the UniFi app</span> someone set this door there.</p>
+    {% elif unifi.now == 'app_lock' %}<p><span class="pill lock">Locked in the UniFi app</span> someone set this door there.</p>{% endif %}
+    {% if unifi.pattern %}
+    <p><b>UniFi's own unlock schedule</b>, as seen: {{ unifi.text }}</p>
+    <p class="muted small">OpnDoor can't read UniFi's door schedules, so it learns them by watching. While an OpnDoor schedule is on, it takes over this door; when it ends, UniFi's schedule is back in charge. To keep it simple, set these hours in OpnDoor (Set regular hours) and clear the Unlock Schedule in UniFi.</p>
+    {% endif %}
+    {% if unifi.error %}<p class="muted small">UniFi Access didn't say what this door is doing: {{ unifi.error }}</p>{% endif %}
+  </section>
+  {% elif unifi.since %}
+  <p class="muted small">No UniFi Access unlock schedule seen on this door since {{ unifi.since|local|day }}.</p>
+  {% endif %}
   <section>
     <h2 style="margin-top:0">Schedules on this door</h2>
     {% for r in rows %}{% set s = r.s %}

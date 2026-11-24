@@ -413,6 +413,18 @@ class Report(SQLModel, table=True):
     last_error: str = ""
 
 
+class UnifiRuleSeen(SQLModel, table=True):
+    """A stretch of time when UniFi Access itself (not OpnDoor) was unlocking or holding a door: its own unlock
+    schedule, or someone in the UniFi app. OpnDoor can't read UniFi's door schedules, so it watches for them."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    door_id: str = Field(index=True)
+    kind: str  # schedule | app_unlock | app_lock
+    start: datetime = Field(index=True)  # naive UTC
+    end: Optional[datetime] = None  # None while it's still going
+    last_seen: datetime = Field(default_factory=utcnow)
+
+
 class Setting(SQLModel, table=True):
     """Simple app-wide settings (email server, ...)."""
 

@@ -73,7 +73,7 @@
           <div class="dtbody">
             <div class="dttop">
               {% if user.schedules %}<input type="checkbox" name="door" value="{{ d.id }}" aria-label="Select {{ d.name }}">{% endif %}
-              <a class="dtname" href="/doors/{{ d.id|urlencode }}">{{ d.name }}</a>
+              <a class="dtname" href="/doors/{{ d.id|urlencode }}">{{ d.name }}</a> {% if d.id in unifi_sched %}<span class="utag" title="UniFi Access also unlocks this door on its own schedule">UniFi schedule</span>{% endif %}
             </div>
             <div class="dtstate">
               {% if st.error %}<span class="pill bad">⚠️ Problem</span>
@@ -95,7 +95,7 @@
         <label class="drow" data-door data-state="{{ state[d.id] }}" data-open="{{ '1' if d.position_status == 'open' else '0' }}"
                data-find="{{ (d.name ~ ' ' ~ (b.name if b else '') ~ ' ' ~ d.full_name)|lower }}">
           <input type="checkbox" name="door" value="{{ d.id }}" aria-label="Select {{ d.name }}">
-          <span class="dname">{{ d.name }}</span>
+          <span class="dname">{{ d.name }}</span> {% if d.id in unifi_sched %}<span class="utag" title="UniFi Access also unlocks this door on its own schedule">UniFi schedule</span>{% endif %}
           <span class="dstate">
             {% if st.error %}<span class="pill bad">⚠️ Problem</span>
             {% elif st.mode == 'unlock' %}<span class="pill ok">Unlocked</span> <small class="muted">{{ 'until set back' if st.held else 'until ' ~ (st.until|time) }}</small>

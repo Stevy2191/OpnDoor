@@ -46,7 +46,7 @@
 
 <div class="legend small muted">
   {% if type in ('default', 'all') %}<span><i class="sw def"></i>Regular hours</span>{% endif %}<span><i class="sw unl"></i>Unlocked event</span>
-  <span><i class="sw lock"></i>Kept locked</span><span><i class="sw cal"></i>From a calendar</span>
+  <span><i class="sw lock"></i>Kept locked</span><span><i class="sw cal"></i>From a calendar</span>{% if unifi_blocks %}<span><i class="sw unifi"></i>UniFi Access's own schedule (as seen)</span>{% endif %}
 </div>
 
 {% if type not in ('default', 'all') %}<p class="muted small hintline">Regular hours are on each door's page. To see them here, choose <a href="?view={{ view }}&type=default">Regular hours</a> in the filter.</p>{% endif %}
@@ -63,6 +63,13 @@
     <div class="wdhead"><span class="dow">{{ d.strftime('%a') }}</span> <span class="dnum">{{ d.day }}</span>{% if d == today %}<span class="todaytag">Today</span>{% endif %}
       <a class="wadd" href="/schedules/new?day={{ d.isoformat() }}" aria-label="Add a schedule on {{ d.strftime('%A, %B %-d') }}">+</a></div>
     {% set hol = (holidays or {}).get(d) %}{% if hol %}<div class="holtag" title="Repeating schedules that follow holidays {{ 'run ' ~ hol.hours.replace('-', '–') ~ ' instead' if hol.hours else "don't run" }}">★ {{ hol.name }}{% if hol.hours %} · {{ hol.hours.replace('-', '–') }}{% else %} · closed{% endif %}</div>{% endif %}
+    {% for u in (unifi_blocks or {}).get(d, []) %}
+    <div class="ev unifi" title="UniFi Access unlocks these on its own schedule (as seen by OpnDoor)">
+      <span class="evtime">{{ span(u.start, u.end) }}</span>
+      <span class="evname">UniFi unlock schedule</span>
+      <span class="evdoors">{{ u.doors|join(', ') }}</span>
+    </div>
+    {% endfor %}
     {% for c in by_day[d] %}{% set s = c.s %}
     <a class="ev {{ kindclass(s) }}" href="{{ '/schedules/' ~ s.id if c.editable else '#' }}" {% if not c.editable %}aria-disabled="true"{% endif %} title="{{ s.label }} · {{ c.doors }}">
       <span class="evtime">{{ span(c.o.start, c.o.end) }}</span>
