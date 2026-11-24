@@ -150,3 +150,90 @@ def _when(h: Holiday) -> str:
     if h.end_date != h.start_date:
         s += f" to {h.end_date:%a %b %-d}"
     return s + (f", open {h.hours.replace('-', '–')}" if h.hours else ", closed")
+
+
+# ---------- holidays already set up in UniFi Access ----------
+
+def _day(value, tz) -> Optional[date]:
+    """A UniFi holiday's start or end: unix seconds or milliseconds, or an ISO date/time string."""
+    if value in (None, ""):
+        return None
+    try:
+        if isinstance(value, (int, float)) or str(value).isdigit():
+            n = float(value)
+            n = n / 1000 if n > 1e11 else n
+            from datetime import timezone
+            return datetime.fromtimestamp(n, timezone.utc).astimezone(tz).date()
+        s = str(value).replace("Z", "+00:00")
+        d = datetime.fromisoformat(s)
+        return (d.astimezone(tz) if d.tzinfo else d).date()
+    except (ValueError, OSError, OverflowError):
+        return None
+
+
+def unifi_holidays(session: Session, site: Site) -> tuple[list[dict], str]:
+    """([{id, name, holidays: [{name, start, end}]}], error) from the site's UniFi Access console."""
+    from . import engine, unifi
+    tz = engine.site_tz(site)
+    client = unifi.get_client(site)
+    try:
+        groups = client.holiday_groups()
+        out = []
+        for g in groups:
+            full = client.holiday_group(g.get("id", "")) if not g.get("holidays") else g
+            items = []
+            for h in (full.get("holidays") or []):
+                s = _day(h.get("start_time", h.get("start", h.get("start_date"))), tz)
+                e = _day(h.get("end_time", h.get("end", h.get("end_date"))), tz) or s
+                if s:
+                    if e < s:
+                        e = s
+                    items.append({"name": (h.get("name") or g.get("name") or "Holiday")[:80], "start": s, "end": e})
+            out.append({"id": g.get("id", ""), "name": g.get("name") or "Holidays", "holidays": items})
+        return out, ""
+    except unifi.UnifiError as e:
+        return [], str(e)
+
+
+@router.get("/holidays/unifi")
+def unifi_page(request: Request, site: Optional[int] = None, user: User = Depends(require_manager),
+               session: Session = Depends(get_session)):
+    managed = managed_site_ids(session, user)
+    sites = [x for x in session.exec(select(Site).order_by(Site.name)).all() if x.id in managed]
+    st = next((x for x in sites if x.id == site), sites[0] if sites else None)
+    groups, error = unifi_holidays(session, st) if st else ([], "")
+    have = {(h.name, h.start_date) for h in session.exec(select(Holiday)).all()
+            if h.site_id in (None, st.id if st else None)}
+    for g in groups:
+        for h in g["holidays"]:
+            h["have"] = (h["name"], h["start"]) in have
+    return render(request, "holidays_unifi.html", user, sites=sites, st=st, groups=groups, error=error,
+                  today=date.today())
+
+
+@router.post("/holidays/unifi")
+def unifi_import(request: Request, bg: BackgroundTasks, site: int = Form(...), group: str = Form(...),
+                 user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    st = session.get(Site, site)
+    if not st or site not in managed_site_ids(session, user):
+        return redirect("/holidays")
+    groups, error = unifi_holidays(session, st)
+    g = next((x for x in groups if x["id"] == group), None)
+    if not g:
+        flash(request, error or "That holiday group isn't in UniFi Access any more.", "error")
+        return redirect(f"/holidays/unifi?site={site}")
+    have = {(h.name, h.start_date) for h in session.exec(select(Holiday).where(
+        (Holiday.site_id == site) | (Holiday.site_id == None))).all()}  # noqa: E711
+    added = 0
+    for h in g["holidays"]:
+        if (h["name"], h["start"]) in have or h["end"] < date.today():
+            continue
+        session.add(Holiday(site_id=site, name=h["name"], start_date=h["start"], end_date=h["end"], created_by=user.id))
+        added += 1
+    audit.record(session, "holiday.update", f"Imported {added} holiday(s) from UniFi Access ({g['name']}) for {st.name}",
+                 user=user, site_ids=[site])
+    session.commit()
+    kick_reconcile(bg)
+    flash(request, f"Added {added} holiday{'s' if added != 1 else ''} from “{g['name']}”." if added else
+          "Nothing new to add: those holidays are already here or already over.")
+    return redirect("/holidays")

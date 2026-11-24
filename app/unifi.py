@@ -190,6 +190,26 @@ class UnifiClient:
     def raw_devices(self):
         return self._call("GET", "/devices")
 
+    def lock_rule(self, door_id: str) -> dict:
+        """What a door is doing right now, e.g. {"type": "schedule"} while UniFi's own unlock schedule has it open."""
+        return self._call("GET", f"/doors/{door_id}/lock_rule") or {}
+
+    def _first(self, method: str, paths: list, **kw):
+        last = None
+        for p in paths:
+            try:
+                return self._call(method, p, **kw)
+            except UnifiError as e:
+                last = e
+        raise last
+
+    def holiday_groups(self) -> list[dict]:
+        data = self._first("GET", ["/access_policies/holiday_groups", "/holiday_groups"]) or []
+        return data if isinstance(data, list) else data.get("data", []) if isinstance(data, dict) else []
+
+    def holiday_group(self, group_id: str) -> dict:
+        return self._first("GET", [f"/access_policies/holiday_groups/{group_id}", f"/holiday_groups/{group_id}"]) or {}
+
     def list_devices(self) -> list[dict]:
         """Every Access device: {id, name, type, door_id, online (True/False/None), firmware}."""
         data = self._call("GET", "/devices") or []
@@ -473,6 +493,18 @@ class FakeUnifiClient:
 
     def raw_devices(self):
         return [self.list_devices()]
+
+    lock_rules: dict = None  # tests set {remote door id: "schedule" | "keep_unlock" | ...}
+    holidays: list = None
+
+    def lock_rule(self, door_id: str) -> dict:
+        return {"type": (self.lock_rules or {}).get(door_id, "")}
+
+    def holiday_groups(self) -> list[dict]:
+        return [{"id": g["id"], "name": g["name"]} for g in (self.holidays or [])]
+
+    def holiday_group(self, group_id: str) -> dict:
+        return next((g for g in self.holidays or [] if g["id"] == group_id), {})
 
     def list_devices(self) -> list[dict]:
         out = [{"id": "demo-hub", "name": "Access Hub", "type": "UAH", "door_id": "", "online": True,

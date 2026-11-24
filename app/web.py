@@ -755,6 +755,9 @@ def schedules_list(request: Request, view: str = "", week: str = "", q: str = ""
                 by_day[day].append(card(o.schedule, o))
         for d in days:
             by_day[d].sort(key=lambda c: (c["s"].kind != "default", c["o"].start))
+        from .unifiwatch import week_blocks
+        bdoor_list = [d for d in doors if not building.isdigit() or d.building_id == int(building)]
+        ctx["unifi_blocks"] = week_blocks(session, bdoor_list, start) if type in ("", "all", "override", "event") else {}
         ctx.update(days=days, by_day=by_day, week_start=start, today=today, holidays=hols,
                    prev_week=(start - timedelta(days=7)).isoformat(), next_week=(start + timedelta(days=7)).isoformat(),
                    is_this_week=start <= today < start + timedelta(days=7))
@@ -808,7 +811,12 @@ def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kin
                 until_val=sched.repeat_until.isoformat() if sched and sched.repeat_until else "",
                 event_type=sched.event_type if sched else "event",
                 date_val=start.date().isoformat(), start_val=start.strftime("%H:%M"),
-                end_val=end.strftime("%H:%M"), days=days)
+                end_val=end.strftime("%H:%M"), days=days, unifi_pats=_unifi_pats(session, doors))
+
+
+def _unifi_pats(session, doors) -> dict:
+    from .unifiwatch import describe, patterns_for
+    return {k: describe(v) for k, v in patterns_for(session, doors).items()}
 
 
 @router.get("/schedules/new")
@@ -1040,7 +1048,9 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
     managed = managed_site_ids(session, user)
     em_sites = [x for x in session.exec(select(Site).order_by(Site.name)).all()
                 if x.id in managed and (site_id is None or x.id == site_id)]
+    from .unifiwatch import patterns_for
     return render(request, "doors.html", user, doors=doors, status=status, state=state, em_sites=em_sites,
+                  unifi_sched=patterns_for(session, doors),
                   counts=counts, nextev=nextev, now=now, site_id=site_id,
                   multi_site=len(visible) > 1, default_until=_default_until(now),
                   view=user.door_view or ("list" if user.schedules else "tiles"))
@@ -1083,8 +1093,9 @@ def door_page(request: Request, door_id: str, user: User = Depends(require_user)
         except protect.ProtectError as e:
             cam_error = str(e)
     from .activity import recent_for_door
+    from .unifiwatch import status as unifi_status
     return render(request, "door.html", user, door=door, site=site, days=days, rows=rows,
-                  openings=recent_for_door(session, door),
+                  openings=recent_for_door(session, door), unifi=unifi_status(session, door),
                   cams=cams, cam_error=cam_error, protect_on=protect.enabled(site),
                   can_history=user.is_manager and door.site_id in managed_site_ids(session, user),
                   history=audit.for_door(session, door.id), audit_mod=audit,

@@ -1129,3 +1129,16 @@ ol.steps .linkbox input { max-width: 520px; }
 .tapbox.bad { background: var(--err-soft); } .tapbox.bad .tapicon { border-color: var(--err); animation: none; }
 @keyframes tappulse { 0%, 100% { transform: scale(.85); opacity: .6; } 50% { transform: scale(1.05); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .tapbox .tapicon { animation: none; } }
+
+/* UniFi Access's own schedules */
+.utag { display: inline-block; font-size: .7rem; font-weight: 600; padding: .05rem .45rem; border-radius: 999px; background: #eef2ff; color: #3730a3; vertical-align: middle; white-space: nowrap; }
+:root[data-theme="dark"] .utag { background: #1e1b4b; color: #c7d2fe; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .utag { background: #1e1b4b; color: #c7d2fe; } }
+.ev.unifi { background: repeating-linear-gradient(135deg, var(--bg), var(--bg) 6px, var(--card) 6px, var(--card) 12px); border-left-color: #6366f1; color: var(--muted); cursor: default; }
+.ev.unifi .evname { color: var(--text); }
+.unifiwarn { margin: .6rem 0; padding: .6rem .75rem; border-radius: 8px; background: #eef2ff; color: #312e81; border-left: 3px solid #6366f1; }
+.unifiwarn ul { margin: .3rem 0; padding-left: 1.1rem; }
+:root[data-theme="dark"] .unifiwarn { background: #1e1b4b; color: #e0e7ff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .unifiwarn { background: #1e1b4b; color: #e0e7ff; } }
+.unifibox { border-left: 4px solid #6366f1; }
+.sw.unifi { background: repeating-linear-gradient(135deg, #c7d2fe, #c7d2fe 3px, #eef2ff 3px, #eef2ff 6px); border: 1px solid #6366f1; }

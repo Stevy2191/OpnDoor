@@ -14,7 +14,7 @@
     {% if r.console_ok %}<span class="pill locked">Console connected</span>{% else %}<span class="pill bad">Can't reach the console</span>{% endif %}
     {% if r.bad %}<span class="pill bad">{{ r.bad }} offline</span>{% endif %}
     {% if r.net %}<span class="pill closed" title="Online or offline comes from UniFi Network">Checked with UniFi Network</span>{% endif %}</h2>
-  {% if user.is_admin %}<p class="small" style="margin:-.4rem 0 .8rem"><a href="/devices/raw?site={{ r.site.id }}" target="_blank" rel="noopener">What the console sent</a> <span class="muted">· to compare with the UniFi app</span>{% if not r.net %} · <a href="/sites/{{ r.site.id }}#console">Check status with UniFi Network</a>{% endif %}</p>{% endif %}
+  {% if user.is_admin %}<p class="small" style="margin:-.4rem 0 .8rem">What the console sent: <a href="/devices/raw?site={{ r.site.id }}" target="_blank" rel="noopener">devices</a> · <a href="/devices/raw?site={{ r.site.id }}&what=doors" target="_blank" rel="noopener">doors</a> · <a href="/devices/raw?site={{ r.site.id }}&what=rules" target="_blank" rel="noopener">what each door is doing</a> · <a href="/devices/raw?site={{ r.site.id }}&what=holidays" target="_blank" rel="noopener">holidays</a> <span class="muted">· to compare with the UniFi app</span>{% if not r.net %} · <a href="/sites/{{ r.site.id }}#console">Check status with UniFi Network</a>{% endif %}</p>{% endif %}
   {% for e in r.errors %}<p class="err small">{{ e }}</p>{% endfor %}
   {% if r.devs %}
   <div class="devgrid">

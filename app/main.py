@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
-from . import access, activity, admin, alerts, devices, reports, history, holidays, live, mailer, maps, screens, sso, unifipeople, video, visitors
+from . import access, activity, admin, alerts, devices, reports, unifiwatch, history, holidays, live, mailer, maps, screens, sso, unifipeople, video, visitors
 from .security import SecurityMiddleware
 from .web import render, router
 
@@ -30,6 +30,7 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(engine.safe(engine.refresh_states), "interval", seconds=config.RECONCILE_SECONDS, id="states", **opts)
     sched.add_job(engine.safe(activity.sync_all), "interval", minutes=2, id="doorlog", **opts)
     sched.add_job(engine.safe(access.sync_all), "interval", minutes=config.DOOR_SYNC_MINUTES, id="access", **opts)
+    sched.add_job(engine.safe(unifiwatch.watch_all), "interval", minutes=1, id="unifiwatch", **opts)
     sched.add_job(engine.safe(alerts.check_all), "interval", minutes=1, id="alerts", **opts)
     sched.add_job(engine.safe(reports.send_due), "cron", minute=5, id="reports", **opts)
     sched.add_job(engine.safe(admin.nightly_backup), "cron", hour=2, minute=17, id="backup", **opts)

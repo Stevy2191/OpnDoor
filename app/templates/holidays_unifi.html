@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Holidays from UniFi Access · OpnDoor{% endblock %}
+{% block mainclass %}narrow{% endblock %}
+{% block content %}
+<p class="crumbs small"><a href="/holidays">Holidays</a> › From UniFi Access</p>
+<h1>Holidays in UniFi Access</h1>
+<p class="muted">These are the holiday groups set up on the console. Add a group here so OpnDoor's schedules skip the same days.</p>
+{% if sites|length > 1 %}
+<form method="get" class="card actfilters"><select name="site" onchange="this.form.submit()" aria-label="Site">
+  {% for s in sites %}<option value="{{ s.id }}" {% if st and s.id == st.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></form>
+{% endif %}
+{% if error %}<div class="flash error">UniFi Access didn't share its holidays: {{ error }}{% if '403' in error or 'permission' in error.lower() %} The token needs Access Policy: View.{% endif %}</div>{% endif %}
+{% for g in groups %}
+<section class="card">
+  <div class="cardhead">
+    <h2>{{ g.name }} <small class="muted">{{ g.holidays|length }}</small></h2>
+    {% set new = g.holidays|rejectattr('have')|selectattr('end', 'ge', today)|list %}
+    <form method="post" action="/holidays/unifi"><input type="hidden" name="site" value="{{ st.id }}"><input type="hidden" name="group" value="{{ g.id }}">
+      <button class="primary" {% if not new %}disabled{% endif %}>{{ 'Add ' ~ new|length ~ ' to OpnDoor' if new else 'All added' }}</button></form>
+  </div>
+  {% if g.holidays %}
+  <div class="rowlist">
+    {% for h in g.holidays %}
+    <div class="rowitem {{ 'muted' if h.end < today }}">
+      <div class="ri-main"><strong>{{ h.name }}</strong><span class="muted small">{{ h.start.strftime('%a, %b') }} {{ h.start.day }}, {{ h.start.year }}{% if h.end != h.start %} – {{ h.end.strftime('%b') }} {{ h.end.day }}{% endif %}</span></div>
+      {% if h.have %}<span class="pill locked">In OpnDoor</span>{% elif h.end < today %}<span class="pill closed">Over</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted empty">No holidays in this group.</p>{% endif %}
+</section>
+{% else %}
+{% if not error %}<section class="card"><p class="muted empty">No holiday groups in UniFi Access{% if st %} at {{ st.name }}{% endif %}.</p></section>{% endif %}
+{% endfor %}
+{% endblock %}
