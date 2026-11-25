@@ -64,46 +64,130 @@ def holidays_page(request: Request, year: Optional[int] = None, user: User = Dep
     year = year or (today.year + (1 if today.month == 12 else 0))
     have = {(h.name, h.start_date) for h in rows}
     us = [(n, d, (n, d) in have) for n, d in us_holidays(year)]
+    site_doors = _site_doors(session, user, managed)
+    door_names = {d.id: d.name for ds in site_doors.values() for d in ds}
     return render(request, "holidays.html", user, upcoming=upcoming, past=past, hsites=sites, us=us, year=year,
+                  site_doors=_site_doors(session, user, managed), h=None,
+                  hol_doors={x.id: _doors_text(x, site_doors, door_names) for x in rows if x.doors},
                   us_default=US_DEFAULT, today=today)
 
 
-@router.post("/holidays")
-def holiday_add(request: Request, bg: BackgroundTasks, name: str = Form(...), start: str = Form(...), end: str = Form(""),
-                site: str = Form(""), mode: str = Form("closed"), open_from: str = Form(""), open_to: str = Form(""),
-                user: User = Depends(require_manager), session: Session = Depends(get_session)):
+def _site_doors(session: Session, user: User, managed: set) -> dict:
+    """{site id: [doors]} for the sites this person manages (doors they can see)."""
+    from .auth import allowed_door_ids
+    from .models import Door
+    allowed = allowed_door_ids(session, user)
+    out: dict = {}
+    for d in session.exec(select(Door).where(Door.present == True, Door.hidden == False).order_by(Door.name)).all():  # noqa: E712
+        if d.site_id in managed and d.id in allowed:
+            out.setdefault(d.site_id, []).append(d)
+    return out
+
+
+async def _read(request: Request, session: Session, user: User, h: Holiday) -> str:
+    """Fill h from the form. Returns '' or what's wrong."""
+    f = await request.form()
     managed = managed_site_ids(session, user)
+    site = str(f.get("site", ""))
     site_id = int(site) if site.isdigit() else None
     if not _can(user, managed, site_id):
-        flash(request, "Only admins can add holidays for every site. Pick one of your sites.", "error")
-        return redirect("/holidays")
+        return "Only admins can add holidays for every site. Pick one of your sites."
     try:
-        d0 = date.fromisoformat(start)
+        d0 = date.fromisoformat(str(f.get("start", "")))
+        end = str(f.get("end", ""))
         d1 = date.fromisoformat(end) if end else d0
     except ValueError:
-        flash(request, "Pick the holiday's date.", "error")
-        return redirect("/holidays")
+        return "Pick the holiday's date."
     if d1 < d0:
         d0, d1 = d1, d0
     hours = ""
-    if mode == "hours":
+    if f.get("mode") == "hours":
         try:
-            a, b = datetime.strptime(open_from, "%H:%M").time(), datetime.strptime(open_to, "%H:%M").time()
+            a = datetime.strptime(str(f.get("open_from", "")), "%H:%M").time()
+            b = datetime.strptime(str(f.get("open_to", "")), "%H:%M").time()
         except ValueError:
-            flash(request, "Set the shorter hours (from and to).", "error")
-            return redirect("/holidays")
+            return "Set the shorter hours (from and to)."
         if b <= a:
-            flash(request, "The shorter hours have to end after they start.", "error")
-            return redirect("/holidays")
+            return "The shorter hours have to end after they start."
         hours = f"{a:%H:%M}-{b:%H:%M}"
-    h = Holiday(site_id=site_id, name=name.strip() or "Holiday", start_date=d0, end_date=d1, hours=hours,
-                created_by=user.id)
+    door_ids = ""
+    if site_id and f.get("scope") == "some":
+        site_doors = {d.id for d in _site_doors(session, user, managed).get(site_id, [])}
+        picked = [d for d in f.getlist("doors") if d in site_doors]
+        if not picked:
+            return "Tick at least one door, or choose All doors."
+        if set(picked) != site_doors:  # every door ticked = all doors (including ones added later)
+            door_ids = ",".join(sorted(picked))
+    h.site_id, h.name, h.start_date, h.end_date = site_id, (str(f.get("name", "")).strip() or "Holiday")[:80], d0, d1
+    h.hours, h.door_ids = hours, door_ids
+    return ""
+
+
+def _doors_text(h: Holiday, site_doors: dict, names: dict) -> str:
+    """"Only North Doors, South Doors" or, when most doors are in, "All doors except Box Office"."""
+    picked = set(h.doors)
+    left_out = [d.name for d in site_doors.get(h.site_id, []) if d.id not in picked]
+    if left_out and len(left_out) < len(picked):
+        return "All doors except " + ", ".join(left_out)
+    return "Only " + ", ".join(names.get(d, "a removed door") for d in h.doors)
+
+
+def _snap(h: Holiday) -> dict:
+    return {"Name": h.name, "When": _when(h), "Site": str(h.site_id or "every site"),
+            "Doors": f"{len(h.doors)} picked" if h.doors else "all"}
+
+
+@router.post("/holidays")
+async def holiday_add(request: Request, bg: BackgroundTasks, user: User = Depends(require_manager),
+                      session: Session = Depends(get_session)):
+    h = Holiday(name="", start_date=date.today(), end_date=date.today(), created_by=user.id)
+    why = await _read(request, session, user, h)
+    if why:
+        flash(request, why, "error")
+        return redirect("/holidays")
     session.add(h)
     audit.record(session, "holiday.update", f"{user.display} added the holiday “{h.name}” ({_when(h)})", user=user,
-                 site_ids=[site_id] if site_id else None)
+                 site_ids=[h.site_id] if h.site_id else None)
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Added {h.name}.")
+    return redirect("/holidays")
+
+
+def _editable(session: Session, user: User, hid: int) -> Optional[Holiday]:
+    h = session.get(Holiday, hid)
+    return h if h and _can(user, managed_site_ids(session, user), h.site_id) else None
+
+
+@router.get("/holidays/{hid:int}/edit")
+def holiday_edit(request: Request, hid: int, user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    h = _editable(session, user, hid)
+    if not h:
+        flash(request, "That holiday isn't available to you.", "error")
+        return redirect("/holidays")
+    managed = managed_site_ids(session, user)
+    sites = {x.id: x for x in session.exec(select(Site).order_by(Site.name)).all() if x.id in managed}
+    return render(request, "holiday_edit.html", user, h=h, hsites=sites, site_doors=_site_doors(session, user, managed),
+                  today=date.today())
+
+
+@router.post("/holidays/{hid:int}")
+async def holiday_save(request: Request, hid: int, bg: BackgroundTasks, user: User = Depends(require_manager),
+                       session: Session = Depends(get_session)):
+    h = _editable(session, user, hid)
+    if not h:
+        return redirect("/holidays")
+    before = _snap(h)
+    why = await _read(request, session, user, h)
+    if why:
+        flash(request, why, "error")
+        return redirect(f"/holidays/{hid}/edit")
+    session.add(h)
+    audit.record(session, "holiday.update", f"{user.display} changed the holiday “{h.name}”", user=user,
+                 changes=audit.diff(before, _snap(h)), site_ids=[h.site_id] if h.site_id else None)
+    session.commit()
+    kick_reconcile(bg)
+    flash(request, f"Saved {h.name}.")
     return redirect("/holidays")
 
 
