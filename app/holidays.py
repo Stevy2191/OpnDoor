@@ -51,24 +51,31 @@ def _can(user: User, managed: set, site_id: Optional[int]) -> bool:
     return user.is_admin if site_id is None else site_id in managed
 
 
+def _can_h(user: User, managed: set, h: Holiday) -> bool:
+    """Can change it: admins anything; others only holidays for sites they all run."""
+    return user.is_admin if not h.sites else all(s in managed for s in h.sites)
+
+
+def _sees(managed: set, h: Holiday) -> bool:
+    return not h.sites or any(s in managed for s in h.sites)
+
+
 @router.get("/holidays")
 def holidays_page(request: Request, year: Optional[int] = None, user: User = Depends(require_manager),
                   session: Session = Depends(get_session)):
     managed = managed_site_ids(session, user)
     sites = {x.id: x for x in session.exec(select(Site).order_by(Site.name)).all() if x.id in managed}
     today = date.today()
-    rows = [h for h in session.exec(select(Holiday).order_by(Holiday.start_date)).all()
-            if h.site_id is None or h.site_id in managed]
+    rows = [h for h in session.exec(select(Holiday).order_by(Holiday.start_date)).all() if _sees(managed, h)]
     upcoming = [h for h in rows if h.end_date >= today]
     past = [h for h in rows if h.end_date < today][-10:]
     year = year or (today.year + (1 if today.month == 12 else 0))
     have = {(h.name, h.start_date) for h in rows}
     us = [(n, d, (n, d) in have) for n, d in us_holidays(year)]
     site_doors = _site_doors(session, user, managed)
-    door_names = {d.id: d.name for ds in site_doors.values() for d in ds}
     return render(request, "holidays.html", user, upcoming=upcoming, past=past, hsites=sites, us=us, year=year,
-                  site_doors=_site_doors(session, user, managed), h=None,
-                  hol_doors={x.id: _doors_text(x, site_doors, door_names) for x in rows if x.doors},
+                  site_doors=site_doors, h=None, hol_where={x.id: _where(session, x, site_doors) for x in rows},
+                  can_edit={x.id for x in rows if _can_h(user, managed, x)},
                   us_default=US_DEFAULT, today=today)
 
 
@@ -88,10 +95,19 @@ async def _read(request: Request, session: Session, user: User, h: Holiday) -> s
     """Fill h from the form. Returns '' or what's wrong."""
     f = await request.form()
     managed = managed_site_ids(session, user)
-    site = str(f.get("site", ""))
-    site_id = int(site) if site.isdigit() else None
-    if not _can(user, managed, site_id):
-        return "Only admins can add holidays for every site. Pick one of your sites."
+    if "where" in f or "every" in f or "sites" in f:  # the form's site ticks (where = sent even with none ticked)
+        every = bool(f.get("every"))
+        sites = [] if every else sorted({int(x) for x in f.getlist("sites") if str(x).isdigit()})
+    else:  # one site picked from a list ("" = every site)
+        site = str(f.get("site", ""))
+        sites = [int(site)] if site.isdigit() else []
+        every = not sites
+    if every and not user.is_admin:
+        return "Only admins can add holidays for every site. Tick your sites instead."
+    if not every and not sites:
+        return "Tick at least one site."
+    if any(s not in managed for s in sites):
+        return "You can only add holidays for sites you look after."
     try:
         d0 = date.fromisoformat(str(f.get("start", "")))
         end = str(f.get("end", ""))
@@ -110,30 +126,55 @@ async def _read(request: Request, session: Session, user: User, h: Holiday) -> s
         if b <= a:
             return "The shorter hours have to end after they start."
         hours = f"{a:%H:%M}-{b:%H:%M}"
-    door_ids = ""
-    if site_id and f.get("scope") == "some":
-        site_doors = {d.id for d in _site_doors(session, user, managed).get(site_id, [])}
-        picked = [d for d in f.getlist("doors") if d in site_doors]
+    door_ids: list = []
+    all_doors = _site_doors(session, user, managed)
+    ticked = set(f.getlist("doors"))
+    for sid in sites:
+        scope = f.get(f"scope_{sid}") or (f.get("scope") if len(sites) == 1 else "")
+        if scope != "some":
+            continue
+        here = {d.id for d in all_doors.get(sid, [])}
+        picked = sorted(ticked & here)
         if not picked:
-            return "Tick at least one door, or choose All doors."
-        if set(picked) != site_doors:  # every door ticked = all doors (including ones added later)
-            door_ids = ",".join(sorted(picked))
-    h.site_id, h.name, h.start_date, h.end_date = site_id, (str(f.get("name", "")).strip() or "Holiday")[:80], d0, d1
-    h.hours, h.door_ids = hours, door_ids
+            name = session.get(Site, sid).name if session.get(Site, sid) else "that site"
+            return f"Tick at least one door at {name}, or choose All doors."
+        if set(picked) != here:  # every door ticked = all doors (including ones added later)
+            door_ids += picked
+    h.site_id = sites[0] if len(sites) == 1 else None
+    h.site_ids = ",".join(str(s) for s in sites) if len(sites) > 1 else ""
+    h.name, h.start_date, h.end_date = (str(f.get("name", "")).strip() or "Holiday")[:80], d0, d1
+    h.hours, h.door_ids = hours, ",".join(door_ids)
     return ""
 
 
-def _doors_text(h: Holiday, site_doors: dict, names: dict) -> str:
-    """"Only North Doors, South Doors" or, when most doors are in, "All doors except Box Office"."""
-    picked = set(h.doors)
-    left_out = [d.name for d in site_doors.get(h.site_id, []) if d.id not in picked]
+def _doors_text(h: Holiday, sid: int, site_doors: dict, names: dict) -> str:
+    """"All doors", "Only North Doors, South Doors" or, when most doors are in, "All doors except Box Office"."""
+    picked = h.site_doors(sid)
+    if not picked:
+        return "All doors"
+    left_out = [d.name for d in site_doors.get(sid, []) if d.id not in picked]
     if left_out and len(left_out) < len(picked):
         return "All doors except " + ", ".join(left_out)
-    return "Only " + ", ".join(names.get(d, "a removed door") for d in h.doors)
+    return "Only " + ", ".join(names.get(d, "a removed door") for d in picked)
+
+
+def _where(session: Session, h: Holiday, site_doors: dict) -> list:
+    """[(site name, doors text)] for the holidays list."""
+    if not h.sites:
+        return [("Every site", "All doors")]
+    names = {d.id: d.name for ds in site_doors.values() for d in ds}
+    from .models import Door
+    for d in session.exec(select(Door).where(Door.id.in_(h.doors))).all() if h.doors else []:
+        names.setdefault(d.id, d.name)
+    out = []
+    for sid in h.sites:
+        st = session.get(Site, sid)
+        out.append((st.name if st else "A removed site", _doors_text(h, sid, site_doors, names)))
+    return sorted(out)
 
 
 def _snap(h: Holiday) -> dict:
-    return {"Name": h.name, "When": _when(h), "Site": str(h.site_id or "every site"),
+    return {"Name": h.name, "When": _when(h), "Sites": ", ".join(map(str, h.sites)) or "every site",
             "Doors": f"{len(h.doors)} picked" if h.doors else "all"}
 
 
@@ -147,7 +188,7 @@ async def holiday_add(request: Request, bg: BackgroundTasks, user: User = Depend
         return redirect("/holidays")
     session.add(h)
     audit.record(session, "holiday.update", f"{user.display} added the holiday “{h.name}” ({_when(h)})", user=user,
-                 site_ids=[h.site_id] if h.site_id else None)
+                 site_ids=h.sites or None)
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Added {h.name}.")
@@ -156,7 +197,7 @@ async def holiday_add(request: Request, bg: BackgroundTasks, user: User = Depend
 
 def _editable(session: Session, user: User, hid: int) -> Optional[Holiday]:
     h = session.get(Holiday, hid)
-    return h if h and _can(user, managed_site_ids(session, user), h.site_id) else None
+    return h if h and _can_h(user, managed_site_ids(session, user), h) else None
 
 
 @router.get("/holidays/{hid:int}/edit")
@@ -184,7 +225,7 @@ async def holiday_save(request: Request, hid: int, bg: BackgroundTasks, user: Us
         return redirect(f"/holidays/{hid}/edit")
     session.add(h)
     audit.record(session, "holiday.update", f"{user.display} changed the holiday “{h.name}”", user=user,
-                 changes=audit.diff(before, _snap(h)), site_ids=[h.site_id] if h.site_id else None)
+                 changes=audit.diff(before, _snap(h)), site_ids=h.sites or None)
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Saved {h.name}.")
@@ -219,9 +260,9 @@ def holiday_us(request: Request, bg: BackgroundTasks, year: int = Form(...), nam
 def holiday_delete(request: Request, hid: int, bg: BackgroundTasks, user: User = Depends(require_manager),
                    session: Session = Depends(get_session)):
     h = session.get(Holiday, hid)
-    if h and _can(user, managed_site_ids(session, user), h.site_id):
+    if h and _can_h(user, managed_site_ids(session, user), h):
         audit.record(session, "holiday.update", f"{user.display} removed the holiday “{h.name}” ({_when(h)})",
-                     user=user, site_ids=[h.site_id] if h.site_id else None)
+                     user=user, site_ids=h.sites or None)
         session.delete(h)
         session.commit()
         kick_reconcile(bg)
@@ -287,7 +328,7 @@ def unifi_page(request: Request, site: Optional[int] = None, user: User = Depend
     st = next((x for x in sites if x.id == site), sites[0] if sites else None)
     groups, error = unifi_holidays(session, st) if st else ([], "")
     have = {(h.name, h.start_date) for h in session.exec(select(Holiday)).all()
-            if h.site_id in (None, st.id if st else None)}
+            if h.for_site(st.id if st else None)}
     for g in groups:
         for h in g["holidays"]:
             h["have"] = (h["name"], h["start"]) in have
@@ -306,8 +347,7 @@ def unifi_import(request: Request, bg: BackgroundTasks, site: int = Form(...), g
     if not g:
         flash(request, error or "That holiday group isn't in UniFi Access any more.", "error")
         return redirect(f"/holidays/unifi?site={site}")
-    have = {(h.name, h.start_date) for h in session.exec(select(Holiday).where(
-        (Holiday.site_id == site) | (Holiday.site_id == None))).all()}  # noqa: E711
+    have = {(h.name, h.start_date) for h in session.exec(select(Holiday)).all() if h.for_site(site)}
     added = 0
     for h in g["holidays"]:
         if (h["name"], h["start"]) in have or h["end"] < date.today():

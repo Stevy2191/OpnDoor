@@ -1142,3 +1142,9 @@ ol.steps .linkbox input { max-width: 520px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .unifiwarn { background: #1e1b4b; color: #e0e7ff; } }
 .unifibox { border-left: 4px solid #6366f1; }
 .sw.unifi { background: repeating-linear-gradient(135deg, #c7d2fe, #c7d2fe 3px, #eef2ff 3px, #eef2ff 6px); border: 1px solid #6366f1; }
+
+/* holiday: sites and doors */
+.holsiteblock { margin-top: .6rem; padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 8px; }
+.holsitehead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.holsiteblock .holdoorlist { margin-top: .5rem; }
+.holwhererow + .holwhererow { margin-top: .35rem; }

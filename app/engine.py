@@ -110,14 +110,16 @@ def holiday_rows(session: Session, site_id: Optional[int]) -> list:
     from .models import Holiday
     q = select(Holiday)
     q = q.where((Holiday.site_id == None) | (Holiday.site_id == site_id)) if site_id else q.where(Holiday.site_id == None)  # noqa: E711
-    return sorted(session.exec(q).all(), key=lambda h: (h.site_id is not None, bool(h.doors)))  # most specific wins
+    rows = [h for h in session.exec(q).all() if h.site_id is not None or h.for_site(site_id)]
+    # most specific wins (it goes last): one site > a few sites > every site, then some doors > all doors
+    return sorted(rows, key=lambda h: (h.site_id is not None, bool(h.site_ids), bool(h.doors)))
 
 
-def holiday_map(rows: list, door_id: Optional[str] = None) -> dict:
+def holiday_map(rows: list, door_id: Optional[str] = None, site_id: Optional[int] = None) -> dict:
     """{date: Holiday} from holiday rows, keeping only holidays that apply to the door (or to every door)."""
     out: dict = {}
     for h in rows:
-        if not h.covers(door_id):
+        if not h.covers(door_id, site_id):
             continue
         d = h.start_date
         while d <= h.end_date:
@@ -129,7 +131,7 @@ def holiday_map(rows: list, door_id: Optional[str] = None) -> dict:
 def holidays_for(session: Session, site_id: Optional[int], door_id: Optional[str] = None) -> dict:
     """{date: Holiday} for a site (its own holidays plus the ones for every site). With a door, only holidays
     that include that door; without one, only holidays for every door at the site."""
-    return holiday_map(holiday_rows(session, site_id), door_id)
+    return holiday_map(holiday_rows(session, site_id), door_id, site_id)
 
 
 def door_timeline(session: Session, door: Door, lo: datetime, hi: datetime,
