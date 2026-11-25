@@ -21,10 +21,10 @@
           <td><strong>{{ h.name }}</strong></td>
           <td>{{ h.start_date.strftime('%a, %b %-d, %Y') }}{% if h.end_date != h.start_date %} – {{ h.end_date.strftime('%a, %b %-d') }}{% endif %}</td>
           <td>{% if h.hours %}<span class="pill ok">Open {{ h.hours.replace('-', '–') }}</span>{% else %}<span class="pill locked">Closed all day</span>{% endif %}</td>
-          <td class="muted">{{ hsites[h.site_id].name if h.site_id and h.site_id in hsites else 'Every site' }}
-            <div class="small">{% if h.doors %}{{ hol_doors.get(h.id, '') }}{% else %}All doors{% endif %}</div></td>
+          <td class="muted">{% for sname, dtext in hol_where[h.id] %}<div class="holwhererow">{{ sname }}
+            <div class="small">{{ dtext }}</div></div>{% endfor %}</td>
           <td class="right nowrap">
-            {% if h.site_id or user.is_admin %}
+            {% if h.id in can_edit %}
             <a class="button small" href="/holidays/{{ h.id }}/edit">Edit</a>
             <form method="post" action="/holidays/{{ h.id }}/delete" style="display:inline" onsubmit="return confirm('Remove {{ h.name|e }}?')"><button class="small danger">Remove</button></form>
             {% endif %}

@@ -235,7 +235,8 @@ class Holiday(SQLModel, table=True):
     start_date: date = Field(index=True)
     end_date: date
     hours: str = ""
-    door_ids: str = ""  # comma separated; empty = every door (at the site, or everywhere)
+    door_ids: str = ""  # comma separated; empty = every door. Only restricts the sites that have doors listed.
+    site_ids: str = ""  # several sites (site_id is then None); empty = site_id says where
     created_by: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -243,9 +244,29 @@ class Holiday(SQLModel, table=True):
     def doors(self) -> list[str]:
         return [d for d in (self.door_ids or "").split(",") if d]
 
-    def covers(self, door_id: Optional[str]) -> bool:
-        """Does this holiday apply to the door? door_id None = asking for the whole site: only all-door holidays."""
-        return not self.doors or (door_id is not None and door_id in self.doors)
+    @property
+    def sites(self) -> list[int]:
+        """The sites it's for; [] = every site."""
+        if self.site_ids:
+            return [int(x) for x in self.site_ids.split(",") if x.isdigit()]
+        return [self.site_id] if self.site_id else []
+
+    def for_site(self, site_id: Optional[int]) -> bool:
+        return not self.sites or site_id in self.sites
+
+    def site_doors(self, site_id) -> list[str]:
+        """The doors picked at one site ([] = all its doors)."""
+        return [d for d in self.doors if d.split(":", 1)[0] == str(site_id)]
+
+    def covers(self, door_id: Optional[str], site_id: Optional[int] = None) -> bool:
+        """Does this holiday apply to the door? door_id None = asking for the whole site (site_id):
+        only if every door there is in."""
+        if not self.doors:
+            return True
+        if door_id is None:
+            return site_id is not None and not self.site_doors(site_id)
+        mine = self.site_doors(door_id.split(":", 1)[0])
+        return not mine or door_id in mine
 
     def hours_range(self):
         if not self.hours or "-" not in self.hours:

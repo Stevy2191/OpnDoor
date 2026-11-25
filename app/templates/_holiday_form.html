@@ -17,28 +17,37 @@
       <label>to <input type="time" name="open_to" value="{{ hr[1] }}"></label>
     </div>
   </fieldset>
-  {% if hsites|length > 1 or user.is_admin %}
-  <label>Site
-    <select name="site" class="holsite">
-      {% if user.is_admin %}<option value="" {% if h and not h.site_id %}selected{% endif %}>Every site</option>{% endif %}
-      {% for x in hsites.values() %}<option value="{{ x.id }}" {% if (h and h.site_id == x.id) or (not h and not user.is_admin and loop.first) %}selected{% endif %}>{{ x.name }}</option>{% endfor %}
-    </select></label>
-  {% else %}<input type="hidden" name="site" class="holsite" value="{{ (hsites.values()|first).id if hsites }}">{% endif %}
-  <fieldset class="holdoors">
-    <legend>Which doors</legend>
-    <div class="seg">
-      <label><input type="radio" name="scope" value="all" {% if not h or not h.doors %}checked{% endif %}><span>All doors</span></label>
-      <label><input type="radio" name="scope" value="some" {% if h and h.doors %}checked{% endif %}><span>Only some doors</span></label>
-    </div>
-    <p class="hint holallnote">Every door at the site, including doors added later.</p>
-    {% for sid, ds in site_doors.items() %}
-    <div class="holdoorlist" data-site="{{ sid }}" hidden>
-      <p class="hint" style="margin:0 0 .4rem">Untick doors that should keep their normal hours that day.</p>
+  {% set hs = h.sites if h else [] %}
+  <fieldset class="holwhere">
+    <legend>Where</legend>
+    <input type="hidden" name="where" value="1">
+    {% if user.is_admin %}
+    <label class="check"><input type="checkbox" name="every" value="1" class="holevery" {% if h and not hs %}checked{% endif %}> Every site, all doors</label>
+    {% endif %}
+    <div class="holsites">
+      {% if hsites|length > 1 or user.is_admin %}
+      <p class="hint" style="margin:0 0 .4rem">Tick one site or a few.</p>
       <div class="chips">
-        {% for d in ds %}<label class="chip"><input type="checkbox" name="doors" value="{{ d.id }}" {% if not h or not h.doors or d.id in h.doors %}checked{% endif %}><span>{{ d.name }}</span></label>{% endfor %}
+        {% for x in hsites.values() %}<label class="chip"><input type="checkbox" name="sites" value="{{ x.id }}" class="holsite" {% if x.id in hs or (not h and hsites|length == 1) %}checked{% endif %}><span>{{ x.name }}</span></label>{% endfor %}
       </div>
+      {% else %}{% for x in hsites.values() %}<input type="checkbox" name="sites" value="{{ x.id }}" class="holsite" checked hidden>{% endfor %}{% endif %}
+      {% for x in hsites.values() %}{% set picked = h.site_doors(x.id) if h else [] %}
+      <div class="holsiteblock" data-site="{{ x.id }}" hidden>
+        <div class="holsitehead"><b>{{ x.name }}</b>
+          <div class="seg small">
+            <label><input type="radio" name="scope_{{ x.id }}" value="all" {% if not picked %}checked{% endif %}><span>All doors</span></label>
+            <label><input type="radio" name="scope_{{ x.id }}" value="some" {% if picked %}checked{% endif %}><span>Only some doors</span></label>
+          </div>
+        </div>
+        <div class="holdoorlist" hidden>
+          <p class="hint" style="margin:0 0 .4rem">Untick doors that should keep their normal hours that day.</p>
+          <div class="chips">
+            {% for d in site_doors.get(x.id, []) %}<label class="chip"><input type="checkbox" name="doors" value="{{ d.id }}" {% if not picked or d.id in picked %}checked{% endif %}><span>{{ d.name }}</span></label>{% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
   </fieldset>
   <div class="btnrow">
     <button class="primary">{{ 'Save changes' if h else 'Add' }}</button>
@@ -48,14 +57,18 @@
 <script>
 (function () {
   const f = document.getElementById('holform'); if (!f) return;
-  const site = f.querySelector('.holsite'), box = f.querySelector('.holdoors');
+  const every = f.querySelector('.holevery');
   function sync() {
-    const sid = site ? site.value : '', some = (f.querySelector('[name=scope]:checked') || {}).value === 'some';
-    box.hidden = !sid;  // "Every site" always means every door
-    f.querySelector('.holallnote').hidden = some;
-    f.querySelectorAll('.holdoorlist').forEach(l => {
-      const on = some && l.dataset.site === sid; l.hidden = !on;
-      l.querySelectorAll('input').forEach(i => i.disabled = !on);
+    const all = every && every.checked;
+    f.querySelector('.holsites').hidden = all;  // every site always means every door
+    const on = new Set([...f.querySelectorAll('.holsite')].filter(i => i.checked && !all).map(i => i.value));
+    f.querySelectorAll('.holsiteblock').forEach(b => {
+      const show = on.has(b.dataset.site);
+      const some = (b.querySelector('input[type=radio]:checked') || {}).value === 'some';
+      b.hidden = !show;
+      b.querySelectorAll('input[type=radio]').forEach(i => i.disabled = !show);
+      const l = b.querySelector('.holdoorlist'); l.hidden = !(show && some);
+      l.querySelectorAll('input').forEach(i => i.disabled = !(show && some));
     });
     f.querySelector('.holhours').hidden = (f.querySelector('[name=mode]:checked') || {}).value !== 'hours';
   }
