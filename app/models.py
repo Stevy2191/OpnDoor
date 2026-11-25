@@ -235,8 +235,17 @@ class Holiday(SQLModel, table=True):
     start_date: date = Field(index=True)
     end_date: date
     hours: str = ""
+    door_ids: str = ""  # comma separated; empty = every door (at the site, or everywhere)
     created_by: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
+
+    @property
+    def doors(self) -> list[str]:
+        return [d for d in (self.door_ids or "").split(",") if d]
+
+    def covers(self, door_id: Optional[str]) -> bool:
+        """Does this holiday apply to the door? door_id None = asking for the whole site: only all-door holidays."""
+        return not self.doors or (door_id is not None and door_id in self.doors)
 
     def hours_range(self):
         if not self.hours or "-" not in self.hours:

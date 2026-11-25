@@ -14,17 +14,19 @@
     <h2>Coming up</h2>
     {% if upcoming %}
     <table class="list">
-      <thead><tr><th>Holiday</th><th>When</th><th>Doors</th><th>Where</th><th></th></tr></thead>
+      <thead><tr><th>Holiday</th><th>When</th><th>That day</th><th>Where</th><th></th></tr></thead>
       <tbody>
       {% for h in upcoming %}
         <tr>
           <td><strong>{{ h.name }}</strong></td>
           <td>{{ h.start_date.strftime('%a, %b %-d, %Y') }}{% if h.end_date != h.start_date %} – {{ h.end_date.strftime('%a, %b %-d') }}{% endif %}</td>
           <td>{% if h.hours %}<span class="pill ok">Open {{ h.hours.replace('-', '–') }}</span>{% else %}<span class="pill locked">Closed all day</span>{% endif %}</td>
-          <td class="muted">{{ hsites[h.site_id].name if h.site_id and h.site_id in hsites else 'Every site' }}</td>
-          <td class="right">
+          <td class="muted">{{ hsites[h.site_id].name if h.site_id and h.site_id in hsites else 'Every site' }}
+            <div class="small">{% if h.doors %}{{ hol_doors.get(h.id, '') }}{% else %}All doors{% endif %}</div></td>
+          <td class="right nowrap">
             {% if h.site_id or user.is_admin %}
-            <form method="post" action="/holidays/{{ h.id }}/delete" onsubmit="return confirm('Remove {{ h.name|e }}?')"><button class="small danger">Remove</button></form>
+            <a class="button small" href="/holidays/{{ h.id }}/edit">Edit</a>
+            <form method="post" action="/holidays/{{ h.id }}/delete" style="display:inline" onsubmit="return confirm('Remove {{ h.name|e }}?')"><button class="small danger">Remove</button></form>
             {% endif %}
           </td>
         </tr>
@@ -38,32 +40,7 @@
 
   <section class="card">
     <h2>Add a closure or holiday</h2>
-    <form method="post" action="/holidays" class="stack" id="holform">
-      <label>Name <input name="name" placeholder="e.g. Staff training day" required></label>
-      <div class="grid2">
-        <label>Date <input type="date" name="start" required value="{{ today.isoformat() }}"></label>
-        <label>Until <small class="muted">(optional, for several days)</small><input type="date" name="end"></label>
-      </div>
-      <fieldset>
-        <legend>Doors that day</legend>
-        <div class="seg">
-          <label><input type="radio" name="mode" value="closed" checked><span>Closed all day</span></label>
-          <label><input type="radio" name="mode" value="hours"><span>Shorter hours</span></label>
-        </div>
-        <div class="grid2 holhours">
-          <label>Open from <input type="time" name="open_from" value="10:00"></label>
-          <label>to <input type="time" name="open_to" value="14:00"></label>
-        </div>
-      </fieldset>
-      {% if hsites|length > 1 or user.is_admin %}
-      <label>Where
-        <select name="site">
-          {% if user.is_admin %}<option value="">Every site</option>{% endif %}
-          {% for x in hsites.values() %}<option value="{{ x.id }}">{{ x.name }}</option>{% endfor %}
-        </select></label>
-      {% else %}<input type="hidden" name="site" value="{{ (hsites.values()|first).id if hsites }}">{% endif %}
-      <button class="primary">Add</button>
-    </form>
+    {% include "_holiday_form.html" %}
   </section>
 </div>
 

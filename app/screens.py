@@ -132,7 +132,7 @@ def room_data(session: Session, sc: Screen) -> dict:
     if door:
         scheds = [s for s in engine.door_schedules(session, [door.id]).get(door.id, [])
                   if s.kind == "override" and s.action == "unlock" and s.source != "quick"]
-        for o in expand(scheds, day0, day0 + timedelta(days=1), engine.holidays_for(session, door.site_id)):
+        for o in expand(scheds, day0, day0 + timedelta(days=1), engine.holidays_for(session, door.site_id, door.id)):
             if o.end > now:
                 meetings.append({"title": o.schedule.label or event_name(o.schedule), "start": o.start, "end": o.end,
                                  "contact": o.schedule.contact, "now": o.start <= now < o.end})

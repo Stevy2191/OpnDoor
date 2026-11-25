@@ -106,13 +106,19 @@ def door_schedules(session: Session, door_ids: Optional[list[str]] = None) -> di
     return out
 
 
-def holidays_for(session: Session, site_id: Optional[int]) -> dict:
-    """{date: Holiday} for a site: its own holidays plus the ones for every site."""
+def holiday_rows(session: Session, site_id: Optional[int]) -> list:
     from .models import Holiday
     q = select(Holiday)
     q = q.where((Holiday.site_id == None) | (Holiday.site_id == site_id)) if site_id else q.where(Holiday.site_id == None)  # noqa: E711
+    return sorted(session.exec(q).all(), key=lambda h: (h.site_id is not None, bool(h.doors)))  # most specific wins
+
+
+def holiday_map(rows: list, door_id: Optional[str] = None) -> dict:
+    """{date: Holiday} from holiday rows, keeping only holidays that apply to the door (or to every door)."""
     out: dict = {}
-    for h in sorted(session.exec(q).all(), key=lambda h: h.site_id is not None):  # a site's own wins
+    for h in rows:
+        if not h.covers(door_id):
+            continue
         d = h.start_date
         while d <= h.end_date:
             out[d] = h
@@ -120,12 +126,18 @@ def holidays_for(session: Session, site_id: Optional[int]) -> dict:
     return out
 
 
+def holidays_for(session: Session, site_id: Optional[int], door_id: Optional[str] = None) -> dict:
+    """{date: Holiday} for a site (its own holidays plus the ones for every site). With a door, only holidays
+    that include that door; without one, only holidays for every door at the site."""
+    return holiday_map(holiday_rows(session, site_id), door_id)
+
+
 def door_timeline(session: Session, door: Door, lo: datetime, hi: datetime,
                   scheds: Optional[list[Schedule]] = None, holidays: Optional[dict] = None) -> list[Segment]:
     if scheds is None:
         scheds = door_schedules(session, [door.id]).get(door.id, [])
     if holidays is None:
-        holidays = holidays_for(session, door.site_id)
+        holidays = holidays_for(session, door.site_id, door.id)
     return timeline(scheds, lo, hi, site_tz(session.get(Site, door.site_id)), holidays)
 
 
@@ -139,8 +151,9 @@ def desired_state(session: Session, now_utc: datetime) -> dict[str, Segment]:
         if not door:
             continue
         if door.site_id not in hols:
-            hols[door.site_id] = holidays_for(session, door.site_id)
-        plan = current_plan(door_timeline(session, door, now_utc, now_utc + HORIZON, scheds, hols[door.site_id]))
+            hols[door.site_id] = holiday_rows(session, door.site_id)
+        plan = current_plan(door_timeline(session, door, now_utc, now_utc + HORIZON, scheds,
+                                          holiday_map(hols[door.site_id], door.id)))
         if plan:
             out[door_id] = plan
     return out

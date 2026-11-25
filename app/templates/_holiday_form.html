@@ -1,0 +1,64 @@
+{# The add / edit holiday form. h = the holiday being edited, or None. #}
+<form method="post" action="{{ '/holidays/' ~ h.id if h else '/holidays' }}" class="stack holform" id="holform">
+  <label>Name <input name="name" placeholder="e.g. Staff training day" required value="{{ h.name if h else '' }}"></label>
+  <div class="grid2">
+    <label>Date <input type="date" name="start" required value="{{ (h.start_date if h else today).isoformat() }}"></label>
+    <label>Until <small class="muted">(optional, for several days)</small><input type="date" name="end" value="{{ h.end_date.isoformat() if h and h.end_date != h.start_date else '' }}"></label>
+  </div>
+  <fieldset>
+    <legend>Doors that day</legend>
+    <div class="seg">
+      <label><input type="radio" name="mode" value="closed" {% if not h or not h.hours %}checked{% endif %}><span>Closed all day</span></label>
+      <label><input type="radio" name="mode" value="hours" {% if h and h.hours %}checked{% endif %}><span>Shorter hours</span></label>
+    </div>
+    {% set hr = h.hours.split('-') if h and h.hours else ['10:00', '14:00'] %}
+    <div class="grid2 holhours">
+      <label>Open from <input type="time" name="open_from" value="{{ hr[0] }}"></label>
+      <label>to <input type="time" name="open_to" value="{{ hr[1] }}"></label>
+    </div>
+  </fieldset>
+  {% if hsites|length > 1 or user.is_admin %}
+  <label>Site
+    <select name="site" class="holsite">
+      {% if user.is_admin %}<option value="" {% if h and not h.site_id %}selected{% endif %}>Every site</option>{% endif %}
+      {% for x in hsites.values() %}<option value="{{ x.id }}" {% if (h and h.site_id == x.id) or (not h and not user.is_admin and loop.first) %}selected{% endif %}>{{ x.name }}</option>{% endfor %}
+    </select></label>
+  {% else %}<input type="hidden" name="site" class="holsite" value="{{ (hsites.values()|first).id if hsites }}">{% endif %}
+  <fieldset class="holdoors">
+    <legend>Which doors</legend>
+    <div class="seg">
+      <label><input type="radio" name="scope" value="all" {% if not h or not h.doors %}checked{% endif %}><span>All doors</span></label>
+      <label><input type="radio" name="scope" value="some" {% if h and h.doors %}checked{% endif %}><span>Only some doors</span></label>
+    </div>
+    <p class="hint holallnote">Every door at the site, including doors added later.</p>
+    {% for sid, ds in site_doors.items() %}
+    <div class="holdoorlist" data-site="{{ sid }}" hidden>
+      <p class="hint" style="margin:0 0 .4rem">Untick doors that should keep their normal hours that day.</p>
+      <div class="chips">
+        {% for d in ds %}<label class="chip"><input type="checkbox" name="doors" value="{{ d.id }}" {% if not h or not h.doors or d.id in h.doors %}checked{% endif %}><span>{{ d.name }}</span></label>{% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </fieldset>
+  <div class="btnrow">
+    <button class="primary">{{ 'Save changes' if h else 'Add' }}</button>
+    {% if h %}<a class="button" href="/holidays">Cancel</a>{% endif %}
+  </div>
+</form>
+<script>
+(function () {
+  const f = document.getElementById('holform'); if (!f) return;
+  const site = f.querySelector('.holsite'), box = f.querySelector('.holdoors');
+  function sync() {
+    const sid = site ? site.value : '', some = (f.querySelector('[name=scope]:checked') || {}).value === 'some';
+    box.hidden = !sid;  // "Every site" always means every door
+    f.querySelector('.holallnote').hidden = some;
+    f.querySelectorAll('.holdoorlist').forEach(l => {
+      const on = some && l.dataset.site === sid; l.hidden = !on;
+      l.querySelectorAll('input').forEach(i => i.disabled = !on);
+    });
+    f.querySelector('.holhours').hidden = (f.querySelector('[name=mode]:checked') || {}).value !== 'hours';
+  }
+  f.addEventListener('change', sync); sync();
+})();
+</script>
