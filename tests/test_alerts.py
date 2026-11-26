@@ -128,3 +128,25 @@ def test_report_is_due_once_at_its_time():
     assert reports.due(rep, datetime(2026, 12, 1, 7, 5)) and not reports.due(rep, datetime(2026, 12, 2, 7, 5))
     s, e, label = reports.period(rep, datetime(2026, 12, 1).date())
     assert (s.day, s.month, e.month, label) == (1, 11, 12, "November 2026")
+
+
+def test_report_email_carries_spreadsheets(client, fake, monkeypatch):
+    setup_admin(client)
+    mail_on(monkeypatch)
+    with session_scope() as s:
+        s.add(DoorEvent(site_id=1, unifi_id="x1", door_id="1:demo-front", door_name="Front Entrance",
+                        at=utcnow() - timedelta(days=2), who="M. Chen", granted=True))
+        s.commit()
+    r = client.post("/reports/save", data={"frequency": "monthly", "hour": "7", "site_id": "1", "users": ["1"],
+                                           "enabled": "1", "name": "Monthly access", "attach": ["access", "activity"],
+                                           "attach_fmt": "xlsx"}, follow_redirects=True)
+    assert "attached: Door access, Door activity" in r.text
+    with session_scope() as s:
+        rep = s.exec(select(Report)).one()
+        assert rep.sections == "" and rep.attach == "access,activity"  # spreadsheets only, no summary sections
+    client.post(f"/reports/{rep.id}/send")
+    msg = FakeSMTP.sent[-1]
+    files = {p.get_filename(): p.get_content_type() for p in msg.iter_attachments()}
+    assert any(n.startswith("access-") and n.endswith(".xlsx") for n in files)
+    assert any(n.startswith("activity-") for n in files)
+    assert "Attached:" in msg.get_body(("plain",)).get_content()

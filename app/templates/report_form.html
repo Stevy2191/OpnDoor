@@ -30,6 +30,17 @@
     </div>
   </section>
   <section class="card">
+    <h2>Spreadsheets to attach</h2>
+    <p class="hint">Each one covers the same period as the email. Leave them unticked for just the summary.</p>
+    <div class="chips">
+      {% for k, v in kinds.items() %}<label class="chip"><input type="checkbox" name="attach" value="{{ k }}" {% if k in picked_attach %}checked{% endif %}><span>{{ v[0] }}</span></label>{% endfor %}
+    </div>
+    <div class="seg" style="margin-top:.8rem">
+      <label><input type="radio" name="attach_fmt" value="xlsx" {% if r.attach_fmt != 'csv' %}checked{% endif %}><span>Excel (.xlsx)</span></label>
+      <label><input type="radio" name="attach_fmt" value="csv" {% if r.attach_fmt == 'csv' %}checked{% endif %}><span>CSV</span></label>
+    </div>
+  </section>
+  <section class="card">
     <h2>Who gets it</h2>
     <div class="peoplepick">
       {% for u in people %}<label class="chip"><input type="checkbox" name="users" value="{{ u.id }}" {% if u.id|string in picked_users %}checked{% endif %}><span>{{ u.display }} <small class="muted">{{ u.email }}</small></span></label>{% endfor %}

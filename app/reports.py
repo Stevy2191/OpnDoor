@@ -133,8 +133,27 @@ def build(session: Session, rep: Report, today: Optional[date] = None) -> dict:
     return out
 
 
-def render_html(session: Session, rep: Report, logo_src: str, today: Optional[date] = None) -> tuple[str, dict]:
+def attachments(session: Session, rep: Report, today: Optional[date] = None) -> list:
+    """[(filename, bytes, mime)] spreadsheets picked for this report, covering its period."""
+    from .downloads import KINDS, for_email
+    owner = session.get(User, rep.created_by) if rep.created_by else None
+    if not owner or not rep.attach:
+        return []
+    s_day, e_day, _ = period(rep, today)
+    out = []
+    for kind in _ids(rep.attach):
+        if kind in KINDS:
+            try:
+                out.append(for_email(session, owner, kind, rep.site_id, s_day, e_day, rep.attach_fmt))
+            except Exception as e:  # noqa: BLE001 - one broken attachment shouldn't stop the email
+                log.warning("report %s attachment %s: %s", rep.id, kind, e)
+    return out
+
+
+def render_html(session: Session, rep: Report, logo_src: str, today: Optional[date] = None,
+                attached: Optional[list] = None) -> tuple[str, dict]:
     data = build(session, rep, today)
+    data["attached"] = attached or []
     from .admin import brand
     from .sso import public_url
     html = templates.get_template("report_email.html").render(d=data, sections=SECTIONS, logo_src=logo_src,
@@ -161,13 +180,16 @@ def send(session: Session, rep: Report, today: Optional[date] = None) -> str:
         return "Email isn't set up (Settings → Email)."
     from .admin import logo_png
     logo = logo_png()
-    html, data = render_html(session, rep, "cid:logo" if logo else "", today)
+    files = attachments(session, rep, today)
+    html, data = render_html(session, rep, "cid:logo" if logo else "", today, [f[0] for f in files])
     text = f"{rep.name}: {data['label']}. Open this email in a mail app that shows pictures and colours to see the report."
+    if files:
+        text += " Attached: " + ", ".join(f[0] for f in files) + "."
     cfg = mailer.settings(session)
     errors = []
     for addr in to:
         try:
-            mailer.send(cfg, addr, f"{rep.name}: {data['label']}", text, html, {"logo": logo} if logo else None)
+            mailer.send(cfg, addr, f"{rep.name}: {data['label']}", text, html, {"logo": logo} if logo else None, files)
         except mailer.MailError as e:
             errors.append(str(e))
     return "; ".join(sorted(set(errors)))
@@ -231,13 +253,16 @@ def reports_page(request: Request, user: User = Depends(require_manager), sessio
     users = {u.id: u.display for u in session.exec(select(User)).all()}
     info = {r.id: ", ".join([users[int(u)] for u in _ids(r.user_ids) if u.isdigit() and int(u) in users]
                             + [e.strip() for e in r.emails.split(",") if e.strip()]) for r in reps}
-    return render(request, "reports.html", user, reps=reps, site_names=names, info=info, when_text=when_text,
+    from .downloads import KINDS
+    return render(request, "reports.html", user, reps=reps, site_names=names, info=info, when_text=when_text, kinds=KINDS,
                   sections=SECTIONS, mail_ready=mailer.configured(session))
 
 
 def _form(request: Request, user: User, session: Session, r: Report):
     sites = [s for s in session.exec(select(Site).order_by(Site.name)).all() if s.id in managed_site_ids(session, user)]
-    return render(request, "report_form.html", user, r=r, sites=sites, people=_people(session, user),
+    from .downloads import KINDS
+    return render(request, "report_form.html", user, r=r, sites=sites, people=_people(session, user), kinds=KINDS,
+                  picked_attach=_ids(r.attach),
                   picked_users=_ids(r.user_ids), picked=_ids(r.sections), sections=SECTIONS, freq=FREQ, days=DAYS,
                   mail_ready=mailer.configured(session))
 
@@ -266,7 +291,10 @@ async def report_save(request: Request, user: User = Depends(require_manager), s
     wd, hr = str(f.get("weekday", "0")), str(f.get("hour", "7"))
     r.weekday = int(wd) if wd.isdigit() and int(wd) < 7 else 0
     r.hour = int(hr) if hr.isdigit() and int(hr) < 24 else 7
-    r.sections = ",".join(x for x in f.getlist("sections") if x in SECTIONS) or "activity"
+    from .downloads import KINDS
+    r.attach = ",".join(x for x in f.getlist("attach") if x in KINDS)
+    r.attach_fmt = "csv" if f.get("attach_fmt") == "csv" else "xlsx"
+    r.sections = ",".join(x for x in f.getlist("sections") if x in SECTIONS) or ("" if r.attach else "activity")
     people = {str(u.id) for u in _people(session, user)}
     r.user_ids = ",".join(x for x in f.getlist("users") if x in people)
     r.emails = ", ".join(e.strip() for e in str(f.get("emails", "")).replace(";", ",").split(",") if "@" in e)[:500]
