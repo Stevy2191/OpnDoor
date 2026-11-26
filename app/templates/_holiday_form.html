@@ -16,16 +16,17 @@
       <option value="last" {% if yr == 'last' %}selected{% endif %} data-k="last">Every year on the last weekday</option>
     </select></label>
   <fieldset>
-    <legend>Doors that day</legend>
+    <legend>Time</legend>
+    {% set lr = h.locked_range() if h else None %}
     <div class="seg">
-      <label><input type="radio" name="mode" value="closed" {% if not h or not h.hours %}checked{% endif %}><span>Closed all day</span></label>
-      <label><input type="radio" name="mode" value="hours" {% if h and h.hours %}checked{% endif %}><span>Shorter hours</span></label>
+      <label><input type="radio" name="mode" value="allday" {% if not lr %}checked{% endif %}><span>All day</span></label>
+      <label><input type="radio" name="mode" value="part" {% if lr %}checked{% endif %}><span>Part of the day</span></label>
     </div>
-    {% set hr = h.hours.split('-') if h and h.hours else ['10:00', '14:00'] %}
     <div class="grid2 holhours">
-      <label>Open from <input type="time" name="open_from" value="{{ hr[0] }}"></label>
-      <label>to <input type="time" name="open_to" value="{{ hr[1] }}"></label>
+      <label>From <input type="time" name="locked_from" value="{{ lr[0].strftime('%H:%M') if lr else '12:00' }}"></label>
+      <label>To <input type="time" name="locked_to" value="{{ lr[1].strftime('%H:%M') if lr else '23:59' }}"></label>
     </div>
+    <p class="hint holhours" style="margin:.3rem 0 0">Leave <b>To</b> at 11:59 PM for the rest of the day. Outside these times the doors keep their normal hours.</p>
   </fieldset>
   {% set hs = h.sites if h else [] %}
   <fieldset class="holwhere">
@@ -50,7 +51,7 @@
           </div>
         </div>
         <div class="holdoorlist" hidden>
-          <p class="hint" style="margin:0 0 .5rem">Untick doors that keep their normal hours that day. <b class="holcount"></b></p>
+          <p class="hint" style="margin:0 0 .5rem">Untick doors that keep their normal hours during the holiday. <b class="holcount"></b></p>
           {% set here = site_doors.get(x.id, []) %}
           {{ door_picker(here, 'doors', picked or here|map(attribute='id')|list, hsites) }}
         </div>
@@ -79,7 +80,8 @@
       const l = b.querySelector('.holdoorlist'); l.hidden = !(show && some);
       l.querySelectorAll('input').forEach(i => i.disabled = !(show && some));
     });
-    f.querySelector('.holhours').hidden = (f.querySelector('[name=mode]:checked') || {}).value !== 'hours';
+    const part = (f.querySelector('[name=mode]:checked') || {}).value === 'part';
+    f.querySelectorAll('.holhours').forEach(x => x.hidden = !part);
   }
   // door picker: open a building, search, counts
   f.querySelectorAll('[data-picker]').forEach(p => {

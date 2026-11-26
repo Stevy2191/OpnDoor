@@ -4,8 +4,8 @@
 <div class="pagehead">
   <div>
     <h1>Holidays</h1>
-    <p class="muted">On a holiday, regular hours and weekly events that follow holidays don't run, so doors stay locked.
-      Give a holiday shorter hours to open for part of the day instead. One-time events always run.</p>
+    <p class="muted">Doors a holiday covers stay locked while it's on, all day or for the part of the day you pick.
+      Regular hours and weekly events don't run then. One-time events still do, so you can open a door for something on a holiday.</p>
   </div>
 </div>
 
@@ -21,7 +21,7 @@
             <strong class="holname">{{ h.name }}</strong>
             <span class="holwhen"><a href="/day?d={{ a.isoformat() }}" title="See every door's hours that day">{{ a.strftime('%a, %b %-d') }}{% if b != a %} – {{ b.strftime('%a, %b %-d') }}{% endif %}{% if a.year != today.year %}, {{ a.year }}{% endif %}</a>
               {% if h.yearly %}<span class="muted" title="{{ h.repeat_text() or 'Every year' }}">↻ yearly</span>{% endif %}</span>
-            {% if h.hours %}<span class="pill ok">Open {{ h.hours.replace('-', '–') }}</span>{% else %}<span class="pill locked">Closed all day</span>{% endif %}
+            <span class="pill hol" title="Doors it covers are kept locked">★ Locked {{ h.when_lower() }}</span>
           </div>
           {% if h.id in can_edit %}
           <div class="btnrow nowrap">
@@ -64,7 +64,7 @@
     <h2 style="margin:0">US holidays for {{ year }}</h2>
     <div class="btnrow small"><a href="/holidays?year={{ year - 1 }}">← {{ year - 1 }}</a> <a href="/holidays?year={{ year + 1 }}">{{ year + 1 }} →</a></div>
   </div>
-  <p class="muted small">Tick the ones you're closed for. Doors stay locked all day; change one to shorter hours by adding it yourself instead.</p>
+  <p class="muted small">Tick the ones you're closed for. They're added for all day; edit one afterwards to make it part of the day.</p>
   <form method="post" action="/holidays/us">
     <input type="hidden" name="year" value="{{ year }}">
     <div class="usgrid">

@@ -224,17 +224,20 @@ class Schedule(SQLModel, table=True):
 
 
 class Holiday(SQLModel, table=True):
-    """A day (or days) when repeating schedules that follow holidays don't run.
+    """A day (or days) when the doors it covers are kept locked.
 
-    hours "" = closed all day; "HH:MM-HH:MM" = regular hours are replaced by these
-    shorter hours. site_id None = every site."""
+    While it's on, OpnDoor holds those doors locked (over UniFi's own schedules too); repeating schedules
+    that follow holidays don't run then. One-time events, and repeating ones set to run on holidays, still do.
+    locked "" = all day; "HH:MM-HH:MM" = only that part of each day ("23:59" = to the end of the day).
+    site_id None = every site."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
     site_id: Optional[int] = Field(default=None, foreign_key="site.id", index=True)
     name: str
     start_date: date = Field(index=True)
     end_date: date
-    hours: str = ""
+    hours: str = ""  # old installs only: "open only these hours". Turned into `locked` on start-up.
+    locked: str = ""
     door_ids: str = ""  # comma separated; empty = every door. Only restricts the sites that have doors listed.
     site_ids: str = ""  # several sites (site_id is then None); empty = site_id says where
     # "" = just these dates; every year: "date" (same date), "nth" (e.g. 4th Thursday of November),
@@ -316,12 +319,44 @@ class Holiday(SQLModel, table=True):
             return f"Every year on the last {s:%A} of {s:%B}"
         return ""
 
-    def hours_range(self):
-        if not self.hours or "-" not in self.hours:
+    def locked_range(self):
+        """(from, to) times for part of the day, or None for all day."""
+        if not self.locked or "-" not in self.locked:
             return None
-        a, b = self.hours.split("-", 1)
+        a, b = self.locked.split("-", 1)
         from datetime import time as _t
-        return _t.fromisoformat(a), _t.fromisoformat(b)
+        try:
+            return _t.fromisoformat(a), _t.fromisoformat(b)
+        except ValueError:
+            return None
+
+    def window(self, day: date) -> tuple:
+        """(start, end) local wall-clock it keeps doors locked on one of its days."""
+        from datetime import time as _t
+        r = self.locked_range()
+        nxt = datetime.combine(day + timedelta(days=1), _t())
+        if not r:
+            return datetime.combine(day, _t()), nxt
+        return datetime.combine(day, r[0]), (nxt if r[1] >= _t(23, 59) else datetime.combine(day, r[1]))
+
+    def when_lower(self) -> str:
+        """when_text for the middle of a sentence: "all day", "from 12 PM"."""
+        t = self.when_text()
+        return t[0].lower() + t[1:]
+
+    def when_text(self) -> str:
+        """"All day", "From 12 PM" or "12 PM–3 PM"."""
+        r = self.locked_range()
+        if not r:
+            return "All day"
+
+        def t(x) -> str:
+            return f"{x.hour % 12 or 12}{':%02d' % x.minute if x.minute else ''} {'AM' if x.hour < 12 else 'PM'}"
+        if r[1].hour == 23 and r[1].minute == 59:
+            return f"From {t(r[0])}"
+        if r[0].hour == 0 and r[0].minute == 0:
+            return f"Until {t(r[1])}"
+        return f"{t(r[0])}–{t(r[1])}"
 
 
 class ScheduleDoor(SQLModel, table=True):
@@ -336,6 +371,7 @@ class DoorState(SQLModel, table=True):
     mode: str = ""  # "unlock" | "lock" | "" (door on its normal UniFi rule)
     until: Optional[datetime] = None  # UTC end of the current mode
     schedule_id: Optional[int] = None  # schedule that put the door in this mode
+    label: str = ""  # why, e.g. the event's name or "★ Thanksgiving"
     applied_at: Optional[datetime] = None
     last_error: str = ""
 

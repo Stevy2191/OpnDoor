@@ -141,17 +141,23 @@ def patterns_for(session: Session, doors: list[Door]) -> dict[str, list[dict]]:
     return {d.id: p for d in doors if d.id in seen for p in [pattern(session, d)] if p}
 
 
-def week_blocks(session: Session, doors: list[Door], start: date, days: int = 7) -> dict[date, list[dict]]:
-    """UniFi's own unlock schedules expected in a week, per day, with doors that share a window grouped."""
+def week_blocks(session: Session, doors: list[Door], start: date, days: int = 7,
+                hol_maps: Optional[dict] = None) -> dict[date, list[dict]]:
+    """UniFi's own unlock schedules expected in a week, per day, with doors that share a window grouped.
+    hol_maps (door id -> {date: Holiday}): a holiday keeps the door locked over UniFi's schedule, so that
+    part is left out."""
+    from .schedules import cut, holiday_windows
     names = {d.id: d.name for d in doors}
     pats = patterns_for(session, doors)
     out: dict[date, dict] = defaultdict(dict)
     for door_id, pat in pats.items():
+        hmap = (hol_maps or {}).get(door_id)
         for p in pat:
             for k in range(days):
                 day = start + timedelta(days=k)
                 if day.weekday() in p["days"]:
-                    key = (p["start"], p["end"])
-                    out[day].setdefault(key, []).append(names[door_id])
+                    a, b = datetime.combine(day, p["start"]), datetime.combine(day, p["end"])
+                    for x, y in cut(a, b, holiday_windows(hmap, day, day)):
+                        out[day].setdefault((x.time(), y.time()), []).append(names[door_id])
     return {day: [{"start": datetime.combine(day, s), "end": datetime.combine(day, e), "doors": sorted(n)}
                   for (s, e), n in sorted(v.items())] for day, v in out.items()}

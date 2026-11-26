@@ -8,7 +8,7 @@ from app import engine
 from app.db import session_scope
 from app.holidays import us_holidays
 from app.models import CalendarFeed, Door, DoorPin, FloorPlan, Holiday, Schedule
-from app.schedules import expand
+from app.schedules import expand, holiday_changes, now_local, timeline
 from tests.test_calendars import event, ics, run, setup_feed
 from tests.test_maps import building_with_plan
 from tests.test_web import client, setup_admin  # noqa: F401
@@ -21,22 +21,42 @@ def sched(**kw):
     return Schedule(**base)
 
 
-def test_holidays_skip_or_shorten_repeating_schedules():
+def test_holidays_skip_or_cut_repeating_schedules():
     xmas = date(2030, 12, 25)
     closed = Holiday(name="Christmas", start_date=xmas, end_date=xmas)
-    short = Holiday(name="Christmas", start_date=xmas, end_date=xmas, hours="10:00-14:00")
+    afternoon = Holiday(name="Christmas", start_date=xmas, end_date=xmas, locked="12:00-23:59")
     lo, hi = datetime(2030, 12, 24), datetime(2030, 12, 27)
     office = sched(id=1)
     assert [o.start.date() for o in expand([office], lo, hi, {xmas: closed})] == [date(2030, 12, 24), date(2030, 12, 26)]
-    occ = [o for o in expand([office], lo, hi, {xmas: short}) if o.start.date() == xmas]
-    assert (occ[0].start.time(), occ[0].end.time()) == (time(10), time(14))
+    # a holiday for part of the day: regular hours run until it starts
+    occ = [o for o in expand([office], lo, hi, {xmas: afternoon}) if o.start.date() == xmas]
+    assert [(o.start.time(), o.end.time()) for o in occ] == [(time(8), time(12))]
     # a schedule set to run on holidays, and one-off events, are not touched
     assert len(expand([sched(id=2, on_holidays="run")], lo, hi, {xmas: closed})) == 3
     party = sched(id=3, kind="override", repeat_weekdays="", start_local=datetime(2030, 12, 25, 18), duration_minutes=60)
     assert len(expand([party], lo, hi, {xmas: closed})) == 1
-    # weekly events that follow holidays don't get the shorter hours, they just skip
+    # weekly events that follow holidays are cut the same way
     choir = sched(id=4, kind="override", start_local=datetime(2030, 1, 1, 19), duration_minutes=60)
-    assert xmas not in [o.start.date() for o in expand([choir], lo, hi, {xmas: short})]
+    assert xmas not in [o.start.date() for o in expand([choir], lo, hi, {xmas: afternoon})]
+    changes = holiday_changes([office, choir], lo, hi, {xmas: afternoon})
+    assert [(c["o"].schedule.id, c["skipped"]) for c in changes] == [(1, False), (4, True)]
+
+
+def test_holiday_keeps_doors_locked_in_the_timeline():
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("UTC")
+    xmas = date(2030, 12, 25)
+    eve = Holiday(id=9, name="Christmas Eve", start_date=xmas, end_date=xmas, locked="12:00-23:59")
+    party = sched(id=3, kind="override", repeat_weekdays="", start_local=datetime(2030, 12, 25, 18), duration_minutes=60,
+                  label="Party")
+    segs = timeline([sched(id=1), party], datetime(2030, 12, 25), datetime(2030, 12, 26), tz, {xmas: eve})
+    got = [(s.start.hour, s.end.hour if s.end.day == 25 else 24, s.state, s.label) for s in segs]
+    assert got == [(0, 8, None, ""), (8, 12, "unlock", "Office hours"), (12, 18, "lock", "★ Christmas Eve"),
+                   (18, 19, "unlock", "Party"), (19, 24, "lock", "★ Christmas Eve")]
+    # with no schedules at all, the holiday still holds the door locked (over UniFi's own schedule)
+    segs = timeline([], datetime(2030, 12, 25), datetime(2030, 12, 26), tz, {xmas: Holiday(name="X", start_date=xmas,
+                                                                                                 end_date=xmas)})
+    assert [(s.state, s.label) for s in segs] == [("lock", "★ X")]
 
 
 def test_us_holidays():
@@ -47,7 +67,7 @@ def test_us_holidays():
 
 def test_holidays_page_and_engine(client, fake):
     setup_admin(client)
-    today = date.today()
+    today = now_local().date()
     client.post("/schedules", data={"mode": "default", "label": "Office hours", "door_ids": ["1:demo-front"],
                                     "day": today.isoformat(), "start": "00:00", "end": "23:59",
                                     "weekdays": [str(i) for i in range(7)], "holidays_field": "1", "follow_holidays": "1"})
@@ -55,9 +75,11 @@ def test_holidays_page_and_engine(client, fake):
     assert ("unlock", "demo-front") in [c[:2] for c in fake.calls]
     r = client.post("/holidays", data={"name": "Snow day", "start": today.isoformat(), "mode": "closed"},
                     follow_redirects=True)
-    assert "Added Snow day" in r.text and "Closed all day" in r.text
+    assert "Added Snow day" in r.text and "Locked all day" in r.text
     engine.reconcile()
-    assert fake.calls[-1] == ("reset", "demo-front")  # regular hours don't run today
+    assert ("lock", "demo-front") in fake.calls  # regular hours don't run today: kept locked
+    assert ("lock", "demo-side") in fake.calls  # every door the holiday covers, schedules or not
+    assert "★ Snow day" in client.get("/").text
     r = client.post("/holidays/us", data={"year": "2031", "names": ["Thanksgiving", "Christmas Day"]}, follow_redirects=True)
     assert "Added 2 holidays for 2031" in r.text
     assert "already there" in client.post("/holidays/us", data={"year": "2031", "names": ["Thanksgiving"]},
@@ -66,7 +88,7 @@ def test_holidays_page_and_engine(client, fake):
         hid = s.exec(select(Holiday).where(Holiday.name == "Snow day")).one().id
     client.post(f"/holidays/{hid}/delete")
     engine.reconcile()
-    assert fake.calls[-1][:2] == ("unlock", "demo-front")
+    assert ("unlock", "demo-front") in [c[:2] for c in fake.calls[-4:]] and ("reset", "demo-side") in fake.calls[-4:]
     assert "added the holiday" in client.get("/history").text
 
 

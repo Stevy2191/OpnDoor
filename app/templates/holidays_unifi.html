@@ -4,7 +4,7 @@
 {% block content %}
 <p class="crumbs small"><a href="/holidays">Holidays</a> › From UniFi Access</p>
 <h1>Holidays in UniFi Access</h1>
-<p class="muted">These are the holiday groups set up on the console. Add a group here so OpnDoor's schedules skip the same days.</p>
+<p class="muted">These are the holiday groups set up on the console. Add a group here so OpnDoor keeps doors locked on the same days.</p>
 {% if sites|length > 1 %}
 <form method="get" class="card actfilters"><select name="site" onchange="this.form.submit()" aria-label="Site">
   {% for s in sites %}<option value="{{ s.id }}" {% if st and s.id == st.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></form>

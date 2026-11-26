@@ -47,7 +47,7 @@
 
 <div class="legend small muted">
   {% if type in ('default', 'all') %}<span><i class="sw def"></i>Regular hours</span>{% endif %}<span><i class="sw unl"></i>Unlocked event</span>
-  <span><i class="sw lock"></i>Kept locked</span><span><i class="sw cal"></i>From a calendar</span>{% if unifi_blocks %}<span><i class="sw unifi"></i>UniFi Access's own schedule (as seen)</span>{% endif %}
+  <span><i class="sw lock"></i>Kept locked</span><span><i class="sw cal"></i>From a calendar</span><span><i class="sw hol"></i>Holiday (doors locked)</span>{% if unifi_blocks %}<span><i class="sw unifi"></i>UniFi Access's own schedule (as seen)</span>{% endif %}
 </div>
 
 {% if type not in ('default', 'all') %}<p class="muted small hintline">Regular hours are on each door's page. To see them here, choose <a href="?view={{ view }}&type=default">Regular hours</a> in the filter.</p>{% endif %}
@@ -63,7 +63,10 @@
   <div class="wday {{ 'today' if d == today }} {{ 'past' if d < today }}" data-day="{{ d.isoformat() }}" title="Click to add a schedule on {{ d.strftime('%a, %b %-d') }}">
     <div class="wdhead"><span class="dow">{{ d.strftime('%a') }}</span> <span class="dnum">{{ d.day }}</span>{% if d == today %}<span class="todaytag">Today</span>{% endif %}
       <a class="wadd" href="/schedules/new?day={{ d.isoformat() }}" aria-label="Add a schedule on {{ d.strftime('%A, %B %-d') }}">+</a></div>
-    {% set hol = (holidays or {}).get(d) %}{% if hol %}<div class="holtag" title="Repeating schedules that follow holidays {{ 'run ' ~ hol.hours.replace('-', '–') ~ ' instead' if hol.hours else "don't run" }}">★ {{ hol.name }}{% if hol.hours %} · {{ hol.hours.replace('-', '–') }}{% else %} · closed{% endif %}</div>{% endif %}
+    {% for x in (day_hols or {}).get(d, []) %}
+    <a class="holtag" href="/day?d={{ d.isoformat() }}" title="Holiday: these doors stay locked {{ x.h.when_lower() }}. Regular hours and weekly events don't run then. Click to see every door that day.">
+      <b>★ {{ x.h.name }}</b><span>Locked {{ x.h.when_lower() }} · {{ x.scope }}</span></a>
+    {% endfor %}
     {% for u in (unifi_blocks or {}).get(d, []) %}
     <div class="ev unifi" title="UniFi Access unlocks these on its own schedule (as seen by OpnDoor)">
       <span class="evtime">{{ span(u.start, u.end) }}</span>
@@ -77,7 +80,14 @@
       <span class="evname">{{ s.label }}</span>
       <span class="evdoors">{{ c.doors }}</span>
     </a>
-    {% else %}<div class="wempty">—</div>{% endfor %}
+    {% else %}{% if not (skipped or {}).get(d) %}<div class="wempty">—</div>{% endif %}{% endfor %}
+    {% for c in (skipped or {}).get(d, []) %}{% set s = c.s %}
+    <div class="ev skipped" title="Not running: holiday">
+      <span class="evtime">{{ span(c.o.start, c.o.end) }}</span>
+      <span class="evname">{{ s.label }}</span>
+      <span class="evdoors">Skipped for the holiday</span>
+    </div>
+    {% endfor %}
     <div class="wfill"><span>+ Add</span></div>
   </div>
   {% endfor %}
@@ -86,7 +96,7 @@
 // Click empty space in a day to add a schedule on that day (event cards still open their own schedule).
 document.querySelectorAll('.wday[data-day]').forEach(function (d) {
   d.addEventListener('click', function (e) {
-    if (e.target.closest('a.ev, a.wadd')) return;
+    if (e.target.closest('a.ev, a.wadd, a.holtag')) return;
     location.href = '/schedules/new?day=' + d.dataset.day;
   });
 });
