@@ -1,22 +1,30 @@
-"""Day preview: every door's hours on one date."""
+"""Month view: click a day to see everything on it, with Edit and Delete."""
 from datetime import timedelta
 
+from sqlmodel import select
+
+from app.db import session_scope
+from app.models import Schedule
 from app.schedules import now_local
 from tests.test_web import client, setup_admin  # noqa: F401
 
 
-def test_day_preview_shows_hours_and_holiday(client, fake):
+def test_day_panel_lists_the_day_with_edit_and_delete(client, fake):
     setup_admin(client)
     day = now_local().date() + timedelta(days=3)
-    client.post("/schedules", data={"mode": "default", "label": "Office hours", "door_ids": ["1:demo-front", "1:demo-side"],
-                                    "day": now_local().date().isoformat(), "start": "08:00", "end": "17:00",
-                                    "weekdays": [str(i) for i in range(7)], "holidays_field": "1", "follow_holidays": "1"})
-    client.post("/holidays", data={"name": "Staff day", "start": day.isoformat(), "mode": "closed", "site": "1",
-                                   "scope": "some", "doors": ["1:demo-side"]})
-    r = client.get(f"/day?d={day.isoformat()}")
-    assert r.status_code == 200
-    assert "★ <b>Staff day</b>: 1 of" in r.text and "locked all day (badges still work)" in r.text
-    assert "8:00 AM–5:00 PM · Office hours" in r.text  # front door keeps its hours
-    assert "12:00 AM–11:59 PM · ★ Staff day" in r.text  # side door is held locked for the holiday
-    assert "<s>Office hours 8:00 AM–5:00 PM</s> · skipped for the holiday" in r.text
-    assert client.get("/day?d=bad").status_code == 200
+    client.post("/schedules", data={"mode": "unlock", "label": "Board meeting", "door_ids": ["1:demo-front"],
+                                    "day": day.isoformat(), "start": "18:00", "end": "20:00", "contact": "Jo"})
+    client.post("/holidays", data={"name": "Staff day", "start": day.isoformat(), "mode": "allday", "site": "1"})
+    with session_scope() as s:
+        sid = s.exec(select(Schedule)).one().id
+    page = client.get(f"/schedules?d={day.isoformat()}").text  # Month is the default; d opens the day
+    assert f'data-day="{day.isoformat()}"' in page and 'id="daypanel"' in page
+    assert "★ Staff day" in page and "Contact: Jo" in page
+    assert f'href="/schedules/{sid}">Edit</a>' in page and f'action="/schedules/{sid}/delete"' in page
+    nxt = f"/schedules?view=month&month={day:%Y-%m}&d={day.isoformat()}"
+    assert f'value="{nxt.replace("&", "&amp;")}"' in page
+    r = client.post(f"/schedules/{sid}/delete", data={"next": nxt}, follow_redirects=False)
+    assert r.headers["location"] == nxt
+    with session_scope() as s:
+        assert not s.exec(select(Schedule)).all()
+    assert client.get("/day?d=bad", follow_redirects=False).status_code in (302, 303, 307)

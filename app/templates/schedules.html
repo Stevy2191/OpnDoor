@@ -58,7 +58,7 @@
     <div class="wdhead"><span class="dow">{{ d.strftime('%a') }}</span> <span class="dnum">{{ d.day }}</span>{% if d == today %}<span class="todaytag">Today</span>{% endif %}
       <a class="wadd" href="/schedules/new?day={{ d.isoformat() }}" aria-label="Add a schedule on {{ d.strftime('%A, %B %-d') }}">+</a></div>
     {% for x in (day_hols or {}).get(d, []) %}
-    <a class="holtag" href="/day?d={{ d.isoformat() }}" title="Holiday: these doors stay locked {{ x.h.when_lower() }}. Regular hours and weekly events don't run then. Click to see every door that day.">
+    <a class="holtag" href="/schedules?view=month&month={{ d.strftime('%Y-%m') }}&d={{ d.isoformat() }}" title="Holiday: these doors stay locked {{ x.h.when_lower() }}. Regular hours and weekly events don't run then. Click to see every door that day.">
       <b>★ {{ x.h.name }}</b><span>Locked {{ x.h.when_lower() }} · {{ x.scope }}</span></a>
     {% endfor %}
     {% for u in (unifi_blocks or {}).get(d, []) %}
@@ -104,24 +104,111 @@ document.querySelectorAll('.wday[data-day]').forEach(function (d) {
   <a class="button small" href="?view=month&month={{ next_month }}{{ mq }}" aria-label="Next month">→</a>
   {% if not is_this_month %}<a class="small" href="?view=month{{ mq }}">This month</a>{% endif %}
 </div>
-<div class="month">
+{% set mback = '/schedules?view=month&month=' ~ month_first.strftime('%Y-%m') %}
+<div class="month fit" id="month" style="--weeks: {{ weeks|length }}">
   {% for wd in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}<div class="mhead">{{ wd }}</div>{% endfor %}
-  {% for wk in weeks %}{% for d in wk %}
-  <div class="mday {{ 'other' if d.month != month_first.month }} {{ 'today' if d == today }} {{ 'past' if d < today }}">
-    <div class="mtop"><a class="mnum" href="/day?d={{ d.isoformat() }}" title="See every door on {{ d.strftime('%A, %B %-d') }}">{{ d.day }}</a>
+  {% for wk in weeks %}{% for d in wk %}{% set evs = by_day[d] %}
+  <div class="mday {{ 'other' if d.month != month_first.month }} {{ 'today' if d == today }} {{ 'past' if d < today }}"
+       data-day="{{ d.isoformat() }}" data-title="{{ d.strftime('%A, %B') }} {{ d.day }}" tabindex="0" role="button"
+       aria-label="See everything on {{ d.strftime('%A, %B %-d') }}">
+    <div class="mtop"><span class="mnum">{{ d.day }}</span>
       {% if user.schedules and d >= today %}<a class="wadd" href="/schedules/new?day={{ d.isoformat() }}" aria-label="Add a schedule on {{ d.strftime('%A, %B %-d') }}">+</a>{% endif %}</div>
-    {% for x in day_hols.get(d, []) %}
-    <a class="mhol" href="/day?d={{ d.isoformat() }}" title="{{ x.h.name }}: locked {{ x.h.when_lower() }} · {{ x.scope }}">★ {{ x.h.name }}</a>
-    {% endfor %}
-    {% set evs = by_day[d] %}
-    {% for c in evs[:3] %}{% set s = c.s %}
-    <a class="mev {{ kindclass(s) }}" href="{{ '/schedules/' ~ s.id if c.editable else '/day?d=' ~ d.isoformat() }}" title="{{ span(c.o.start, c.o.end) }} {{ s.label }} · {{ c.doors }}">
+    {% for x in day_hols.get(d, []) %}<span class="mhol" title="{{ x.h.name }}: locked {{ x.h.when_lower() }} · {{ x.scope }}">★ {{ x.h.name }}</span>{% endfor %}
+    {% for c in evs %}{% set s = c.s %}
+    <a class="mev {{ kindclass(s) }}" href="{{ '/schedules/' ~ s.id if c.editable else '#' }}" {% if not c.editable %}data-panel{% endif %} title="{{ span(c.o.start, c.o.end) }} {{ s.label }} · {{ c.doors }}">
       <span class="mtime">{{ c.o.start.strftime('%-I:%M%p')|lower|replace(':00', '') }}</span> {{ s.label }}</a>
     {% endfor %}
-    {% if evs|length > 3 %}<a class="mmore" href="/day?d={{ d.isoformat() }}">+ {{ evs|length - 3 }} more</a>{% endif %}
+    <span class="mmore" hidden></span>
+    <template class="mpanel">
+      {% for x in day_hols.get(d, []) %}
+      <div class="dprow hol"><div class="dpmain"><b>★ {{ x.h.name }}</b>
+        <span class="muted small">Holiday · doors locked {{ x.h.when_lower() }} · {{ x.scope }}</span></div>
+        {% if user.is_manager %}<div class="btnrow"><a class="button small" href="/holidays/{{ x.h.id }}/edit">Edit</a></div>{% endif %}</div>
+      {% endfor %}
+      {% for c in evs %}{% set s = c.s %}
+      <div class="dprow {{ kindclass(s) }}">
+        <div class="dpmain">
+          <span class="dptitle"><b>{{ s.label }}</b> {{ whatpill(s) }}</span>
+          <span class="small">{{ span(c.o.start, c.o.end) }}{% if s.repeat_weekdays %} · <span class="muted">{{ describe_repeat(s) }}</span>{% endif %}</span>
+          <span class="muted small">{{ c.doors }}</span>
+          {% if s.contact %}<span class="muted small">Contact: {{ s.contact }}</span>{% endif %}
+          {% if s.source == 'calendar' %}<span class="muted small">📅 From {{ c.feed or 'a calendar' }}</span>{% endif %}
+        </div>
+        <div class="btnrow">
+          {% if c.editable %}
+          <a class="button small" href="/schedules/{{ s.id }}">Edit</a>
+          <form method="post" action="/schedules/{{ s.id }}/delete"
+                onsubmit="return confirm('{{ ('Delete ' ~ s.label ~ '? It repeats, so every day of it is deleted, not just this one.') if s.repeat_weekdays else ('Delete ' ~ s.label ~ '?') }}')">
+            <input type="hidden" name="next" value="{{ mback ~ '&d=' ~ d.isoformat() }}"><button class="small danger">Delete</button></form>
+          {% elif s.source == 'calendar' %}<small class="muted">Change it in the calendar</small>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% for c in skipped.get(d, []) %}{% set s = c.s %}
+      <div class="dprow skipped"><div class="dpmain"><b>{{ s.label }}</b>
+        <span class="muted small">{{ span(c.o.start, c.o.end) }} · not running: holiday</span></div>
+        {% if c.editable %}<div class="btnrow"><a class="button small" href="/schedules/{{ s.id }}">Edit</a></div>{% endif %}</div>
+      {% endfor %}
+      {% if not evs and not day_hols.get(d) and not skipped.get(d) %}<p class="muted">Nothing scheduled.</p>{% endif %}
+    </template>
   </div>
   {% endfor %}{% endfor %}
 </div>
+
+<dialog class="dlg daypanel" id="daypanel">
+  <div class="dlghead"><h2></h2><button type="button" class="link" data-close aria-label="Close">✕</button></div>
+  <div class="dpbody"></div>
+  <div class="dpfoot btnrow">{% if user.schedules %}<a class="button primary small dpadd" href="#">+ Add a schedule this day</a>{% endif %}
+    <button type="button" class="small" data-close>Close</button></div>
+</dialog>
+<script>
+(function () {
+  const m = document.getElementById('month'), dlg = document.getElementById('daypanel'); if (!m) return;
+  const today = '{{ today.isoformat() }}';
+  function open(cell) {
+    dlg.querySelector('h2').textContent = cell.dataset.title;
+    const body = dlg.querySelector('.dpbody'); body.innerHTML = '';
+    body.appendChild(cell.querySelector('template.mpanel').content.cloneNode(true));
+    const add = dlg.querySelector('.dpadd');
+    if (add) { add.href = '/schedules/new?day=' + cell.dataset.day; add.hidden = cell.dataset.day < today; }
+    const u = new URL(location.href); u.searchParams.set('d', cell.dataset.day); history.replaceState(null, '', u);
+    dlg.showModal();
+  }
+  dlg.addEventListener('close', () => { const u = new URL(location.href); u.searchParams.delete('d'); history.replaceState(null, '', u); });
+  dlg.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => dlg.close()));
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  m.addEventListener('click', e => {
+    const cell = e.target.closest('.mday'); if (!cell) return;
+    const a = e.target.closest('a');
+    if (a && !a.hasAttribute('data-panel')) return;  // + and editable events go straight to their page
+    e.preventDefault(); open(cell);
+  });
+  m.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('mday')) { e.preventDefault(); open(e.target); } });
+
+  // fit the month in the window, and show "+ N more" where a day has more than fits
+  function fit() {
+    const small = innerWidth < 760;
+    if (small) m.style.height = '';
+    else {
+      m.style.height = Math.max(460, innerHeight - (m.getBoundingClientRect().top + scrollY) - 16) + 'px';
+      const over = document.documentElement.scrollHeight - innerHeight;  // page padding below the month
+      if (over > 0) m.style.height = Math.max(460, m.offsetHeight - over) + 'px';
+    }
+    m.querySelectorAll('.mday').forEach(c => {
+      const evs = [...c.querySelectorAll('.mev')], more = c.querySelector('.mmore');
+      evs.forEach(x => x.hidden = false); more.hidden = true;
+      if (small) return;
+      let hidden = 0;
+      while (c.scrollHeight > c.clientHeight + 1 && hidden < evs.length) {
+        evs[evs.length - 1 - hidden].hidden = true; hidden++;
+        more.hidden = false; more.textContent = '+ ' + hidden + ' more';
+      }
+    });
+  }
+  fit(); addEventListener('resize', fit);
+  {% if open_day %}const first = m.querySelector('.mday[data-day="{{ open_day.isoformat() }}"]'); if (first) open(first);{% endif %}
+})();
+</script>
 
 {% else %}
 {% macro rows(list) %}
@@ -160,7 +247,7 @@ document.querySelectorAll('.wday[data-day]').forEach(function (d) {
         <div class="sdoors muted">{{ r.scope }} · locked, badges still work</div>
       </div>
       <div class="snext"><small class="muted">{{ 'Today' if r.start <= today else ('In ' ~ (r.start - today).days ~ ' day' ~ ('' if (r.start - today).days == 1 else 's')) }}</small></div>
-      <div class="sact"><a class="button small" href="/day?d={{ r.start.isoformat() }}">See the day</a></div>
+      <div class="sact"><a class="button small" href="/schedules?view=month&month={{ r.start.strftime('%Y-%m') }}&d={{ r.start.isoformat() }}">See the day</a></div>
     </div>
   {% endfor %}
   </div>
