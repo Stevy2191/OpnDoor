@@ -165,9 +165,9 @@ def _doors_text(h: Holiday, sid: int, site_doors: dict, names: dict) -> str:
 
 
 def _where(session: Session, h: Holiday, site_doors: dict) -> list:
-    """[(site name, doors text)] for the holidays list."""
+    """[{site, count ('' = all doors, else '3 of 20 doors'), detail ('Only …' / 'All doors except …')}]."""
     if not h.sites:
-        return [("Every site", "All doors")]
+        return [{"site": "Every site", "count": "", "detail": ""}]
     names = {d.id: d.name for ds in site_doors.values() for d in ds}
     from .models import Door
     for d in session.exec(select(Door).where(Door.id.in_(h.doors))).all() if h.doors else []:
@@ -175,8 +175,11 @@ def _where(session: Session, h: Holiday, site_doors: dict) -> list:
     out = []
     for sid in h.sites:
         st = session.get(Site, sid)
-        out.append((st.name if st else "A removed site", _doors_text(h, sid, site_doors, names)))
-    return sorted(out)
+        picked, total = len(h.site_doors(sid)), len(site_doors.get(sid, []))
+        count = "" if not picked else (f"{picked} of {total} doors" if total else f"{picked} door{'' if picked == 1 else 's'}")
+        out.append({"site": st.name if st else "A removed site", "count": count,
+                    "detail": _doors_text(h, sid, site_doors, names) if picked else ""})
+    return sorted(out, key=lambda r: r["site"].lower())
 
 
 def _snap(h: Holiday) -> dict:

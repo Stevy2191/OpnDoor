@@ -1185,3 +1185,19 @@ ol.steps .linkbox input { max-width: 520px; }
 .whoh { font-size: .95rem; margin: 1rem 0 .4rem; }
 .whotable td { vertical-align: top; }
 .whoapp { margin: 0; padding-left: 1.1rem; columns: 2 220px; }
+/* holidays: coming up */
+.hollist { display: flex; flex-direction: column; }
+.holitem { padding: .7rem 0; border-top: 1px solid var(--line); }
+.holitem:first-child { border-top: none; padding-top: .2rem; }
+.holtop { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; }
+.holmain { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem; min-width: 0; }
+.holname { font-size: 1rem; }
+.holwhen { white-space: nowrap; }
+.holtop .btnrow form { display: inline; }
+.holwhere { margin-top: .25rem; }
+.holsitetag em { font-style: normal; }
+.holdetail { display: inline-block; margin-left: .4rem; }
+.holdetail summary { cursor: pointer; color: var(--accent); display: inline; }
+.holdetail[open] { display: block; margin: .35rem 0 0; }
+.holdetail div { margin-top: .2rem; overflow-wrap: anywhere; }
+.holtop .btnrow { flex-wrap: nowrap; flex: none; }

@@ -13,28 +13,33 @@
   <section class="card">
     <h2>Coming up</h2>
     {% if upcoming %}
-    <table class="list">
-      <thead><tr><th>Holiday</th><th>When</th><th>That day</th><th>Where</th><th></th></tr></thead>
-      <tbody>
-      {% for h in upcoming %}
-        <tr>
-          <td><strong>{{ h.name }}</strong></td>
-          {% set a, b = nxt[h.id] %}
-          <td><a href="/day?d={{ a.isoformat() }}" title="See every door's hours that day">{{ a.strftime('%a, %b %-d, %Y') }}</a>{% if b != a %} – {{ b.strftime('%a, %b %-d') }}{% endif %}
-            {% if h.yearly %}<div class="small muted">↻ {{ h.repeat_text() or 'Every year' }}</div>{% endif %}</td>
-          <td>{% if h.hours %}<span class="pill ok">Open {{ h.hours.replace('-', '–') }}</span>{% else %}<span class="pill locked">Closed all day</span>{% endif %}</td>
-          <td class="muted">{% for sname, dtext in hol_where[h.id] %}<div class="holwhererow">{{ sname }}
-            <div class="small">{{ dtext }}</div></div>{% endfor %}</td>
-          <td class="right nowrap">
-            {% if h.id in can_edit %}
+    <div class="hollist">
+    {% for h in upcoming %}{% set a, b = nxt[h.id] %}{% set where = hol_where[h.id] %}
+      <div class="holitem">
+        <div class="holtop">
+          <div class="holmain">
+            <strong class="holname">{{ h.name }}</strong>
+            <span class="holwhen"><a href="/day?d={{ a.isoformat() }}" title="See every door's hours that day">{{ a.strftime('%a, %b %-d') }}{% if b != a %} – {{ b.strftime('%a, %b %-d') }}{% endif %}{% if a.year != today.year %}, {{ a.year }}{% endif %}</a>
+              {% if h.yearly %}<span class="muted" title="{{ h.repeat_text() or 'Every year' }}">↻ yearly</span>{% endif %}</span>
+            {% if h.hours %}<span class="pill ok">Open {{ h.hours.replace('-', '–') }}</span>{% else %}<span class="pill locked">Closed all day</span>{% endif %}
+          </div>
+          {% if h.id in can_edit %}
+          <div class="btnrow nowrap">
             <a class="button small" href="/holidays/{{ h.id }}/edit">Edit</a>
-            <form method="post" action="/holidays/{{ h.id }}/delete" style="display:inline" onsubmit="return confirm('Remove {{ h.name|e }}?')"><button class="small danger">Remove</button></form>
-            {% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+            <form method="post" action="/holidays/{{ h.id }}/delete" onsubmit="return confirm('Remove {{ h.name|e }}?')"><button class="small danger">Remove</button></form>
+          </div>
+          {% endif %}
+        </div>
+        <div class="holwhere small muted">
+          {% for w in where %}<span class="holsitetag">{{ w.site }}{% if w.count %} <em>({{ w.count }})</em>{% endif %}</span>{% if not loop.last %} · {% endif %}{% endfor %}
+          {% if where|selectattr('detail')|list %}
+          <details class="holdetail"><summary>Which doors</summary>
+            {% for w in where if w.detail %}<div><b>{{ w.site }}:</b> {{ w.detail }}</div>{% endfor %}
+          </details>{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+    </div>
     {% else %}<p class="muted">No holidays yet. Add your closures, or add the US holidays below in one go.</p>{% endif %}
     {% if past %}<details class="small"><summary class="muted">Recent ({{ past|length }})</summary>
       <ul>{% for h in past %}<li>{{ h.name }} · {{ h.start_date.strftime('%b %-d, %Y') }}</li>{% endfor %}</ul></details>{% endif %}
