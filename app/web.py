@@ -17,7 +17,7 @@ from .db import get_session, session_scope
 from .models import (AuditLog, Building, CalendarFeed, CalendarRule, Door, DoorState, Schedule,
                      ScheduleDoor, Site, User, UserDoor, UserSite, utcnow)
 from .schedules import (EVENT_TYPES, WEEKDAYS, describe_kind, describe_repeat, event_icon, event_name,
-                        expand, now_local, series_last_date, to_local, weekdays_of)
+                        expand, holiday_changes, now_local, series_last_date, to_local, weekdays_of)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -181,7 +181,7 @@ def door_status(session: Session, doors: list[Door]) -> dict[str, dict]:
         info = {"mode": "", "error": st.last_error}
         if st.mode == "lock" or (st.mode == "unlock" and st.until and st.until > now):
             sched = session.get(Schedule, st.schedule_id) if st.schedule_id else None
-            info.update(mode=st.mode, label=sched.label if sched else "",
+            info.update(mode=st.mode, label=sched.label if sched else st.label,
                         held=bool(st.until and st.until - now > engine.HOLD_AFTER),
                         until=to_local(st.until, engine.site_tz(sites.get(d.site_id))) if st.until else None)
         out[d.id] = info
@@ -696,6 +696,20 @@ def _sched_type_ok(s: Schedule, t: str) -> bool:
             or (t == "calendar" and s.source == "calendar"))
 
 
+
+def week_holidays(maps: dict, doors: list[Door], days: list[date]) -> dict:
+    """{date: [{h, scope}]}: every holiday on each day, with how many of these doors it keeps locked."""
+    out: dict = {}
+    for d in days:
+        seen: dict = {}
+        for door in doors:
+            h = maps.get(door.id, {}).get(d)
+            if h is not None:
+                seen.setdefault(h.id, [h, 0])[1] += 1
+        out[d] = [{"h": h, "scope": "All doors" if n == len(doors) else f"{n} of {len(doors)} doors"}
+                  for h, n in seen.values()]
+    return out
+
 @router.get("/schedules")
 def schedules_list(request: Request, view: str = "", week: str = "", q: str = "", type: str = "",
                    building: str = "", past: str = "", user: User = Depends(require_user),
@@ -748,17 +762,28 @@ def schedules_list(request: Request, view: str = "", week: str = "", q: str = ""
         days = [start + timedelta(days=k) for k in range(7)]
         lo = datetime.combine(start, datetime.min.time())
         by_day: dict[date, list] = {d: [] for d in days}
-        hols = engine.holidays_for(session, current_site_id(request, session, user))
-        for o in expand(scheds, lo, lo + timedelta(days=7), hols):
-            day = max(o.start.date(), start)
-            if day in by_day:
-                by_day[day].append(card(o.schedule, o))
+        hmaps = engine.door_holiday_maps(session, doors)
+        skipped: dict[date, list] = {d: [] for d in days}
+        for x in scheds:
+            # holidays that cover every one of its doors here (if only some doors are off, it still runs)
+            ids = [d for d in sd[x.id] if d in in_view]
+            hols = {k: h for k, h in hmaps[ids[0]].items() if all(hmaps[i].get(k) is h for i in ids[1:])}
+            for o in expand([x], lo, lo + timedelta(days=7), hols):
+                day = max(o.start.date(), start)
+                if day in by_day:
+                    by_day[day].append(card(o.schedule, o))
+            for ch in holiday_changes([x], lo, lo + timedelta(days=7), hols):
+                if ch["skipped"] and ch["o"].start.date() in skipped:
+                    skipped[ch["o"].start.date()].append(card(ch["o"].schedule, ch["o"]))
         for d in days:
             by_day[d].sort(key=lambda c: (c["s"].kind != "default", c["o"].start))
+            skipped[d].sort(key=lambda c: c["o"].start)
         from .unifiwatch import week_blocks
         bdoor_list = [d for d in doors if not building.isdigit() or d.building_id == int(building)]
-        ctx["unifi_blocks"] = week_blocks(session, bdoor_list, start) if type in ("", "all", "override", "event") else {}
-        ctx.update(days=days, by_day=by_day, week_start=start, today=today, holidays=hols,
+        ctx["unifi_blocks"] = (week_blocks(session, bdoor_list, start, hol_maps=engine.door_holiday_maps(session, bdoor_list))
+                               if type in ("", "all", "override", "event") else {})
+        ctx.update(days=days, by_day=by_day, week_start=start, today=today, skipped=skipped,
+                   day_hols=week_holidays(hmaps, doors, days),
                    prev_week=(start - timedelta(days=7)).isoformat(), next_week=(start + timedelta(days=7)).isoformat(),
                    is_this_week=start <= today < start + timedelta(days=7))
     else:

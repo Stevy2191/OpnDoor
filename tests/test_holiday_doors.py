@@ -58,13 +58,13 @@ def test_edit_a_holiday(client, fake):
     page = client.get(f"/holidays/{hid}/edit").text
     assert "Edit holiday" in page and 'value="Snow day"' in page
     r = client.post(f"/holidays/{hid}", data={"name": "Snow days", "start": today.isoformat(),
-                                              "end": (today + timedelta(days=1)).isoformat(), "mode": "hours",
-                                              "open_from": "10:00", "open_to": "14:00", "site": "1",
+                                              "end": (today + timedelta(days=1)).isoformat(), "mode": "part",
+                                              "locked_from": "10:00", "locked_to": "14:00", "site": "1",
                                               "scope": "some", "doors": ["1:demo-side"]}, follow_redirects=True)
     assert "Saved Snow days" in r.text
     with session_scope() as s:
         h = s.get(Holiday, hid)
-        assert (h.name, h.hours, h.door_ids, h.end_date) == ("Snow days", "10:00-14:00", "1:demo-side",
+        assert (h.name, h.locked, h.door_ids, h.end_date) == ("Snow days", "10:00-14:00", "1:demo-side",
                                                              today + timedelta(days=1))
     assert unlocked_today("1:demo-front")  # no longer part of it
     assert "changed the holiday" in client.get("/history").text

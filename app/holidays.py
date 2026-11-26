@@ -1,4 +1,4 @@
-"""Holidays: days when repeating schedules that follow holidays don't run, or run shorter hours."""
+"""Holidays: days (or part of a day) when the doors they cover are kept locked."""
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -117,16 +117,16 @@ async def _read(request: Request, session: Session, user: User, h: Holiday) -> s
         return "Pick the holiday's date."
     if d1 < d0:
         d0, d1 = d1, d0
-    hours = ""
-    if f.get("mode") == "hours":
+    locked = ""
+    if f.get("mode") == "part":
         try:
-            a = datetime.strptime(str(f.get("open_from", "")), "%H:%M").time()
-            b = datetime.strptime(str(f.get("open_to", "")), "%H:%M").time()
+            a = datetime.strptime(str(f.get("locked_from", "")), "%H:%M").time()
+            b = datetime.strptime(str(f.get("locked_to", "") or "23:59"), "%H:%M").time()
         except ValueError:
-            return "Set the shorter hours (from and to)."
+            return "Set the time the holiday starts (and ends, if not at the end of the day)."
         if b <= a:
-            return "The shorter hours have to end after they start."
-        hours = f"{a:%H:%M}-{b:%H:%M}"
+            return "The holiday's time has to end after it starts."
+        locked = "" if (a.hour, a.minute, b.hour, b.minute) == (0, 0, 23, 59) else f"{a:%H:%M}-{b:%H:%M}"
     door_ids: list = []
     all_doors = _site_doors(session, user, managed)
     ticked = set(f.getlist("doors"))
@@ -144,7 +144,7 @@ async def _read(request: Request, session: Session, user: User, h: Holiday) -> s
     h.site_id = sites[0] if len(sites) == 1 else None
     h.site_ids = ",".join(str(s) for s in sites) if len(sites) > 1 else ""
     h.name, h.start_date, h.end_date = (str(f.get("name", "")).strip() or "Holiday")[:80], d0, d1
-    h.hours, h.door_ids = hours, ",".join(door_ids)
+    h.locked, h.hours, h.door_ids = locked, "", ",".join(door_ids)
     rep = str(f.get("yearly", ""))
     if rep in ("date", "nth", "last"):
         h.yearly = rep
@@ -183,7 +183,7 @@ def _where(session: Session, h: Holiday, site_doors: dict) -> list:
 
 
 def _snap(h: Holiday) -> dict:
-    return {"Name": h.name, "When": _when(h), "Sites": ", ".join(map(str, h.sites)) or "every site",
+    return {"Name": h.name, "When": _when(h), "Time": h.when_text(), "Sites": ", ".join(map(str, h.sites)) or "every site",
             "Doors": f"{len(h.doors)} picked" if h.doors else "all"}
 
 
@@ -288,7 +288,7 @@ def _when(h: Holiday) -> str:
     s = f"{h.start_date:%a %b %-d, %Y}"
     if h.end_date != h.start_date:
         s += f" to {h.end_date:%a %b %-d}"
-    return s + (f", open {h.hours.replace('-', '–')}" if h.hours else ", closed")
+    return s + ("" if not h.locked else f", {h.when_lower()}")
 
 
 # ---------- holidays already set up in UniFi Access ----------

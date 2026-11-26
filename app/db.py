@@ -47,6 +47,11 @@ def init_db() -> None:
         conn.exec_driver_sql(
             'UPDATE "user" SET is_owner = 1 WHERE id = (SELECT MIN(id) FROM "user" WHERE is_admin = 1) '
             'AND NOT EXISTS (SELECT 1 FROM "user" WHERE is_owner = 1)')
+        # Holidays used to say "open only HH:MM-HH:MM"; now they say when they keep doors locked.
+        # An old "open 10:00-14:00" becomes "locked from 14:00 to the end of the day".
+        conn.exec_driver_sql(
+            "UPDATE holiday SET locked = substr(hours, 7, 5) || '-23:59', hours = '' "
+            "WHERE hours LIKE '__:__-__:__' AND (locked = '' OR locked IS NULL)")
 
 
 def _sql_literal(v) -> str:

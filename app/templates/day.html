@@ -4,7 +4,7 @@
 <div class="pagehead">
   <div>
     <h1>{{ day.strftime('%A, %B') }} {{ day.day }}{% if day.year != today.year %}, {{ day.year }}{% endif %}</h1>
-    <p class="muted">Every door's hours that day, after holidays, events and UniFi's own schedules.
+    <p class="muted">What every door does that day: holidays, events, regular hours and UniFi's own schedules, all applied.
       {% if day == today %}Today.{% endif %}</p>
   </div>
   <form method="get" action="/day" class="btnrow">
@@ -15,14 +15,16 @@
   </form>
 </div>
 
-{% if on_hol %}
-<div class="dayhol">★ Holiday: <b>{{ on_hol|join(', ') }}</b>. Doors that follow it stay locked or keep shorter hours.</div>
-{% endif %}
+{% for x in on_hol %}
+<div class="dayhol">★ <b>{{ x.h.name }}</b>: {{ x.scope }} kept locked {{ x.h.when_lower() }}.
+  Regular hours and weekly events don't run then; one-time events still do.</div>
+{% endfor %}
 
 <section class="card">
   <div class="daylegend small muted">
     <span><i class="dk unlock"></i> Unlocked by OpnDoor</span>
-    <span><i class="dk lock"></i> Held locked by OpnDoor</span>
+    <span><i class="dk lock"></i> Kept locked by an event</span>
+    <span><i class="dk hol"></i> Holiday (locked)</span>
     <span><i class="dk unifi"></i> UniFi's own schedule</span>
     <span>{{ unlocked }} of {{ doors|length }} doors open at some point</span>
   </div>
@@ -34,15 +36,16 @@
       {% for door in group %}{% set r = rows[door.id] %}
       <div class="dayrow">
         <a class="dayname" href="/doors/{{ door.id|urlencode }}">{{ door.name }}
-          {% if r.holiday %}<span class="dayhtag" title="{{ r.holiday.name }}">★ {{ 'Short hours' if r.holiday.hours else 'Holiday' }}</span>{% endif %}</a>
+          {% if r.holiday %}<span class="dayhtag" title="{{ r.holiday.name }}: locked {{ r.holiday.when_lower() }}">★ {{ r.holiday.name }}</span>{% endif %}</a>
         <div class="daybar" aria-hidden="true">
           {% for h in hours %}<span class="daytick" style="left:{{ (h / 24 * 100)|round(2) }}%"></span>{% endfor %}
           {% for bl in r.blocks %}<span class="dayblk {{ bl.kind }}" style="left:{{ bl.left }}%;width:{{ bl.width }}%" title="{{ bl.start.strftime('%-I:%M %p') }}–{{ bl.end.strftime('%-I:%M %p') }} {{ bl.label }}"></span>{% endfor %}
         </div>
         <div class="daytext small">
-          {% for bl in r.blocks %}<div><b class="{{ bl.kind }}">{{ {'unlock': 'Unlocked', 'lock': 'Locked', 'unifi': 'UniFi'}[bl.kind] }}</b>
-            {{ bl.start.strftime('%-I:%M %p') }}–{{ '11:59 PM' if bl.end.date() > day else bl.end.strftime('%-I:%M %p') }}{% if bl.label and bl.kind != 'unifi' %} · {{ bl.label }}{% endif %}</div>
-          {% else %}<span class="muted">{{ 'Closed for the holiday' if r.holiday else 'No OpnDoor hours · UniFi decides' }}</span>{% endfor %}
+          {% for bl in r.blocks %}<div><b class="{{ bl.kind }}">{{ {'unlock': 'Unlocked', 'lock': 'Locked', 'hol': 'Locked', 'unifi': 'UniFi unlocks'}[bl.kind] }}</b>
+            {{ bl.start.strftime('%-I:%M %p') }}–{{ '11:59 PM' if bl.end.date() > day else bl.end.strftime('%-I:%M %p') }}{% if bl.label and bl.kind == 'hol' %} · ★ {{ bl.label }}{% elif bl.label and bl.kind != 'unifi' %} · {{ bl.label }}{% endif %}</div>
+          {% else %}<span class="muted">Locked all day (nothing scheduled)</span>{% endfor %}
+          {% for k in r.skipped %}<div class="dayskip"><s>{{ k.label }} {{ k.start.strftime('%-I:%M %p') }}–{{ k.end.strftime('%-I:%M %p') }}</s> · {{ 'skipped' if k.skipped else 'cut short' }} for the holiday</div>{% endfor %}
         </div>
       </div>
       {% endfor %}

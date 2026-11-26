@@ -81,7 +81,10 @@ For each door, OpnDoor builds a timeline from its schedules:
 
 1. An active **override** decides: unlocked or kept locked (newest override wins).
 2. Otherwise, during **regular hours**, the door is unlocked.
-3. Otherwise OpnDoor leaves the door on its normal UniFi rule (locked).
+3. Otherwise, while a **holiday** covers the door (all day, or the part of the day you picked), it is
+   kept locked, over UniFi Access's own schedules too. Regular hours and weekly events that follow
+   holidays don't run then; one-time events still do.
+4. Otherwise OpnDoor leaves the door on its normal UniFi rule (locked).
 
 Every 30 seconds it compares that with what it last told each console, through the UniFi Access
 developer API (`PUT /api/v1/developer/doors/{id}/lock_rule`):

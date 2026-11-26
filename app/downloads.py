@@ -184,10 +184,10 @@ def build(session: Session, user: User, kind: str, p: dict) -> tuple[list, list,
             where = _where(session, h, sd)
             rows.append([h.name, f"{nxt[0]:%Y-%m-%d}" if nxt else f"{h.start_date:%Y-%m-%d}",
                          f"{nxt[1]:%Y-%m-%d}" if nxt else f"{h.end_date:%Y-%m-%d}",
-                         f"Open {h.hours}" if h.hours else "Closed all day", h.repeat_text() if h.yearly else "Once",
+                         h.when_text(), h.repeat_text() if h.yearly else "Once",
                          "; ".join(w["site"] + (f": {w['detail']}" if w["detail"] else "") for w in where),
                          "Upcoming" if nxt else "Over"])
-        return ["Holiday", "From", "Until", "That day", "Repeats", "Where", "Status"], rows, "Holidays"
+        return ["Holiday", "From", "Until", "Locked", "Repeats", "Where", "Status"], rows, "Holidays"
 
     if kind == "changes":
         from .history import _filtered

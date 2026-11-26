@@ -146,18 +146,29 @@ def door_timeline(session: Session, door: Door, lo: datetime, hi: datetime,
 def desired_state(session: Session, now_utc: datetime) -> dict[str, Segment]:
     """door_id -> what the door should be doing right now (doors on their normal rule are omitted)."""
     out = {}
-    doors = {d.id: d for d in session.exec(select(Door)).all()}
+    all_scheds = door_schedules(session)
     hols: dict = {}
-    for door_id, scheds in door_schedules(session).items():
-        door = doors.get(door_id)
-        if not door:
-            continue
+    for door in session.exec(select(Door)).all():
         if door.site_id not in hols:
             hols[door.site_id] = holiday_rows(session, door.site_id)
-        plan = current_plan(door_timeline(session, door, now_utc, now_utc + HORIZON, scheds,
-                                          holiday_map(hols[door.site_id], door.id)))
+        scheds = all_scheds.get(door.id, [])
+        hmap = holiday_map(hols[door.site_id], door.id)
+        if not scheds and not hmap:
+            continue
+        plan = current_plan(door_timeline(session, door, now_utc, now_utc + HORIZON, scheds, hmap))
         if plan:
-            out[door_id] = plan
+            out[door.id] = plan
+    return out
+
+
+def door_holiday_maps(session: Session, doors: list[Door]) -> dict[str, dict]:
+    """door id -> {date: Holiday} for each door (only the holidays that cover it)."""
+    rows: dict = {}
+    out = {}
+    for d in doors:
+        if d.site_id not in rows:
+            rows[d.site_id] = holiday_rows(session, d.site_id)
+        out[d.id] = holiday_map(rows[d.site_id], d.id)
     return out
 
 
@@ -182,7 +193,8 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
                 tz = site_tz(site)
                 want = desired.get(door_id)
                 active = st.mode == "lock" or (st.mode == "unlock" and st.until and st.until > now)
-                label = want.schedule.label if want and want.schedule else ""
+                label = want.label if want else ""
+                sid = want.schedule.id if want and want.schedule else None
                 client = unifi.get_client(site)
                 try:
                     if want and want.state == "unlock":
@@ -195,22 +207,24 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
                             audit(s, "door.unlock", f"{door.name} unlocked until "
                                   f"{to_local(want.end, tz):%a %b %-d %-I:%M %p} ({label})", door_ids=[door.id])
                             st.mode, st.applied_at = "unlock", now
-                        elif st.schedule_id == (want.schedule.id if want.schedule else None):
+                        elif st.schedule_id == sid and st.label == label:
                             continue
-                        st.until, st.schedule_id, st.last_error = want.end, want.schedule.id, ""
+                        st.until, st.schedule_id, st.label, st.last_error = want.end, sid, label, ""
                     elif want and want.state == "lock":
                         if st.mode != "lock":
                             client.keep_lock(door.remote_id)
                             audit(s, "door.lock", f"{door.name} kept locked until "
                                   f"{to_local(want.end, tz):%a %b %-d %-I:%M %p} ({label})", door_ids=[door.id])
                             st.mode, st.applied_at = "lock", now
-                        st.until, st.schedule_id, st.last_error = want.end, want.schedule.id, ""
+                        st.until, st.schedule_id, st.label, st.last_error = want.end, sid, label, ""
                     elif active:
                         client.reset(door.remote_id)
                         audit(s, "door.reset", f"{door.name} back to normal (locked)", door_ids=[door.id])
                         st.mode, st.until, st.schedule_id, st.applied_at, st.last_error = "", None, None, now, ""
+                        st.label = ""
                     elif st.mode or st.until:
                         st.mode, st.until, st.schedule_id = "", None, None  # countdown ran out on the console
+                        st.label = ""
                     else:
                         continue
                 except unifi.UnifiError as e:

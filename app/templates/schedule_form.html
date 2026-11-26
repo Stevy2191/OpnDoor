@@ -95,7 +95,7 @@
         {% endif %}
         <input type="hidden" name="holidays_field" value="1">
         <label class="check holcheck"><input type="checkbox" name="follow_holidays" value="1" {% if not pre or pre.on_holidays != 'run' %}checked{% endif %}>
-          <span>Skip on holidays <small class="muted">(doors stay locked that day, or open the holiday's shorter hours; see <a href="/holidays">Holidays</a>)</small></span></label>
+          <span>Skip on holidays <small class="muted">(doesn't run while a holiday keeps the doors locked; see <a href="/holidays">Holidays</a>). Untick to run on holidays too.</small></span></label>
       </div>
     </section>
   </div>
