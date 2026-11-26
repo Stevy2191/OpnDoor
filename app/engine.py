@@ -156,7 +156,9 @@ def desired_state(session: Session, now_utc: datetime) -> dict[str, Segment]:
         if not scheds and not hmap:
             continue
         plan = current_plan(door_timeline(session, door, now_utc, now_utc + HORIZON, scheds, hmap))
-        if plan:
+        # A holiday only stops OpnDoor's unlocks: the door stays on its normal UniFi rule (locked, badges work).
+        # It never sends keep_lock, which UniFi treats as a lockdown of that door (badges refused).
+        if plan and not (plan.holiday is not None and plan.schedule is None):
             out[door.id] = plan
     return out
 

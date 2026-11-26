@@ -227,7 +227,8 @@ class Schedule(SQLModel, table=True):
 class Holiday(SQLModel, table=True):
     """A day (or days) when the doors it covers are kept locked.
 
-    While it's on, OpnDoor holds those doors locked (over UniFi's own schedules too); repeating schedules
+    While it's on, OpnDoor doesn't unlock those doors: they stay on their normal UniFi rule (locked, badges
+    work; OpnDoor never sends keep_lock for a holiday, UniFi treats that as a lockdown). Repeating schedules
     that follow holidays don't run then. One-time events, and repeating ones set to run on holidays, still do.
     locked "" = all day; "HH:MM-HH:MM" = only that part of each day ("23:59" = to the end of the day).
     site_id None = every site."""
