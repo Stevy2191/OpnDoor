@@ -121,10 +121,10 @@ def holiday_map(rows: list, door_id: Optional[str] = None, site_id: Optional[int
     for h in rows:
         if not h.covers(door_id, site_id):
             continue
-        d = h.start_date
-        while d <= h.end_date:
-            out[d] = h
-            d += timedelta(days=1)
+        for d, last in h.spans():
+            while d <= last:
+                out[d] = h
+                d += timedelta(days=1)
     return out
 
 

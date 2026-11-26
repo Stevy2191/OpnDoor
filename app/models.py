@@ -5,7 +5,7 @@ read in the timezone of each door's site, so a weekly 9:00 schedule stays at
 9:00 local time across DST changes and across sites. Everything else (audit
 log, door state, sync times) is stored as naive UTC.
 """
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
@@ -237,6 +237,9 @@ class Holiday(SQLModel, table=True):
     hours: str = ""
     door_ids: str = ""  # comma separated; empty = every door. Only restricts the sites that have doors listed.
     site_ids: str = ""  # several sites (site_id is then None); empty = site_id says where
+    # "" = just these dates; every year: "date" (same date), "nth" (e.g. 4th Thursday of November),
+    # "last" (e.g. last Monday of May), "us:<name>" (a US holiday, worked out each year)
+    yearly: str = ""
     created_by: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -267,6 +270,51 @@ class Holiday(SQLModel, table=True):
             return site_id is not None and not self.site_doors(site_id)
         mine = self.site_doors(door_id.split(":", 1)[0])
         return not mine or door_id in mine
+
+    def date_in(self, year: int) -> Optional[date]:
+        """Where it falls in a year (yearly holidays)."""
+        import calendar
+        s = self.start_date
+        if self.yearly.startswith("us:"):
+            from .holidays import us_holidays
+            return next((d for n, d in us_holidays(year) if n == self.yearly[3:]), None)
+        if self.yearly == "date":
+            return date(year, s.month, min(s.day, calendar.monthrange(year, s.month)[1]))
+        if self.yearly in ("nth", "last"):
+            days = [date(year, s.month, d) for d in range(1, calendar.monthrange(year, s.month)[1] + 1)
+                    if date(year, s.month, d).weekday() == s.weekday()]
+            if self.yearly == "last":
+                return days[-1]
+            n = (s.day - 1) // 7
+            return days[n] if n < len(days) else None
+        return None
+
+    def spans(self, until_year: Optional[int] = None) -> list:
+        """[(first day, last day)]: just its dates, or each year from its first through until_year."""
+        if not self.yearly:
+            return [(self.start_date, self.end_date)]
+        length = self.end_date - self.start_date
+        last = until_year or date.today().year + 2
+        out = []
+        for y in range(self.start_date.year, last + 1):
+            d = self.date_in(y)
+            if d and d >= self.start_date - timedelta(days=7):
+                out.append((d, d + length))
+        return out
+
+    def next_span(self, today: date):
+        """The next (or current) time it happens, or None when it's over."""
+        return next(((a, b) for a, b in self.spans(today.year + 2) if b >= today), None)
+
+    def repeat_text(self) -> str:
+        s = self.start_date
+        if self.yearly == "date":
+            return f"Every year on {s:%B} {s.day}"
+        if self.yearly == "nth":
+            return f"Every year on the {('1st', '2nd', '3rd', '4th', '5th')[(s.day - 1) // 7]} {s:%A} of {s:%B}"
+        if self.yearly == "last":
+            return f"Every year on the last {s:%A} of {s:%B}"
+        return ""
 
     def hours_range(self):
         if not self.hours or "-" not in self.hours:

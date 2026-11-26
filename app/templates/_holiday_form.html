@@ -6,6 +6,15 @@
     <label>Date <input type="date" name="start" required value="{{ (h.start_date if h else today).isoformat() }}"></label>
     <label>Until <small class="muted">(optional, for several days)</small><input type="date" name="end" value="{{ h.end_date.isoformat() if h and h.end_date != h.start_date else '' }}"></label>
   </div>
+  {% set yr = h.yearly if h else '' %}
+  <label>Repeats
+    <select name="yearly" class="holyearly">
+      <option value="">Just this once</option>
+      {% if yr.startswith('us:') %}<option value="keep" selected>Every year (US holiday, date worked out each year)</option>{% endif %}
+      <option value="date" {% if yr == 'date' %}selected{% endif %} data-k="date">Every year on the same date</option>
+      <option value="nth" {% if yr == 'nth' %}selected{% endif %} data-k="nth">Every year on the same weekday</option>
+      <option value="last" {% if yr == 'last' %}selected{% endif %} data-k="last">Every year on the last weekday</option>
+    </select></label>
   <fieldset>
     <legend>Doors that day</legend>
     <div class="seg">
@@ -99,6 +108,19 @@
       const c = b.querySelector('.holcount'); if (c) c.textContent = on + ' of ' + all + ' doors follow the holiday';
     });
   }
-  f.addEventListener('change', () => { sync(); setTimeout(counts); }); sync(); counts();
+  // name the repeat choices after the date picked, e.g. "the 4th Thursday of November"
+  function repeats() {
+    const v = f.querySelector('[name=start]').value; if (!v) return;
+    const d = new Date(v + 'T12:00'), mon = d.toLocaleDateString(undefined, { month: 'long' }),
+          wd = d.toLocaleDateString(undefined, { weekday: 'long' }), n = Math.floor((d.getDate() - 1) / 7);
+    const last = new Date(d); last.setDate(d.getDate() + 7); const isLast = last.getMonth() !== d.getMonth();
+    const sel = f.querySelector('.holyearly');
+    sel.querySelector('[data-k=date]').textContent = 'Every year on ' + mon + ' ' + d.getDate();
+    sel.querySelector('[data-k=nth]').textContent = 'Every year on the ' + ['1st', '2nd', '3rd', '4th', '5th'][n] + ' ' + wd + ' of ' + mon;
+    const lo = sel.querySelector('[data-k=last]'); lo.textContent = 'Every year on the last ' + wd + ' of ' + mon;
+    lo.hidden = lo.disabled = !isLast;
+    if (!isLast && sel.value === 'last') sel.value = 'nth';
+  }
+  f.addEventListener('change', () => { sync(); repeats(); setTimeout(counts); }); sync(); repeats(); counts();
 })();
 </script>
