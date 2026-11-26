@@ -132,6 +132,8 @@ def login_user(request: Request, session: Session, user: User, method: str) -> N
     from .models import utcnow
     request.session.clear()
     request.session["uid"] = user.id
+    if user.home_site_id and user.home_site_id in visible_site_ids(session, user):
+        request.session["site"] = user.home_site_id  # their own site; they can still pick All sites
     user.last_login_at = utcnow()
     session.add(user)
     record(session, "signin.ok", f"{user.display} signed in with {method}", user=user,

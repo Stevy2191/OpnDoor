@@ -85,7 +85,7 @@
   </fieldset>
 
   {% if full %}
-  {{ start_select(target, user) }}
+  {{ start_select(target, user, sites) }}
   <fieldset>
     <legend>How do they sign in?</legend>
     {% set pw = (target and target.password_hash) or not sso_on() %}

@@ -43,6 +43,7 @@ class User(SQLModel, table=True):
     door_source: str = "opndoor"  # opndoor | unifi (doors follow their UniFi Access permissions)
     door_view: str = ""  # Doors page layout: "" (automatic), tiles, list
     start_page: str = ""  # where they land: "" (automatic), home, doors, map, schedules
+    home_site_id: Optional[int] = None  # the site picked for them when they sign in (None = all their sites)
     unifi_note: str = ""  # result of the last UniFi Access permission check, shown to admins
     created_at: datetime = Field(default_factory=utcnow)
 

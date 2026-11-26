@@ -339,11 +339,18 @@ def account_page(request: Request, user: User = Depends(require_user)):
 START_PAGES = {"home", "doors", "map", "schedules"}
 
 
+def _home_site(session: Session, person: User, value: str) -> Optional[int]:
+    """A home site from the form: one of the sites the person can see, else None (all their sites)."""
+    return int(value) if value.isdigit() and int(value) in visible_site_ids(session, person) else None
+
+
 @router.post("/account")
 def account(request: Request, name: str = Form(""), current_password: str = Form(""),
-            new_password: str = Form(""), start_page: str = Form(""), user: User = Depends(require_user),
-            session: Session = Depends(get_session)):
+            new_password: str = Form(""), start_page: str = Form(""), home_site: str = Form("-"),
+            user: User = Depends(require_user), session: Session = Depends(get_session)):
     user.start_page = start_page if start_page in START_PAGES else ""
+    if home_site != "-":
+        user.home_site_id = _home_site(session, user, home_site)
     old_name = user.name
     user.name = name.strip()
     if old_name != user.name:
@@ -430,6 +437,40 @@ def start(request: Request, user: User = Depends(require_user), session: Session
     return dashboard(request, user, session)
 
 
+OPEN_AFTER = timedelta(minutes=5)  # a door open this long counts as standing open (not just someone walking through)
+
+
+def standing_open_doors(doors: list[Door]) -> list[Door]:
+    now = utcnow()
+    out = [d for d in doors if d.position_status == "open" and (d.position_since is None or now - d.position_since >= OPEN_AFTER)]
+    return sorted(out, key=lambda d: d.position_since or datetime.min)
+
+
+def site_overview(doors: list[Door], sites: dict, right_now: list, standing_open: list) -> list[dict]:
+    """One row per site with doors here: counts, whether the console answers, any emergency.
+    Sites needing a look come first; quiet sites (nothing going on) last, with quiet=True."""
+    rows: dict = {}
+    for d in doors:
+        x = sites.get(d.site_id)
+        if x is None:
+            continue
+        r = rows.setdefault(x.id, {"site": x, "doors": 0, "unlocked": 0, "locked": 0, "problems": 0, "open": 0,
+                                   "offline": (x.last_sync_status or "").startswith("Error") or not x.enabled})
+        r["doors"] += 1
+    for r in right_now:
+        row = rows.get(r["door"].site_id)
+        if row:
+            st = r["st"]
+            row["problems" if st.get("error") else ("unlocked" if st.get("mode") == "unlock" else "locked")] += 1
+    for d in standing_open:
+        if d.site_id in rows:
+            rows[d.site_id]["open"] += 1
+    for r in rows.values():
+        r["quiet"] = not (r["offline"] or r["site"].emergency or r["problems"] or r["open"] or r["unlocked"] or r["locked"])
+    return sorted(rows.values(), key=lambda r: (r["quiet"], not r["site"].emergency, not r["offline"], -r["problems"],
+                                                -r["open"], -r["unlocked"] - r["locked"], r["site"].name.lower()))
+
+
 @router.get("/home")
 def dashboard(request: Request, user: User = Depends(require_user), session: Session = Depends(get_session)):
     site_id = current_site_id(request, session, user)
@@ -469,21 +510,24 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
         else:
             agenda_week.setdefault(o.start.date(), []).append(row)
 
+    standing_open = standing_open_doors(doors)
     tiles = {
         "unlocked": sum(1 for r in right_now if r["st"].get("mode") == "unlock"),
         "locked": sum(1 for r in right_now if r["st"].get("mode") == "lock"),
         "problems": sum(1 for r in right_now if r["st"].get("error")),
         "events": sum(1 for r in agenda_today if not r["past"]),
-        "open": sum(1 for d in doors if d.position_status == "open"),
+        "open": len(standing_open),
     }
     managed = managed_site_ids(session, user)
     em_sites = [x for x in session.exec(select(Site).order_by(Site.name)).all()
                 if x.id in managed and (site_id is None or x.id == site_id)]
-    standing_open = [d for d in doors if d.position_status == "open"]
+    overview = site_overview(doors, sites, right_now, standing_open) if site_id is None else None
+    if overview and len(overview) < 2:
+        overview = None  # one site: the door list says it better
     from .activity import busy_hours_for
     busy = busy_hours_for(session, in_view)
     return render(request, "dashboard.html", user, doors=doors, right_now=right_now, tiles=tiles,
-                  em_sites=em_sites, standing_open=standing_open, busy=busy,
+                  em_sites=em_sites, standing_open=standing_open, busy=busy, overview=overview,
                   agenda_today=agenda_today, agenda_week=agenda_week, site_id=site_id,
                   today_label=now.strftime("%A, %B %-d"), default_until=_default_until(now))
 
@@ -1262,19 +1306,12 @@ def site_save(request: Request, bg: BackgroundTasks, site_id: Optional[int] = No
     return redirect(f"/sites/{site.id}")
 
 
-@router.post("/sites/{site_id}/emergency")
-def site_emergency(request: Request, site_id: int, bg: BackgroundTasks, mode: str = Form(...), next: str = Form("/"),
-                   user: User = Depends(require_manager), session: Session = Depends(get_session)):
-    """Lockdown (every door held locked), evacuation (every door held unlocked) or back to normal."""
-    site = session.get(Site, site_id)
-    if not site or site_id not in managed_site_ids(session, user) or mode not in {"lockdown", "evacuation", "normal"}:
-        flash(request, "Only admins and site admins can do that.", "error")
-        return redirect(safe_next(next))
+def set_emergency(session: Session, user: User, site: Site, mode: str) -> str:
+    """Lockdown, evacuation or back to normal at one site. Returns '' or why UniFi refused."""
     try:
         unifi.get_client(site).set_emergency(mode)
     except unifi.UnifiError as e:
-        flash(request, f"UniFi Access didn't accept it: {e}", "error")
-        return redirect(safe_next(next))
+        return str(e)
     was = site.emergency
     site.emergency = "" if mode == "normal" else mode
     site.emergency_by, site.emergency_at = (user.display, utcnow()) if site.emergency else ("", None)
@@ -1285,12 +1322,53 @@ def site_emergency(request: Request, site_id: int, bg: BackgroundTasks, mode: st
     else:
         msg = f"{user.display} started {mode} at {site.name}"
     audit.record(session, "site.emergency", msg, user=user, site_ids=[site.id])
+    return ""
+
+
+@router.post("/sites/{site_id}/emergency")
+def site_emergency(request: Request, site_id: int, bg: BackgroundTasks, mode: str = Form(...), next: str = Form("/"),
+                   user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    """Lockdown (every door held locked), evacuation (every door held unlocked) or back to normal."""
+    site = session.get(Site, site_id)
+    if not site or site_id not in managed_site_ids(session, user) or mode not in {"lockdown", "evacuation", "normal"}:
+        flash(request, "Only admins and site admins can do that.", "error")
+        return redirect(safe_next(next))
+    was = site.emergency
+    err = set_emergency(session, user, site, mode)
+    if err:
+        flash(request, f"UniFi Access didn't accept it: {err}", "error")
+        return redirect(safe_next(next))
     session.commit()
     kick_reconcile(bg)
     flash(request, {"lockdown": f"Lockdown started at {site.name}. Every door is held locked until you end it.",
                     "evacuation": f"Evacuation started at {site.name}. Every door is held unlocked until you end it.",
                     "normal": f"{(was or 'Emergency').capitalize()} ended at {site.name}. Doors are back on their schedules."}[mode],
           "error" if mode != "normal" else "ok")
+    return redirect(safe_next(next))
+
+
+@router.post("/emergency")
+def emergency_many(request: Request, bg: BackgroundTasks, mode: str = Form(""), site_ids: list[int] = Form([]),
+                   confirm: str = Form(""), next: str = Form("/"), user: User = Depends(require_manager),
+                   session: Session = Depends(get_session)):
+    """The Emergency steps: lockdown or evacuation at the sites picked, after the last step is confirmed."""
+    managed = managed_site_ids(session, user)
+    picked = [x for x in (session.get(Site, i) for i in dict.fromkeys(site_ids)) if x and x.id in managed]
+    if mode not in {"lockdown", "evacuation"} or confirm != mode or not picked:
+        flash(request, "Nothing was started. Pick the sites and what should happen, then confirm on the last step.", "error")
+        return redirect(safe_next(next))
+    done, failed = [], []
+    for site in picked:
+        err = set_emergency(session, user, site, mode)
+        (failed if err else done).append(f"{site.name}: {err}" if err else site.name)
+    session.commit()
+    kick_reconcile(bg)
+    held = "locked" if mode == "lockdown" else "unlocked"
+    if done:
+        flash(request, f"{mode.capitalize()} started at {', '.join(done)}. Every door there is held {held} until you end it.",
+              "error")
+    if failed:
+        flash(request, "UniFi Access didn't accept it at " + "; ".join(failed), "error")
     return redirect(safe_next(next))
 
 
@@ -1525,6 +1603,7 @@ def users_unifi_check(request: Request, user: User = Depends(require_manager), s
 def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""), email: str = Form(...),
               role: str = Form("operator"), signin: str = Form("microsoft"), password: str = Form(""),
               username: str = Form(""), door_source: str = Form("opndoor"), start_page: str = Form(""),
+              home_site: str = Form("-"),
               active: bool = Form(False), door_ids: list[str] = Form([]), site_ids: list[int] = Form([]),
               user: User = Depends(require_manager), session: Session = Depends(get_session)):
     email = email.strip().lower()
@@ -1633,6 +1712,10 @@ def user_save(request: Request, uid: Optional[int] = None, name: str = Form(""),
                      f"{user.display} {'changed' if before else 'added'} {target.display} ({target.role_name})",
                      user=user, changes=changed,
                      site_ids=(sites_before | person_site_ids(session, target)) or None)
+    if full and home_site != "-":
+        session.flush()
+        target.home_site_id = _home_site(session, target, home_site)  # once their sites are saved
+        session.add(target)
     session.commit()
     flash(request, f"Saved {target.display}.")
     return redirect("/users")

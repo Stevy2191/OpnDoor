@@ -1,9 +1,12 @@
-{# Lockdown / evacuation buttons for the sites this person manages (Home and Doors pages). #}
-{% for x in em_sites or [] %}{% if not x.emergency %}
+{# Lockdown / evacuation for the sites this person manages (Home and Doors pages).
+   One site: its card with both buttons. Several sites: one quiet "Emergency…" bar that opens step-by-step
+   choices (sites, then what, then a last check). Nothing happens before the last step. #}
+{% set em_ready = (em_sites or [])|rejectattr('emergency')|list %}
+{% if (em_sites or [])|length == 1 %}{% for x in em_ready %}
 <section class="card emergency">
   <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#c42b2b" stroke-width="2" aria-hidden="true"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>
-  <div class="etext"><strong>Emergency{% if em_sites|length > 1 %} · {{ x.name }}{% endif %}</strong>
-    <div class="muted small">Lockdown keeps every door {{ 'at ' ~ x.name if em_sites|length > 1 else 'here' }} locked. Evacuation keeps every door unlocked. Both stay on until you end them.</div></div>
+  <div class="etext"><strong>Emergency</strong>
+    <div class="muted small">Lockdown keeps every door here locked. Evacuation keeps every door unlocked. Both stay on until you end them.</div></div>
   <form method="post" action="/sites/{{ x.id }}/emergency" onsubmit="return confirm('Start LOCKDOWN at {{ x.name|e }}? Every door is held locked, and badges won\'t open them, until you end it.')">
     <input type="hidden" name="mode" value="lockdown"><input type="hidden" name="next" value="{{ request.url.path }}">
     <button class="red">Start lockdown</button></form>
@@ -11,4 +14,83 @@
     <input type="hidden" name="mode" value="evacuation"><input type="hidden" name="next" value="{{ request.url.path }}">
     <button class="green">Start evacuation</button></form>
 </section>
-{% endif %}{% endfor %}
+{% endfor %}
+{% elif em_ready %}
+<section class="card emslim">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c42b2b" stroke-width="2" aria-hidden="true"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>
+  <span class="muted small"><strong class="emtitle">Emergency</strong> · lockdown or evacuation at one or more of your {{ em_sites|length }} sites</span>
+  <button type="button" class="button" onclick="emOpen()">Emergency…</button>
+</section>
+
+<dialog id="emdlg" class="emdlg" aria-labelledby="emh">
+  <form method="post" action="/emergency" id="emform">
+    <input type="hidden" name="next" value="{{ request.url.path }}">
+    <input type="hidden" name="confirm" value="">
+    <p class="emsteps small muted"><span data-n="1">1 · Sites</span> <span data-n="2">2 · What happens</span> <span data-n="3">3 · Confirm</span></p>
+
+    <div class="emstep" data-step="1">
+      <h2 id="emh">Which sites?</h2>
+      <p class="muted small">Nothing happens until you confirm on the last step.</p>
+      <div class="emsitelist">
+        {% for x in em_sites %}
+        <label class="check {{ 'muted' if x.emergency }}"><input type="checkbox" name="site_ids" value="{{ x.id }}" data-name="{{ x.name }}" {% if x.emergency %}disabled{% endif %}>
+          <span>{{ x.name }}{% if x.emergency %} <small>· {{ x.emergency }} already on</small>{% endif %}</span></label>
+        {% endfor %}
+      </div>
+      <button type="button" class="link small" onclick="emAll()">Tick every site</button>
+      <div class="btnrow emnav"><button type="button" onclick="emClose()">Cancel</button><button type="button" class="primary" data-next="2">Next</button></div>
+    </div>
+
+    <div class="emstep" data-step="2" hidden>
+      <h2>What should happen at <span class="emcount"></span>?</h2>
+      <p class="muted small">Nothing happens until you confirm on the next step.</p>
+      <label class="emchoice lock"><input type="radio" name="mode" value="lockdown">
+        <span><strong>Lockdown</strong><small>Every door is held locked. Badges won't open them.</small></span></label>
+      <label class="emchoice evac"><input type="radio" name="mode" value="evacuation">
+        <span><strong>Evacuation</strong><small>Every door is held unlocked so people can get out.</small></span></label>
+      <div class="btnrow emnav"><button type="button" data-next="1">Back</button><button type="button" class="primary" data-next="3">Next</button></div>
+    </div>
+
+    <div class="emstep" data-step="3" hidden>
+      <h2>Check and confirm</h2>
+      <div class="emsum"><strong class="emwhat"></strong><div class="emwhere"></div>
+        <small class="emhow"></small></div>
+      <p class="muted small">It stays on until someone ends it here or in UniFi Access.</p>
+      <div class="btnrow emnav"><button type="button" data-next="2">Back</button><button type="button" onclick="emClose()">Cancel</button>
+        <button class="emgo"></button></div>
+    </div>
+  </form>
+</dialog>
+<script>
+(function () {
+  const dlg = document.getElementById('emdlg'), f = document.getElementById('emform');
+  const picked = () => [...f.querySelectorAll('[name=site_ids]:checked')];
+  const mode = () => (f.querySelector('[name=mode]:checked') || {}).value;
+  const plural = n => n + ' site' + (n === 1 ? '' : 's');
+  function show(n) {
+    f.querySelectorAll('.emstep').forEach(s => s.hidden = s.dataset.step !== String(n));
+    f.querySelectorAll('.emsteps span').forEach(s => s.classList.toggle('on', s.dataset.n === String(n)));
+    const p = picked(), m = mode();
+    f.querySelector('.emcount').textContent = p.length === 1 ? p[0].dataset.name : plural(p.length);
+    f.querySelector('[data-step="1"] [data-next]').disabled = !p.length;
+    f.querySelector('[data-step="2"] [data-next="3"]').disabled = !m;
+    if (String(n) === "3") {
+      const go = f.querySelector('.emgo'), lock = m === 'lockdown';
+      f.confirm.value = m;
+      f.querySelector('.emsum').className = 'emsum ' + (lock ? 'lock' : 'evac');
+      f.querySelector('.emwhat').textContent = (lock ? 'Lockdown' : 'Evacuation') + ' at ' + plural(p.length) + ':';
+      f.querySelector('.emwhere').textContent = p.map(x => x.dataset.name).join(', ');
+      f.querySelector('.emhow').textContent = lock ? 'Every door there is held locked. Badges won’t open them.'
+                                                   : 'Every door there is held unlocked.';
+      go.className = lock ? 'red' : 'green';
+      go.textContent = 'Start ' + (lock ? 'lockdown' : 'evacuation') + ' at ' + plural(p.length);
+    } else { f.confirm.value = ''; }
+  }
+  f.addEventListener('click', e => { const b = e.target.closest('[data-next]'); if (b) show(b.dataset.next); });
+  f.addEventListener('change', () => show([...f.querySelectorAll('.emstep')].find(s => !s.hidden).dataset.step));
+  window.emOpen = () => { f.reset(); show(1); dlg.showModal(); };
+  window.emClose = () => dlg.close();
+  window.emAll = () => { f.querySelectorAll('[name=site_ids]:not(:disabled)').forEach(c => c.checked = true); show(1); };
+})();
+</script>
+{% endif %}
