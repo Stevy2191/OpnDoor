@@ -143,8 +143,13 @@ Re-running the installer never touches your schedules, people or history.
 GitHub Actions (`.github/workflows/docker.yml`) runs the tests and checks the installer on every
 push and pull request. On every push to `main` it builds the Docker image for regular PCs and
 servers (amd64) and ARM boards like the Raspberry Pi 4/5 (arm64), and publishes it to GitHub's
-container registry as `ghcr.io/stevy2191/opndoor:latest` (plus a tag for the commit). Tagging a
-release `v1.2.0` also publishes `1.2.0` and `1.2`.
+container registry as `ghcr.io/stevy2191/opndoor:latest` (plus a tag for the commit).
+
+**Versions.** Every build of `main` gets the next version number by itself: the major.minor in the
+`VERSION` file plus the number of commits on `main` (for example `1.0.118`). The image is also tagged
+with that number, and once it's built the version is published as a GitHub Release listing the
+changes merged since the last one. **Settings → Updates** shows the version running, the newest one
+and what's new in between. For a bigger step, change `VERSION` (for example to `1.1` or `2.0`).
 
 After the first build, check that the package is public: GitHub → your profile → **Packages** →
 **opndoor** → **Package settings** → **Change visibility** → Public. (If it's private, the installer
