@@ -11,7 +11,7 @@ from tests.test_web import client, setup_admin  # noqa: F401
 
 
 def regular_hours(client, doors):
-    today = date.today()
+    today = now_local().date()
     client.post("/schedules", data={"mode": "default", "label": "Office hours", "door_ids": doors,
                                     "day": today.isoformat(), "start": "00:00", "end": "23:59",
                                     "weekdays": [str(i) for i in range(7)], "holidays_field": "1", "follow_holidays": "1"})
@@ -30,7 +30,7 @@ def unlocked_today(door_id):
 def test_holiday_for_some_doors_leaves_the_others_open(client, fake):
     setup_admin(client)
     regular_hours(client, ["1:demo-front", "1:demo-side"])
-    today = date.today().isoformat()
+    today = now_local().date().isoformat()
     r = client.post("/holidays", data={"name": "Staff day", "start": today, "mode": "closed", "site": "1",
                                        "scope": "some", "doors": ["1:demo-front"]}, follow_redirects=True)
     assert "Added Staff day" in r.text and "Only Front Entrance" in r.text
@@ -42,7 +42,7 @@ def test_every_door_ticked_means_all_doors(client):
     setup_admin(client)
     with session_scope() as s:
         all_doors = [d.id for d in s.exec(select(Door).where(Door.site_id == 1)).all()]
-    client.post("/holidays", data={"name": "Closed", "start": date.today().isoformat(), "mode": "closed", "site": "1",
+    client.post("/holidays", data={"name": "Closed", "start": now_local().date().isoformat(), "mode": "closed", "site": "1",
                                    "scope": "some", "doors": all_doors})
     with session_scope() as s:
         assert s.exec(select(Holiday)).one().door_ids == ""  # includes doors added later
@@ -51,7 +51,7 @@ def test_every_door_ticked_means_all_doors(client):
 def test_edit_a_holiday(client, fake):
     setup_admin(client)
     regular_hours(client, ["1:demo-front", "1:demo-side"])
-    today = date.today()
+    today = now_local().date()
     client.post("/holidays", data={"name": "Snow day", "start": today.isoformat(), "mode": "closed", "site": "1"})
     with session_scope() as s:
         hid = s.exec(select(Holiday)).one().id
@@ -78,6 +78,6 @@ def test_list_says_which_doors_are_left_out(client):
     setup_admin(client)
     with session_scope() as s:
         ids = [d.id for d in s.exec(select(Door).where(Door.site_id == 1)).all() if d.id != "1:demo-side"]
-    r = client.post("/holidays", data={"name": "Most", "start": date.today().isoformat(), "mode": "closed", "site": "1",
+    r = client.post("/holidays", data={"name": "Most", "start": now_local().date().isoformat(), "mode": "closed", "site": "1",
                                        "scope": "some", "doors": ids}, follow_redirects=True)
     assert "All doors except Side Door" in r.text
