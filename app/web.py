@@ -772,13 +772,13 @@ def schedules_list(request: Request, view: str = "", week: str = "", month: str 
     view = request.session.get("sched_view", "month")
     if view not in ("week", "month", "list"):
         view = "month"
-    if d and not view == "month":
+    if d and view == "list":
         view = "month"
     try:
         open_day = date.fromisoformat(d) if d else None
     except ValueError:
         open_day = None
-    if open_day and not month:
+    if open_day and not month and view == "month":
         month = f"{open_day:%Y-%m}"
     site_id = current_site_id(request, session, user)
     doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
@@ -845,7 +845,7 @@ def schedules_list(request: Request, view: str = "", week: str = "", month: str 
 
     if view == "week":
         try:
-            ref = date.fromisoformat(week) if week else today
+            ref = date.fromisoformat(week) if week else (open_day or today)
         except ValueError:
             ref = today
         start = ref - timedelta(days=ref.weekday())
@@ -856,7 +856,7 @@ def schedules_list(request: Request, view: str = "", week: str = "", month: str 
         # UniFi's own schedules still run on holidays (OpnDoor doesn't override them), so they're all shown
         ctx["unifi_blocks"] = (week_blocks(session, bdoor_list, start)
                                if type in ("", "all", "override", "event") else {})
-        ctx.update(days=days, by_day=by_day, week_start=start, today=today, skipped=skipped,
+        ctx.update(days=days, by_day=by_day, week_start=start, today=today, skipped=skipped, open_day=open_day,
                    day_hols=week_holidays(hmaps, doors, days),
                    prev_week=(start - timedelta(days=7)).isoformat(), next_week=(start + timedelta(days=7)).isoformat(),
                    is_this_week=start <= today < start + timedelta(days=7))
