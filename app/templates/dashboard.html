@@ -40,12 +40,48 @@
   {% else %}<a class="tile" href="#today"><span class="num">{{ tiles.events }}</span><span class="lbl">Events left today</span></a>{% endif %}
 </section>
 
+{% if overview %}
+{% set busy_sites = overview|rejectattr('quiet')|list %}{% set quiet_sites = overview|selectattr('quiet')|list %}
+<section class="card" id="now">
+  <h2>Your sites <small class="muted">{{ overview|length }}</small></h2>
+  {% macro n(v, cls='hot') %}<td class="num {{ cls if v else 'zero' }}">{{ v }}</td>{% endmacro %}
+  {% if busy_sites %}
+  <table class="list sitetable">
+    <thead><tr><th>Site</th><th>Console</th><th class="num">Doors</th><th class="num">Unlocked</th><th class="num">Standing open</th><th class="num">Kept locked</th><th class="num">Problems</th></tr></thead>
+    <tbody>
+    {% for r in busy_sites %}{% set x = r.site %}
+      <tr class="{{ 'bad' if r.offline or r.problems }}">
+        <td><a class="strong" href="/site?id={{ x.id }}&next=/home">{{ x.name }}</a>
+          {% if x.emergency %} <span class="pill {{ 'lock' if x.emergency == 'lockdown' else 'ok' }}">{{ x.emergency|capitalize }} on</span>{% endif %}</td>
+        <td>{% if not x.enabled %}<span class="muted">Turned off</span>
+            {% elif r.offline %}<span class="pill bad" title="{{ x.last_sync_status }}">Can't reach</span>{% if x.last_sync_at %} <small class="muted">since {{ (x.last_sync_at|local)|time }}</small>{% endif %}
+            {% else %}<span class="muted">Online</span>{% endif %}</td>
+        <td class="num">{{ r.doors }}</td>{{ n(r.unlocked) }}{{ n(r.open) }}{{ n(r.locked) }}{{ n(r.problems, 'bad') }}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if quiet_sites %}
+  {% if busy_sites %}
+  <details class="quietsites"><summary class="muted">✓ {{ quiet_sites|length }} other site{{ '' if quiet_sites|length == 1 else 's' }} all normal</summary>
+    <p class="small">{% for r in quiet_sites %}<a href="/site?id={{ r.site.id }}&next=/home">{{ r.site.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p></details>
+  {% else %}
+  <p class="allgood">✓ All {{ quiet_sites|length }} sites normal: every door locked and on its regular hours.</p>
+  <p class="small muted">{% for r in quiet_sites %}<a href="/site?id={{ r.site.id }}&next=/home">{{ r.site.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% endif %}
+  {% endif %}
+  <p class="small muted morelink">Pick a site to see its doors.</p>
+</section>
+{% else %}
 <section class="card" id="now">
   <h2>Right now</h2>
   {% if standing_open %}
   <ul class="openlist">
-    {% for d in standing_open %}<li><span class="pill open">Standing open</span> <a href="/doors/{{ d.id|urlencode }}"><strong>{{ d.name }}</strong></a> <small class="muted">the door sensor says it's open</small></li>{% endfor %}
+    {% for d in standing_open[:5] %}<li><span class="pill open">Standing open</span> <a href="/doors/{{ d.id|urlencode }}"><strong>{{ d.name }}</strong></a> <small class="muted">{% if d.position_since %}open since {{ (d.position_since|local)|time }}{% else %}the door sensor says it's open{% endif %}</small></li>{% endfor %}
   </ul>
+  {% if standing_open|length > 5 %}<details class="small"><summary class="muted">+ {{ standing_open|length - 5 }} more standing open</summary>
+    <ul class="openlist">{% for d in standing_open[5:] %}<li><a href="/doors/{{ d.id|urlencode }}">{{ d.name }}</a></li>{% endfor %}</ul></details>{% endif %}
   {% endif %}
   {% if right_now %}
   <table class="list">
@@ -72,6 +108,7 @@
   <p class="allgood">✓ All {{ doors|length }} door{{ '' if doors|length == 1 else 's' }} are locked and on their regular hours.</p>
   {% endif %}
 </section>
+{% endif %}
 
 <section class="card" id="today">
   <h2>Today <small class="muted">{{ today_label }}</small></h2>

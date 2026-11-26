@@ -1235,3 +1235,37 @@ label.chip input:focus-visible + span { outline: none; }
 .kindcard:hover { border-color: var(--accent); }
 .kindcard strong { font-size: 1rem; }
 .rangequick { margin: .3rem 0 .8rem; gap: .8rem; }
+
+/* Emergency, several sites: a quiet bar that opens step-by-step choices */
+.emslim { display: flex; align-items: center; gap: .75rem; padding: .7rem 1rem; }
+.emslim > span { flex: 1; }
+.emslim .emtitle { color: var(--text); }
+dialog.emdlg { border: 0; border-radius: 14px; padding: 1.1rem 1.25rem; width: min(520px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem); background: var(--card); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+dialog.emdlg::backdrop { background: rgba(0,0,0,.45); }
+.emdlg h2 { margin: .2rem 0 .3rem; }
+.emsteps { display: flex; gap: .9rem; margin: 0 0 .4rem; }
+.emsteps span.on { color: var(--text); font-weight: 700; }
+.emsitelist { display: grid; gap: .3rem; max-height: 46vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: .6rem .8rem; margin: .6rem 0 .3rem; }
+.emnav { justify-content: flex-end; margin-top: 1rem; }
+.emchoice { display: flex; gap: .7rem; align-items: flex-start; border: 2px solid var(--line); border-radius: 10px; padding: .7rem .9rem; margin: .5rem 0; cursor: pointer; font-weight: 400; }
+.emchoice input { margin-top: .25rem; }
+.emchoice span { display: flex; flex-direction: column; }
+.emchoice small { color: var(--muted); }
+.emchoice.lock:has(input:checked) { border-color: #c42b2b; background: var(--err-soft); }
+.emchoice.evac:has(input:checked) { border-color: #13704a; background: var(--ok-soft); }
+.emsum { border-radius: 10px; padding: .8rem 1rem; margin: .6rem 0; border-left: 5px solid; display: flex; flex-direction: column; gap: .2rem; }
+.emsum.lock { background: var(--err-soft); border-color: #c42b2b; }
+.emsum.evac { background: var(--ok-soft); border-color: #13704a; }
+.emsum strong { font-size: 1.1rem; }
+.emnav button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Home, all sites: one row per site */
+.sitetable td.num, .sitetable th.num { text-align: center; font-variant-numeric: tabular-nums; }
+.sitetable td.num.hot { font-weight: 700; color: var(--warn); }
+.sitetable td.num.bad { font-weight: 700; color: var(--err); }
+.sitetable .zero { color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.sitetable tr.quiet td { color: var(--muted); }
+.quietsites { margin: .6rem 0 0; }
+.quietsites summary { cursor: pointer; }
+.morelink { margin: .3rem 0 0; }

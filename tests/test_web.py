@@ -179,6 +179,10 @@ def test_home_lock_now_and_site_switcher(client, fake):
     setup_admin(client)
     client.post("/sites", data={"name": "North", "host": "demo", "timezone": "America/Chicago"})
     client.post("/quick-unlock", data={"door_ids": ["1:demo-side"], "minutes": "30"})
+    home = client.get("/").text  # all sites: one row per site, busy ones first
+    assert "Your sites" in home and "Right now" not in home and "1 other site all normal" in home
+    assert home.index("/site?id=1&") < home.index("/site?id=2&")
+    client.get("/site?id=1&next=/")
     home = client.get("/").text
     assert "Right now" in home and "Lock now" in home and "1%3Ademo-side/lock-now" in home
 
@@ -193,7 +197,8 @@ def test_home_lock_now_and_site_switcher(client, fake):
     home = client.get("/").text
     assert "4 doors" in home and "1%3Ademo-side/lock-now" not in home
     client.get("/site?id=&next=/")
-    assert "8 doors" in client.get("/").text
+    home = client.get("/").text
+    assert "8 doors" in home and "All 2 sites normal" in home
 
 
 
