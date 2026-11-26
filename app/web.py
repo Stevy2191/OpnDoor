@@ -1053,7 +1053,21 @@ def _save_perday(request, bg, session, user, label, door_ids, day, until, allowe
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Saved “{label.strip()}” ({len(parsed)} set{'' if len(parsed) == 1 else 's'} of hours).")
-    return redirect("/")
+    return redirect(back_to_schedules(request, parsed[0]["start_local"].date(), regular=True))
+
+
+def back_to_schedules(request: Request, day: date, regular: bool = False) -> str:
+    """After saving: Schedules in the view used last (week, month, list or day), open on the schedule's date.
+    Regular hours are shown with the Regular hours filter, since they're hidden by default."""
+    view = request.session.get("sched_view", "week")
+    if view == "day":
+        return f"/day?d={day.isoformat()}"
+    t = "&type=all" if regular else ""
+    if view == "list":
+        return "/schedules?view=list" + t
+    if view == "month":
+        return f"/schedules?view=month&month={day:%Y-%m}" + t
+    return f"/schedules?view=week&week={day.isoformat()}" + t
 
 
 @router.post("/schedules")
@@ -1121,7 +1135,7 @@ def schedule_save(request: Request, bg: BackgroundTasks, sid: Optional[int] = No
     session.commit()
     kick_reconcile(bg)
     flash(request, f"Saved “{sched.label}”.")
-    return redirect("/")
+    return redirect(back_to_schedules(request, sched.start_local.date(), regular=sched.kind == "default"))
 
 
 @router.post("/schedules/{sid}/delete")
