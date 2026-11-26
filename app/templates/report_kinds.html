@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}New report · OpnDoor{% endblock %}
+{% block content %}
+<p class="crumbs small"><a href="/reports">Reports</a> › New report</p>
+<h1>What kind of report?</h1>
+<p class="muted">Download one now as Excel or CSV, or set up a summary that's emailed on a schedule.</p>
+
+<h2 class="kindhead">Download now</h2>
+<div class="kindgrid">
+  {% for key, k in kinds.items() %}
+  <a class="kindcard" href="/reports/new/{{ key }}"><strong>{{ k[0] }}</strong><span class="muted small">{{ k[1] }}</span></a>
+  {% endfor %}
+</div>
+
+<h2 class="kindhead">Emailed on a schedule</h2>
+<div class="kindgrid">
+  <a class="kindcard" href="/reports/new/summary"><strong>Email summary</strong>
+    <span class="muted small">A daily, weekly or monthly email: door activity, visitors, alerts, offline devices, changes and what's coming up. Can also be downloaded any time.</span></a>
+</div>
+{% endblock %}

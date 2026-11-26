@@ -2,8 +2,9 @@
 {% block title %}{{ 'Edit report' if r.id else 'New report' }} · OpnDoor{% endblock %}
 {% block mainclass %}narrow{% endblock %}
 {% block content %}
-<p class="crumbs small"><a href="/reports">Reports</a> › {{ r.name or 'New report' }}</p>
-<h1>{{ 'Edit report' if r.id else 'New report' }}</h1>
+<p class="crumbs small"><a href="/reports">Reports</a> › {% if not r.id %}<a href="/reports/new">New report</a> › Email summary{% else %}{{ r.name }}{% endif %}</p>
+<h1>{{ 'Edit email summary' if r.id else 'New email summary' }}</h1>
+{% if r.id %}<p class="small"><a href="/reports/{{ r.id }}/download">Download it now</a> · <a href="/reports/{{ r.id }}/preview" target="_blank" rel="noopener">Preview</a></p>{% endif %}
 <form method="post" action="/reports/save" class="vform" id="repform">
   {% if r.id %}<input type="hidden" name="id" value="{{ r.id }}">{% endif %}
   <section class="card">

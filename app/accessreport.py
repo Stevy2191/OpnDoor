@@ -1,19 +1,10 @@
-"""Door access report: who can get into the doors you pick, downloaded as CSV or Excel."""
-import csv
-import io
-from datetime import datetime
-
-from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import Response
+"""Door access report rows: who can get into the doors you pick (downloaded from Reports)."""
 from sqlmodel import Session, select
 
-from . import audit, xlsx
 from .auth import allowed_door_ids, managed_site_ids
-from .db import get_session
 from .models import Building, Door, Site, User
-from .web import all_doors, flash, redirect, render, require_manager
+from .web import all_doors
 
-router = APIRouter()
 HEADER = ["Site", "Building", "Door", "Person", "Email", "Access from", "Policy or role", "When"]
 
 
@@ -54,42 +45,3 @@ def _safe(v: str) -> str:
     """Stop spreadsheet apps from running a cell as a formula."""
     v = str(v or "")
     return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
-
-
-@router.get("/reports/access")
-def access_page(request: Request, user: User = Depends(require_manager), session: Session = Depends(get_session)):
-    doors = _doors(session, user)
-    sites = {x.id: x for x in session.exec(select(Site)).all()}
-    return render(request, "report_access.html", user, doors=doors, dsites=sites)
-
-
-@router.get("/reports/access/download")
-def access_download(request: Request, door: list[str] = Query([]), fmt: str = "xlsx", unifi: int = 0, app: int = 0,
-                    user: User = Depends(require_manager), session: Session = Depends(get_session)):
-    mine = {d.id: d for d in _doors(session, user)}
-    picked = [mine[x] for x in door if x in mine]
-    if not picked:
-        flash(request, "Pick at least one door.", "error")
-        return redirect("/reports/access")
-    if not unifi and not app:
-        flash(request, "Tick UniFi Access, OpnDoor, or both.", "error")
-        return redirect("/reports/access")
-    rows, errors = access_rows(session, picked, bool(unifi), bool(app))
-    audit.record(session, "report.access", f"{user.display} downloaded a door access report ({len(picked)} door"
-                 f"{'' if len(picked) == 1 else 's'})", user=user, door_ids=[d.id for d in picked])
-    session.commit()
-    stamp = datetime.now().strftime("%Y-%m-%d")
-    note = [["Note: " + e] for e in errors]
-    if fmt == "csv":
-        out = io.StringIO()
-        w = csv.writer(out)
-        w.writerow(HEADER)
-        for r in rows:
-            w.writerow([_safe(c) for c in r])
-        for n in note:
-            w.writerow(n)
-        return Response("﻿" + out.getvalue(), media_type="text/csv; charset=utf-8",
-                        headers={"Content-Disposition": f'attachment; filename="door-access-{stamp}.csv"'})
-    data = xlsx.build("Door access", HEADER, rows + ([[""]] + note if note else []))
-    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f'attachment; filename="door-access-{stamp}.xlsx"'})
