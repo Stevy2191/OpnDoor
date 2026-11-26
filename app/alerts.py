@@ -260,10 +260,6 @@ def check_all() -> None:
                 sent_to, err = deliver(s, rule, subject, text)
                 s.add(AlertSent(rule_id=rule.id, key=key, subject=subject, sent_to=sent_to, error=err))
             s.commit()
-        old = s.exec(select(AlertSent).where(AlertSent.at < now - timedelta(days=90))).all()
-        for r in old:
-            s.delete(r)
-        s.commit()
 
 
 # ---------- pages ----------

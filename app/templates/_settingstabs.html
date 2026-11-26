@@ -4,5 +4,6 @@
   <a href="/settings/signin" class="{{ 'on' if tab == 'signin' }}">Sign-in</a>
   <a href="/settings/email" class="{{ 'on' if tab == 'email' }}">Email</a>
   <a href="/settings/backups" class="{{ 'on' if tab == 'backups' }}">Backups</a>
+  {% if user.is_owner %}<a href="/settings/cleanup" class="{{ 'on' if tab == 'cleanup' }}">Data cleanup</a>{% endif %}
   <a href="/settings/updates" class="{{ 'on' if tab == 'updates' }}">Updates</a>
 </nav>
