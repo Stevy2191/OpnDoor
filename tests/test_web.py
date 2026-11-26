@@ -324,3 +324,22 @@ def test_username_sign_in_and_day_link(client):
     week = client.get("/schedules?view=week&week=2030-01-07").text
     assert 'href="/schedules/new?day=2030-01-09"' in week and 'data-day="2030-01-13"' in week
     assert 'name="day" value="2030-01-09"' in client.get("/schedules/new?day=2030-01-09").text
+
+
+def test_saving_a_schedule_goes_back_to_schedules_on_its_date(client):
+    from datetime import timedelta
+    from app.schedules import now_local
+    setup_admin(client)
+    day = (now_local().date() + timedelta(days=10)).isoformat()
+    r = client.post("/schedules", data={"mode": "unlock", "label": "Board meeting", "door_ids": ["1:demo-front"],
+                                        "day": day, "start": "18:00", "end": "20:00"}, follow_redirects=False)
+    assert r.headers["location"] == f"/schedules?view=week&week={day}"
+    client.get("/schedules?view=month")
+    r = client.post("/schedules", data={"mode": "default", "label": "Office hours", "door_ids": ["1:demo-front"],
+                                        "day": day, "start": "08:00", "end": "17:00", "repeat": "weekly",
+                                        "weekdays": ["0", "1", "2", "3", "4"]}, follow_redirects=False)
+    assert r.headers["location"] == f"/schedules?view=month&month={day[:7]}&type=all"
+    client.get("/day")
+    r = client.post("/schedules", data={"mode": "unlock", "label": "Choir", "door_ids": ["1:demo-front"],
+                                        "day": day, "start": "18:00", "end": "19:00"}, follow_redirects=True)
+    assert r.url.path == "/day" and "Saved “Choir”" in r.text
