@@ -1,19 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Day preview · OpnDoor{% endblock %}
+{% block title %}Schedules · Day · OpnDoor{% endblock %}
 {% block content %}
-<div class="pagehead">
-  <div>
-    <h1>{{ day.strftime('%A, %B') }} {{ day.day }}{% if day.year != today.year %}, {{ day.year }}{% endif %}</h1>
-    <p class="muted">What every door does that day: holidays, events, regular hours and UniFi's own schedules, all applied.
-      {% if day == today %}Today.{% endif %}</p>
-  </div>
-  <form method="get" action="/day" class="btnrow">
-    <a class="button" href="/day?d={{ prev.isoformat() }}" aria-label="Day before">‹</a>
-    <input type="date" name="d" value="{{ day.isoformat() }}" onchange="this.form.submit()" style="width:auto;margin:0">
-    <a class="button" href="/day?d={{ next.isoformat() }}" aria-label="Day after">›</a>
-    {% if day != today %}<a class="button" href="/day">Today</a>{% endif %}
-  </form>
-</div>
+{% set sched_sub = 'Every door, one day at a time' %}
+{% include "_schedhead.html" %}
+
+<form method="get" action="/day" class="weeknav daynav">
+  <a class="button small" href="/day?d={{ prev.isoformat() }}" aria-label="Day before">←</a>
+  <h2>{{ day.strftime('%A, %B') }} {{ day.day }}{% if day.year != today.year %}, {{ day.year }}{% endif %}</h2>
+  <a class="button small" href="/day?d={{ next.isoformat() }}" aria-label="Day after">→</a>
+  <input type="date" name="d" value="{{ day.isoformat() }}" onchange="this.form.submit()" aria-label="Pick a day">
+  {% if day != today %}<a class="small" href="/day">Today</a>{% endif %}
+</form>
 
 {% for x in on_hol %}
 <div class="dayhol">★ <b>{{ x.h.name }}</b>: {{ x.scope }} kept locked {{ x.h.when_lower() }}.

@@ -755,12 +755,16 @@ def week_holidays(maps: dict, doors: list[Door], days: list[date]) -> dict:
     return out
 
 @router.get("/schedules")
-def schedules_list(request: Request, view: str = "", week: str = "", q: str = "", type: str = "",
+def schedules_list(request: Request, view: str = "", week: str = "", month: str = "", q: str = "", type: str = "",
                    building: str = "", past: str = "", user: User = Depends(require_user),
                    session: Session = Depends(get_session)):
-    if view in ("week", "list"):
+    if view in ("week", "month", "list"):
         request.session["sched_view"] = view
+    elif request.session.get("sched_view") == "day":
+        return redirect("/day")
     view = request.session.get("sched_view", "week")
+    if view not in ("week", "month", "list"):
+        view = "week"
     site_id = current_site_id(request, session, user)
     doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
     in_view = {d.id for d in doors}
@@ -797,6 +801,30 @@ def schedules_list(request: Request, view: str = "", week: str = "", q: str = ""
 
     ctx = dict(view=view, q=q, type=type, building=building, past=past, types=SCHEDULE_TYPES,
                building_opts=[(b, namer.buildings[b]) for b in buildings], total=len(scheds))
+    hmaps = engine.door_holiday_maps(session, doors)
+
+    def gather(first: date, ndays: int) -> tuple[dict, dict]:
+        """{day: [cards]} of what runs each day, and {day: [cards]} of what holidays skip."""
+        lo = datetime.combine(first, datetime.min.time())
+        days_ = [first + timedelta(days=k) for k in range(ndays)]
+        by_day: dict[date, list] = {d: [] for d in days_}
+        skipped: dict[date, list] = {d: [] for d in days_}
+        for x in scheds:
+            # holidays that cover every one of its doors here (if only some doors are off, it still runs)
+            ids = [d for d in sd[x.id] if d in in_view]
+            hols = {k: h for k, h in hmaps[ids[0]].items() if all(hmaps[i].get(k) is h for i in ids[1:])}
+            for o in expand([x], lo, lo + timedelta(days=ndays), hols):
+                day = max(o.start.date(), first)
+                if day in by_day:
+                    by_day[day].append(card(o.schedule, o))
+            for ch in holiday_changes([x], lo, lo + timedelta(days=ndays), hols):
+                if ch["skipped"] and ch["o"].start.date() in skipped:
+                    skipped[ch["o"].start.date()].append(card(ch["o"].schedule, ch["o"]))
+        for d in days_:
+            by_day[d].sort(key=lambda c: (c["s"].kind != "default", c["o"].start))
+            skipped[d].sort(key=lambda c: c["o"].start)
+        return by_day, skipped
+
     if view == "week":
         try:
             ref = date.fromisoformat(week) if week else today
@@ -804,32 +832,31 @@ def schedules_list(request: Request, view: str = "", week: str = "", q: str = ""
             ref = today
         start = ref - timedelta(days=ref.weekday())
         days = [start + timedelta(days=k) for k in range(7)]
-        lo = datetime.combine(start, datetime.min.time())
-        by_day: dict[date, list] = {d: [] for d in days}
-        hmaps = engine.door_holiday_maps(session, doors)
-        skipped: dict[date, list] = {d: [] for d in days}
-        for x in scheds:
-            # holidays that cover every one of its doors here (if only some doors are off, it still runs)
-            ids = [d for d in sd[x.id] if d in in_view]
-            hols = {k: h for k, h in hmaps[ids[0]].items() if all(hmaps[i].get(k) is h for i in ids[1:])}
-            for o in expand([x], lo, lo + timedelta(days=7), hols):
-                day = max(o.start.date(), start)
-                if day in by_day:
-                    by_day[day].append(card(o.schedule, o))
-            for ch in holiday_changes([x], lo, lo + timedelta(days=7), hols):
-                if ch["skipped"] and ch["o"].start.date() in skipped:
-                    skipped[ch["o"].start.date()].append(card(ch["o"].schedule, ch["o"]))
-        for d in days:
-            by_day[d].sort(key=lambda c: (c["s"].kind != "default", c["o"].start))
-            skipped[d].sort(key=lambda c: c["o"].start)
+        by_day, skipped = gather(start, 7)
         from .unifiwatch import week_blocks
         bdoor_list = [d for d in doors if not building.isdigit() or d.building_id == int(building)]
-        ctx["unifi_blocks"] = (week_blocks(session, bdoor_list, start, hol_maps=engine.door_holiday_maps(session, bdoor_list))
+        ctx["unifi_blocks"] = (week_blocks(session, bdoor_list, start, hol_maps=hmaps)
                                if type in ("", "all", "override", "event") else {})
         ctx.update(days=days, by_day=by_day, week_start=start, today=today, skipped=skipped,
                    day_hols=week_holidays(hmaps, doors, days),
                    prev_week=(start - timedelta(days=7)).isoformat(), next_week=(start + timedelta(days=7)).isoformat(),
                    is_this_week=start <= today < start + timedelta(days=7))
+    elif view == "month":
+        try:
+            first = date.fromisoformat(month + "-01") if month else today.replace(day=1)
+        except ValueError:
+            first = today.replace(day=1)
+        nxt = (first + timedelta(days=32)).replace(day=1)
+        start = first - timedelta(days=first.weekday())  # the Monday on or before the 1st
+        end = nxt - timedelta(days=1)
+        end += timedelta(days=6 - end.weekday())  # the Sunday on or after the last day
+        ndays = (end - start).days + 1
+        days = [start + timedelta(days=k) for k in range(ndays)]
+        by_day, _ = gather(start, ndays)
+        prev = (first - timedelta(days=1)).replace(day=1)
+        ctx.update(weeks=[days[i:i + 7] for i in range(0, ndays, 7)], by_day=by_day, today=today, month_first=first,
+                   day_hols=week_holidays(hmaps, doors, days), prev_month=f"{prev:%Y-%m}", next_month=f"{nxt:%Y-%m}",
+                   is_this_month=first == today.replace(day=1))
     else:
         now = now_local()
         rows = []
@@ -845,8 +872,29 @@ def schedules_list(request: Request, view: str = "", week: str = "", q: str = ""
         far = datetime.max
         rows.sort(key=lambda c: (c["next"].start if c["next"] else far, c["s"].label.lower()))
         ctx.update(defaults=[r for r in rows if r["s"].kind == "default"],
-                   overrides=[r for r in rows if r["s"].kind != "default"])
+                   overrides=[r for r in rows if r["s"].kind != "default"],
+                   hol_rows=upcoming_holidays(hmaps, doors, today, needle) if type in ("", "all", "lock") else [],
+                   today=today)
     return render(request, "schedules.html", user, **ctx)
+
+
+def upcoming_holidays(hmaps: dict, doors: list[Door], today: date, needle: str = "") -> list[dict]:
+    """[{h, start, end, scope}]: the next time each holiday covering these doors happens, within a year."""
+    out: dict = {}
+    horizon = today + timedelta(days=366)
+    for door_id, hm in hmaps.items():
+        for d, h in hm.items():
+            if not today <= d <= horizon or (needle and needle not in h.name.lower()):
+                continue
+            r = out.get(h.id)
+            if r is None or d < r["start"]:
+                out[h.id] = r = {"h": h, "start": d, "doors": set()}
+    for r in out.values():
+        span = r["h"].next_span(today) or (r["start"], r["start"])
+        r["start"], r["end"] = max(span[0], today), span[1]
+        n = sum(1 for d in doors if hmaps.get(d.id, {}).get(r["start"]) is r["h"])
+        r["scope"] = "All doors" if n == len(doors) else f"{n} of {len(doors)} doors"
+    return sorted(out.values(), key=lambda r: (r["start"], r["h"].name.lower()))
 
 
 def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kind: str = "override",

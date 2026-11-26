@@ -12,24 +12,13 @@
 {%- endmacro %}
 
 {% block content %}
-<div class="pagehead">
-  <div>
-    <h1>Schedules</h1>
-    <p class="muted">{% if current_site and sites.get(current_site) %}{{ sites[current_site].name }} · {% endif %}{{ total }} schedule{{ '' if total == 1 else 's' }}{% if q or type or building %} match{% endif %}</p>
-  </div>
-  <div class="btnrow">
-    <div class="segtabs" role="tablist">
-      <a href="?view=week&q={{ q|urlencode }}&type={{ type }}&building={{ building }}" class="{{ 'on' if view == 'week' }}">📅 Week</a>
-      <a href="?view=list&q={{ q|urlencode }}&type={{ type }}&building={{ building }}" class="{{ 'on' if view == 'list' }}">☰ List</a>
-      <a href="/day">☀ Day</a>
-    </div>
-    <a class="button primary" href="/schedules/new">+ New schedule</a>
-  </div>
-</div>
+{% set sched_sub = ((sites[current_site].name ~ ' · ') if current_site and sites.get(current_site) else '') ~ total ~ ' schedule' ~ ('' if total == 1 else 's') ~ (' match' if q or type or building else '') %}
+{% include "_schedhead.html" %}
 
 <form class="filterbar card" method="get" action="/schedules">
   <input type="hidden" name="view" value="{{ view }}">
   {% if view == 'week' %}<input type="hidden" name="week" value="{{ week_start }}">{% endif %}
+  {% if view == 'month' %}<input type="hidden" name="month" value="{{ month_first.strftime('%Y-%m') }}">{% endif %}
   <input type="search" name="q" value="{{ q }}" placeholder="Search events, doors, contacts…" aria-label="Search">
   <select name="type" aria-label="Type" onchange="this.form.submit()">
     {% for v, lbl in types %}<option value="{{ v }}" {% if v == type %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
@@ -102,6 +91,33 @@ document.querySelectorAll('.wday[data-day]').forEach(function (d) {
 });
 </script>
 
+{% elif view == 'month' %}
+{% set mq = '&q=' ~ (q|urlencode) ~ '&type=' ~ type ~ '&building=' ~ building %}
+<div class="weeknav">
+  <a class="button small" href="?view=month&month={{ prev_month }}{{ mq }}" aria-label="Previous month">←</a>
+  <h2>{{ month_first.strftime('%B %Y') }}</h2>
+  <a class="button small" href="?view=month&month={{ next_month }}{{ mq }}" aria-label="Next month">→</a>
+  {% if not is_this_month %}<a class="small" href="?view=month{{ mq }}">This month</a>{% endif %}
+</div>
+<div class="month">
+  {% for wd in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}<div class="mhead">{{ wd }}</div>{% endfor %}
+  {% for wk in weeks %}{% for d in wk %}
+  <div class="mday {{ 'other' if d.month != month_first.month }} {{ 'today' if d == today }} {{ 'past' if d < today }}">
+    <div class="mtop"><a class="mnum" href="/day?d={{ d.isoformat() }}" title="See every door on {{ d.strftime('%A, %B %-d') }}">{{ d.day }}</a>
+      {% if user.schedules and d >= today %}<a class="wadd" href="/schedules/new?day={{ d.isoformat() }}" aria-label="Add a schedule on {{ d.strftime('%A, %B %-d') }}">+</a>{% endif %}</div>
+    {% for x in day_hols.get(d, []) %}
+    <a class="mhol" href="/day?d={{ d.isoformat() }}" title="{{ x.h.name }}: locked {{ x.h.when_lower() }} · {{ x.scope }}">★ {{ x.h.name }}</a>
+    {% endfor %}
+    {% set evs = by_day[d] %}
+    {% for c in evs[:3] %}{% set s = c.s %}
+    <a class="mev {{ kindclass(s) }}" href="{{ '/schedules/' ~ s.id if c.editable else '/day?d=' ~ d.isoformat() }}" title="{{ span(c.o.start, c.o.end) }} {{ s.label }} · {{ c.doors }}">
+      <span class="mtime">{{ c.o.start.strftime('%-I:%M%p')|lower|replace(':00', '') }}</span> {{ s.label }}</a>
+    {% endfor %}
+    {% if evs|length > 3 %}<a class="mmore" href="/day?d={{ d.isoformat() }}">+ {{ evs|length - 3 }} more</a>{% endif %}
+  </div>
+  {% endfor %}{% endfor %}
+</div>
+
 {% else %}
 {% macro rows(list) %}
 <div class="slist">
@@ -126,6 +142,25 @@ document.querySelectorAll('.wday[data-day]').forEach(function (d) {
 </div>
 {% endmacro %}
 
+{% if hol_rows %}
+<section>
+  <h2>Holidays <small class="muted">{{ hol_rows|length }}</small> <a class="small" href="/holidays" style="font-weight:400">Manage holidays →</a></h2>
+  <div class="slist">
+  {% for r in hol_rows %}
+    <div class="srow hol">
+      <div class="smain">
+        <div class="stitle"><strong>★ {{ r.h.name }}</strong> <span class="pill hol">Locked {{ r.h.when_lower() }}</span>
+          {% if r.h.yearly %}<span class="muted small">↻ yearly</span>{% endif %}</div>
+        <div class="swhen">{{ r.start.strftime('%a, %b %-d') }}{% if r.end != r.start %} – {{ r.end.strftime('%a, %b %-d') }}{% endif %}{% if r.start.year != today.year %}, {{ r.start.year }}{% endif %}</div>
+        <div class="sdoors muted">{{ r.scope }} kept locked</div>
+      </div>
+      <div class="snext"><small class="muted">{{ 'Today' if r.start <= today else ('In ' ~ (r.start - today).days ~ ' day' ~ ('' if (r.start - today).days == 1 else 's')) }}</small></div>
+      <div class="sact"><a class="button small" href="/day?d={{ r.start.isoformat() }}">See the day</a></div>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
 {% if type != 'default' %}
 <section>
   <h2>Events and overrides <small class="muted">{{ overrides|length }}</small></h2>

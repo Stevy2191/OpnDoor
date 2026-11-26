@@ -64,6 +64,7 @@ def day_page(request: Request, d: str = "", user: User = Depends(require_schedul
     sid = current_site_id(request, session, user)
     doors = [x for x in doors_for(session, user) if not sid or x.site_id == sid]
     sites = {x.id: x for x in session.exec(select(Site)).all()}
+    request.session["sched_view"] = "day"
     pats = patterns_for(session, doors)
     hmaps = engine.door_holiday_maps(session, doors)
     all_scheds = engine.door_schedules(session, [d.id for d in doors])
@@ -80,4 +81,4 @@ def day_page(request: Request, d: str = "", user: User = Depends(require_schedul
     return render(request, "day.html", user, day=day, doors=doors, rows=rows, on_hol=holidays_today,
                   prev=day - timedelta(days=1), next=day + timedelta(days=1), today=now_local().date(),
                   hours=[0, 3, 6, 9, 12, 15, 18, 21], dsites=sites,
-                  unlocked=sum(1 for r in rows.values() if any(b["kind"] in ("unlock", "unifi") for b in r["blocks"])))
+                  view="day", unlocked=sum(1 for r in rows.values() if any(b["kind"] in ("unlock", "unifi") for b in r["blocks"])))

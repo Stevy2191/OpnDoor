@@ -1269,3 +1269,32 @@ dialog.emdlg::backdrop { background: rgba(0,0,0,.45); }
 .quietsites { margin: .6rem 0 0; }
 .quietsites summary { cursor: pointer; }
 .morelink { margin: .3rem 0 0; }
+
+/* Schedules: month calendar */
+.month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.mhead { background: var(--bg); text-align: center; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: .35rem 0; }
+.mday { background: var(--card); min-height: 7.2rem; padding: .3rem .35rem; display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.mday.other { background: var(--bg); }
+.mday.other .mnum { color: var(--muted); opacity: .6; }
+.mday.past:not(.today) > a:not(.mnum) { opacity: .65; }
+.mday.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.mtop { display: flex; justify-content: space-between; align-items: center; }
+.mnum { font-weight: 700; font-size: .85rem; color: var(--text); text-decoration: none; padding: 0 .25rem; border-radius: 5px; }
+.mday.today .mnum { background: var(--accent); color: #fff; }
+.mnum:hover { background: var(--accent-soft); }
+.mhol { font-size: .72rem; font-weight: 600; color: var(--warn); background: var(--warn-soft); border-left: 3px solid var(--warn); border-radius: 4px; padding: .05rem .3rem; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mev { font-size: .74rem; color: var(--text); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid; border-radius: 4px; padding: .05rem .3rem; }
+.mev.def { border-color: var(--def); } .mev.unl { border-color: var(--unl); background: var(--accent-soft); }
+.mev.lock { border-color: var(--lockc); background: var(--err-soft); } .mev.cal { border-color: var(--calc); }
+.mev:hover, .mhol:hover { filter: brightness(.96); }
+.mtime { font-weight: 600; color: var(--muted); }
+.mmore { font-size: .72rem; color: var(--muted); text-decoration: none; padding: 0 .3rem; }
+.mmore:hover { color: var(--accent); }
+@media (max-width: 760px) {
+  .mday { min-height: 4.2rem; padding: .2rem; }
+  .mev, .mhol { font-size: 0; padding: 0; height: 6px; border-left-width: 0; border-radius: 3px; }
+  .mev { background: var(--unl); } .mev.lock { background: var(--lockc); } .mev.def { background: var(--def); } .mhol { background: var(--warn); }
+  .mmore { font-size: .65rem; }
+}
+.srow.hol { border-left: 4px solid var(--warn); }
+.daynav input[type=date] { width: auto; margin: 0; }
