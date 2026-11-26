@@ -39,8 +39,8 @@
 
   <section class="card">
     <h2>When</h2>
-    <div class="daypick">
-      {% for d in range(7) %}<label class="daychip"><input type="checkbox" name="days" value="{{ d }}" {% if d|string in r.days %}checked{% endif %}><span>{{ ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d] }}</span></label>{% endfor %}
+    <div class="chips days">
+      {% for d in range(7) %}<label class="chip"><input type="checkbox" name="days" value="{{ d }}" {% if d|string in r.days %}checked{% endif %}><span>{{ ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d] }}</span></label>{% endfor %}
     </div>
     <label class="check mt"><input type="checkbox" name="allday" value="1" id="allday" {% if not r.start %}checked{% endif %}> All day</label>
     <div class="fields2 mt" id="hours">

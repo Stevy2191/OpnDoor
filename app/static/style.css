@@ -1201,3 +1201,17 @@ ol.steps .linkbox input { max-width: 520px; }
 .holdetail[open] { display: block; margin: .35rem 0 0; }
 .holdetail div { margin-top: .2rem; overflow-wrap: anywhere; }
 .holtop .btnrow { flex-wrap: nowrap; flex: none; }
+
+/* Tick boxes: plain check boxes in a bordered list (replaces the old pill style everywhere) */
+.chips:has(> label.chip) { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .1rem .9rem;
+  padding: .45rem .8rem; border: 1px solid var(--line); border-radius: 10px; }
+.chips.days:has(> label.chip) { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+label.chip { display: flex; align-items: center; gap: .55rem; padding: .3rem 0; font-weight: 400; cursor: pointer;
+  border: none; background: none; border-radius: 0; font-size: inherit; min-width: 0; }
+label.chip input { position: static; opacity: 1; pointer-events: auto; width: 18px; height: 18px; margin: 0; flex: none; }
+label.chip span, .chips.small label.chip span, .chips.days label.chip span { display: inline; padding: 0; border: none; background: none;
+  border-radius: 0; min-width: 0; text-align: left; overflow-wrap: anywhere; font-size: inherit; }
+label.chip input:checked + span { background: none; color: inherit; }
+label.chip input:checked + span::before { content: none; }
+label.chip input:checked + span small { color: var(--muted); opacity: 1; }
+label.chip input:focus-visible + span { outline: none; }
