@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Day preview · OpnDoor{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>{{ day.strftime('%A, %B') }} {{ day.day }}{% if day.year != today.year %}, {{ day.year }}{% endif %}</h1>
+    <p class="muted">Every door's hours that day, after holidays, events and UniFi's own schedules.
+      {% if day == today %}Today.{% endif %}</p>
+  </div>
+  <form method="get" action="/day" class="btnrow">
+    <a class="button" href="/day?d={{ prev.isoformat() }}" aria-label="Day before">‹</a>
+    <input type="date" name="d" value="{{ day.isoformat() }}" onchange="this.form.submit()" style="width:auto;margin:0">
+    <a class="button" href="/day?d={{ next.isoformat() }}" aria-label="Day after">›</a>
+    {% if day != today %}<a class="button" href="/day">Today</a>{% endif %}
+  </form>
+</div>
+
+{% if on_hol %}
+<div class="dayhol">★ Holiday: <b>{{ on_hol|join(', ') }}</b>. Doors that follow it stay locked or keep shorter hours.</div>
+{% endif %}
+
+<section class="card">
+  <div class="daylegend small muted">
+    <span><i class="dk unlock"></i> Unlocked by OpnDoor</span>
+    <span><i class="dk lock"></i> Held locked by OpnDoor</span>
+    <span><i class="dk unifi"></i> UniFi's own schedule</span>
+    <span>{{ unlocked }} of {{ doors|length }} doors open at some point</span>
+  </div>
+  {% if not doors %}<p class="muted">No doors to show.</p>{% endif %}
+  {% for site_id, groups in door_tree(doors) %}
+    {% if dsites|length > 1 %}<h2 class="daysite">{{ dsites[site_id].name if site_id in dsites else 'Site' }}</h2>{% endif %}
+    {% for b, group in groups %}
+      {% if groups|length > 1 or b %}<div class="daybld">{{ b.name if b else 'Other doors' }}</div>{% endif %}
+      {% for door in group %}{% set r = rows[door.id] %}
+      <div class="dayrow">
+        <a class="dayname" href="/doors/{{ door.id|urlencode }}">{{ door.name }}
+          {% if r.holiday %}<span class="dayhtag" title="{{ r.holiday.name }}">★ {{ 'Short hours' if r.holiday.hours else 'Holiday' }}</span>{% endif %}</a>
+        <div class="daybar" aria-hidden="true">
+          {% for h in hours %}<span class="daytick" style="left:{{ (h / 24 * 100)|round(2) }}%"></span>{% endfor %}
+          {% for bl in r.blocks %}<span class="dayblk {{ bl.kind }}" style="left:{{ bl.left }}%;width:{{ bl.width }}%" title="{{ bl.start.strftime('%-I:%M %p') }}–{{ bl.end.strftime('%-I:%M %p') }} {{ bl.label }}"></span>{% endfor %}
+        </div>
+        <div class="daytext small">
+          {% for bl in r.blocks %}<div><b class="{{ bl.kind }}">{{ {'unlock': 'Unlocked', 'lock': 'Locked', 'unifi': 'UniFi'}[bl.kind] }}</b>
+            {{ bl.start.strftime('%-I:%M %p') }}–{{ '11:59 PM' if bl.end.date() > day else bl.end.strftime('%-I:%M %p') }}{% if bl.label and bl.kind != 'unifi' %} · {{ bl.label }}{% endif %}</div>
+          {% else %}<span class="muted">{{ 'Closed for the holiday' if r.holiday else 'No OpnDoor hours · UniFi decides' }}</span>{% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    {% endfor %}
+  {% endfor %}
+  <div class="dayrow dayaxis small muted" aria-hidden="true"><span></span>
+    <div class="daybar bare">{% for h in hours %}<span style="left:{{ (h / 24 * 100)|round(2) }}%">{{ '12a' if h == 0 else ('12p' if h == 12 else (h % 12) ~ ('a' if h < 12 else 'p')) }}</span>{% endfor %}</div><span></span></div>
+</section>
+{% endblock %}

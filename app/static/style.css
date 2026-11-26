@@ -1151,3 +1151,28 @@ ol.steps .linkbox input { max-width: 520px; }
 .holsitegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: .1rem .75rem; padding: .4rem .8rem; }
 .holsitegrid .dpkdoor small { margin-left: auto; padding-left: .5rem; white-space: nowrap; }
 .holevery { width: 18px; height: 18px; margin: 0; }
+
+/* Day preview */
+.dayhol { margin: 0 0 1rem; padding: .7rem .9rem; border-radius: 10px; background: var(--warn-soft); }
+.daylegend { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin-bottom: .8rem; }
+.dk { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: .25rem; }
+.dk.unlock, .dayblk.unlock { background: var(--ok); }
+.dk.lock, .dayblk.lock { background: var(--err); }
+.dk.unifi, .dayblk.unifi { background: repeating-linear-gradient(135deg, #6366f1, #6366f1 3px, #a5b4fc 3px, #a5b4fc 6px); }
+.daysite { margin: 1.8rem 0 .3rem; font-size: 1rem; }
+.daybld { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: .8rem 0 .2rem; }
+.dayrow { display: grid; grid-template-columns: minmax(130px, 220px) 1fr minmax(150px, 240px); gap: .4rem 1rem; align-items: center; padding: .45rem 0; border-top: 1px solid var(--line); }
+.dayaxis { border-top: none; padding-top: 0; }
+.dayname { font-weight: 600; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+.dayhtag { display: inline-block; font-size: .68rem; font-weight: 600; padding: .05rem .4rem; border-radius: 999px; background: var(--warn-soft); margin-left: .3rem; white-space: nowrap; }
+.daybar { position: relative; height: 18px; border-radius: 5px; background: var(--bg); }
+.daybar.bare { background: none; height: 1.1rem; }
+.daybar.bare span { position: absolute; transform: translateX(-50%); }
+.daybar.bare span:first-child { transform: none; }
+.daytick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.dayblk { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; }
+.daytext b.unlock { color: var(--ok); } .daytext b.lock { color: var(--err); } .daytext b.unifi { color: #6366f1; }
+@media (max-width: 760px) {
+  .dayrow { grid-template-columns: 1fr; }
+  .dayaxis { display: none; }
+}
