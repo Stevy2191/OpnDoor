@@ -835,7 +835,8 @@ def schedules_list(request: Request, view: str = "", week: str = "", month: str 
         by_day, skipped = gather(start, 7)
         from .unifiwatch import week_blocks
         bdoor_list = [d for d in doors if not building.isdigit() or d.building_id == int(building)]
-        ctx["unifi_blocks"] = (week_blocks(session, bdoor_list, start, hol_maps=hmaps)
+        # UniFi's own schedules still run on holidays (OpnDoor doesn't override them), so they're all shown
+        ctx["unifi_blocks"] = (week_blocks(session, bdoor_list, start)
                                if type in ("", "all", "override", "event") else {})
         ctx.update(days=days, by_day=by_day, week_start=start, today=today, skipped=skipped,
                    day_hols=week_holidays(hmaps, doors, days),

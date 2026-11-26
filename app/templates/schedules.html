@@ -152,7 +152,7 @@ document.querySelectorAll('.wday[data-day]').forEach(function (d) {
         <div class="stitle"><strong>★ {{ r.h.name }}</strong> <span class="pill hol">Locked {{ r.h.when_lower() }}</span>
           {% if r.h.yearly %}<span class="muted small">↻ yearly</span>{% endif %}</div>
         <div class="swhen">{{ r.start.strftime('%a, %b %-d') }}{% if r.end != r.start %} – {{ r.end.strftime('%a, %b %-d') }}{% endif %}{% if r.start.year != today.year %}, {{ r.start.year }}{% endif %}</div>
-        <div class="sdoors muted">{{ r.scope }} kept locked</div>
+        <div class="sdoors muted">{{ r.scope }} · locked, badges still work</div>
       </div>
       <div class="snext"><small class="muted">{{ 'Today' if r.start <= today else ('In ' ~ (r.start - today).days ~ ' day' ~ ('' if (r.start - today).days == 1 else 's')) }}</small></div>
       <div class="sact"><a class="button small" href="/day?d={{ r.start.isoformat() }}">See the day</a></div>

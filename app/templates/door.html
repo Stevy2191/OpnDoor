@@ -92,7 +92,7 @@
         <li class="{{ seg.state or 'normal' }}{{ ' def' if seg.schedule and seg.schedule.kind == 'default' }}{{ ' hol' if seg.holiday }}">
           <span class="when">{{ span(it.start, it.end) }}</span>
           <span class="what">
-            {% if seg.state == 'unlock' %}<strong>Unlocked</strong>{% elif seg.state == 'lock' %}<strong>Kept locked</strong>{% else %}Locked{% endif %}
+            {% if seg.state == 'unlock' %}<strong>Unlocked</strong>{% elif seg.state == 'lock' and seg.holiday %}<strong>Locked</strong>{% elif seg.state == 'lock' %}<strong>Kept locked</strong>{% else %}Locked{% endif %}
             {% if seg.schedule %}<small>· {{ 'Regular hours' if seg.schedule.kind == 'default' else seg.schedule.label }}</small>{% elif seg.holiday %}<small class="holname">· ★ {{ seg.holiday.name }} (holiday)</small>{% endif %}
           </span>
         </li>

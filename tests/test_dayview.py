@@ -15,7 +15,7 @@ def test_day_preview_shows_hours_and_holiday(client, fake):
                                    "scope": "some", "doors": ["1:demo-side"]})
     r = client.get(f"/day?d={day.isoformat()}")
     assert r.status_code == 200
-    assert "★ <b>Staff day</b>: 1 of" in r.text and "kept locked all day" in r.text
+    assert "★ <b>Staff day</b>: 1 of" in r.text and "locked all day (badges still work)" in r.text
     assert "8:00 AM–5:00 PM · Office hours" in r.text  # front door keeps its hours
     assert "12:00 AM–11:59 PM · ★ Staff day" in r.text  # side door is held locked for the holiday
     assert "<s>Office hours 8:00 AM–5:00 PM</s> · skipped for the holiday" in r.text

@@ -91,7 +91,7 @@ def test_month_view_list_holidays_and_day_tab(client, fake):
     assert 'class="month"' in month and client.get("/schedules?view=month&month=bad").status_code == 200
     # the list shows upcoming holidays too
     lst = client.get("/schedules?view=list").text
-    assert "Holidays" in lst and "★ Founders Day" in lst and "Locked all day" in lst and "All doors kept locked" in lst
+    assert "Holidays" in lst and "★ Founders Day" in lst and "Locked all day" in lst and "All doors · locked, badges still work" in lst
     assert "Founders Day" not in client.get("/schedules?view=list&type=default").text
     # the day view sits in Schedules (same tabs) and is remembered
     day = client.get("/day").text

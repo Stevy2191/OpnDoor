@@ -37,8 +37,9 @@ def door_day(session: Session, door, day: date, tz, hols: dict, unifi_pats: list
             blocks[-1]["end"] = b
         else:
             blocks.append({"kind": kind, "start": a, "end": b, "label": label})
-    # UniFi's own schedule only matters where OpnDoor isn't holding the door either way
-    held = [(bl["start"], bl["end"]) for bl in blocks]
+    # UniFi's own schedule only matters where OpnDoor isn't holding the door either way. A holiday doesn't
+    # hold the door (it only stops OpnDoor's unlocks), so UniFi's schedule still shows through it.
+    held = [(bl["start"], bl["end"]) for bl in blocks if bl["kind"] != "hol"]
     for p in unifi_pats:
         if day.weekday() in p["days"]:
             for a, b in cut(datetime.combine(day, p["start"]), datetime.combine(day, p["end"]), held):

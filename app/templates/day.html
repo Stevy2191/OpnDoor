@@ -13,7 +13,7 @@
 </form>
 
 {% for x in on_hol %}
-<div class="dayhol">★ <b>{{ x.h.name }}</b>: {{ x.scope }} kept locked {{ x.h.when_lower() }}.
+<div class="dayhol">★ <b>{{ x.h.name }}</b>: {{ x.scope }} locked {{ x.h.when_lower() }} (badges still work).
   Regular hours and weekly events don't run then; one-time events still do.</div>
 {% endfor %}
 
@@ -21,7 +21,7 @@
   <div class="daylegend small muted">
     <span><i class="dk unlock"></i> Unlocked by OpnDoor</span>
     <span><i class="dk lock"></i> Kept locked by an event</span>
-    <span><i class="dk hol"></i> Holiday (locked)</span>
+    <span><i class="dk hol"></i> Holiday (locked, badges work)</span>
     <span><i class="dk unifi"></i> UniFi's own schedule</span>
     <span>{{ unlocked }} of {{ doors|length }} doors open at some point</span>
   </div>

@@ -4,7 +4,8 @@ Rules for a door at any moment:
   1. If one or more *override* schedules are active, the most recently added
      one decides: the door is unlocked or kept locked, and defaults are ignored.
   2. Otherwise, if a *default* schedule is active, the door is unlocked.
-  3. Otherwise, if a holiday covers the door right now, it is kept locked.
+  3. Otherwise, if a holiday covers the door right now, it is locked: shown as a holiday, but OpnDoor
+     just leaves it on its normal UniFi rule (locked, badges still work). No keep_lock is sent.
   4. Otherwise OpnDoor leaves the door on its normal UniFi rule (locked).
 
 Repeating schedules that follow holidays simply don't run while a holiday is on (they are cut around

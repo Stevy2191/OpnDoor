@@ -77,9 +77,10 @@ def test_holidays_page_and_engine(client, fake):
                     follow_redirects=True)
     assert "Added Snow day" in r.text and "Locked all day" in r.text
     engine.reconcile()
-    assert ("lock", "demo-front") in fake.calls  # regular hours don't run today: kept locked
-    assert ("lock", "demo-side") in fake.calls  # every door the holiday covers, schedules or not
-    assert "★ Snow day" in client.get("/").text
+    # regular hours don't run today: the door goes back to its normal UniFi rule (locked, badges work).
+    # A holiday never sends keep_lock: UniFi treats that as a lockdown and refuses badges.
+    assert fake.calls[-1] == ("reset", "demo-front")
+    assert not [c for c in fake.calls if c[0] == "lock"]
     r = client.post("/holidays/us", data={"year": "2031", "names": ["Thanksgiving", "Christmas Day"]}, follow_redirects=True)
     assert "Added 2 holidays for 2031" in r.text
     assert "already there" in client.post("/holidays/us", data={"year": "2031", "names": ["Thanksgiving"]},
@@ -88,7 +89,7 @@ def test_holidays_page_and_engine(client, fake):
         hid = s.exec(select(Holiday).where(Holiday.name == "Snow day")).one().id
     client.post(f"/holidays/{hid}/delete")
     engine.reconcile()
-    assert ("unlock", "demo-front") in [c[:2] for c in fake.calls[-4:]] and ("reset", "demo-side") in fake.calls[-4:]
+    assert fake.calls[-1][:2] == ("unlock", "demo-front")
     assert "added the holiday" in client.get("/history").text
 
 
@@ -198,3 +199,17 @@ def test_cropped_plan_gets_a_new_image_address(client):
     after_map = client.get(f"/map?plan={pid}").text
     assert before not in after_edit and before not in after_map
     assert re.search(r'/floorplans/%d/image\?v=[0-9a-f]+' % pid, after_map)
+
+
+def test_doors_a_holiday_left_in_lockdown_go_back_to_normal(client, fake):
+    """Before this fix a holiday sent keep_lock (a per-door lockdown). After the update those doors are reset."""
+    from app.models import DoorState, utcnow
+    setup_admin(client)
+    client.post("/holidays", data={"name": "Thanksgiving", "start": now_local().date().isoformat(), "mode": "allday"})
+    with session_scope() as s:
+        s.add(DoorState(door_id="1:demo-front", mode="lock", until=utcnow() + timedelta(hours=5), label="★ Thanksgiving"))
+        s.commit()
+    engine.reconcile()
+    assert ("reset", "demo-front") in fake.calls and not [c for c in fake.calls if c[0] == "lock"]
+    with session_scope() as s:
+        assert s.get(DoorState, "1:demo-front").mode == ""
