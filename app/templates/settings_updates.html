@@ -5,11 +5,23 @@
 <section class="card">
   <h2>Updates</h2>
   <dl class="kv">
-    <dt>Running</dt><dd>{{ commit or config.VERSION }}{% if not commit %} <span class="muted small">(built before version numbers were added)</span>{% endif %}</dd>
-    {% if new %}<dt>Newest</dt><dd>{{ new.sha[:7] }} · {{ new.date }} <span class="muted">· {{ new.message }}</span>
-      {% if behind %}<span class="pill ok">Update available</span>{% elif commit %}<span class="pill locked">Up to date</span>{% endif %}</dd>{% endif %}
+    <dt>Running</dt><dd>{% if version %}<strong>OpnDoor {{ version }}</strong>{% if commit %} <span class="muted small">({{ commit }})</span>{% endif %}
+      {% elif commit %}{{ commit }} <span class="muted small">(built before version numbers; updating gives it one)</span>
+      {% else %}{{ config.VERSION }}{% endif %}</dd>
+    {% if new %}<dt>Newest</dt><dd><a href="{{ new.url }}" target="_blank" rel="noopener">OpnDoor {{ new.version }}</a> <span class="muted small">· {{ new.date }}</span>
+      {% if behind %}<span class="pill ok">Update available</span>{% else %}<span class="pill locked">Up to date</span>{% endif %}
+      <a class="small" href="{{ new.all_url }}" target="_blank" rel="noopener">All versions →</a></dd>{% endif %}
     {% if status.state %}<dt>Last update</dt><dd>{{ {'current': 'Already up to date', 'updated': 'Updated', 'running': 'Running now…', 'failed': "Didn't work"}.get(status.state, status.state) }} <span class="muted small">{{ status.when }}</span></dd>{% endif %}
   </dl>
+  {% if behind and new.newer %}
+  <details class="whatsnew" open><summary><b>What's new</b> <span class="muted small">since {{ version or 'your version' }}</span></summary>
+    {% for r in new.newer[:10] %}
+    <div class="wnver"><a href="{{ r.url }}" target="_blank" rel="noopener"><b>{{ r.version }}</b></a> <span class="muted small">{{ r.date }}</span>
+      {% if r.notes %}<ul>{% for n in r.notes %}<li>{{ n.title }}</li>{% endfor %}</ul>{% endif %}</div>
+    {% endfor %}
+    {% if new.newer|length > 10 %}<p class="small"><a href="{{ new.all_url }}" target="_blank" rel="noopener">And {{ new.newer|length - 10 }} more →</a></p>{% endif %}
+  </details>
+  {% endif %}
   {% if status.state == 'failed' and status.detail %}<pre class="out">{{ status.detail }}</pre>{% endif %}
 
   {% if ready %}

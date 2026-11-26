@@ -355,24 +355,68 @@ def update_status() -> dict:
     return {"state": state, "when": when, "detail": "\n".join(lines[1:])[-2000:]}
 
 
+def version_tuple(v: str) -> Optional[tuple]:
+    """"1.0.118" or "v1.0.118" -> (1, 0, 118); None for anything else ("main", "dev")."""
+    parts = (v or "").strip().lstrip("v").split(".")
+    return tuple(int(x) for x in parts) if parts and all(x.isdigit() for x in parts) else None
+
+
+_NOTE = re.compile(r"^\s*[*-]\s+(.+?)(?:\s+by\s+@\S+)?(?:\s+in\s+(https://\S+))?\s*$")
+
+
+def release_notes(body: str) -> list[dict]:
+    """[{title, url}] from a release's generated notes ("* Title by @who in https://.../pull/62")."""
+    out = []
+    for line in (body or "").splitlines():
+        if line.strip().startswith("**Full Changelog"):
+            continue
+        m = _NOTE.match(line)
+        if m:
+            out.append({"title": m.group(1).strip(), "url": m.group(2) or ""})
+    return out
+
+
 def latest() -> Optional[dict]:
-    """The newest change on GitHub, to compare with the running version (cached for an hour)."""
+    """The newest published version on GitHub and the versions after the running one (cached for an hour):
+    {version, date, url, sha, newer: [{version, date, url, notes: [{title, url}]}], all_url}."""
     if not config.UPDATE_REPO:
         return None
     if time.monotonic() - _latest["at"] < 3600 and _latest["at"]:
         return _latest["value"]
     value = None
     try:
-        r = httpx.get(f"https://api.github.com/repos/{config.UPDATE_REPO}/commits/main", timeout=6,
+        r = httpx.get(f"https://api.github.com/repos/{config.UPDATE_REPO}/releases?per_page=30", timeout=6,
                       headers={"Accept": "application/vnd.github+json", "User-Agent": "OpnDoor"})
         if r.status_code == 200:
-            j = r.json()
-            value = {"sha": j["sha"], "date": j["commit"]["committer"]["date"][:10],
-                     "message": j["commit"]["message"].splitlines()[0][:120]}
-    except (httpx.HTTPError, KeyError, ValueError):
+            rel = [x for x in r.json() if not x.get("draft") and not x.get("prerelease")
+                   and version_tuple(x.get("tag_name", ""))]
+            rel.sort(key=lambda x: version_tuple(x["tag_name"]), reverse=True)
+            if rel:
+                top = rel[0]
+                running = version_tuple(config.VERSION)
+                newer = [x for x in rel if running is None or version_tuple(x["tag_name"]) > running]
+                value = {"version": top["tag_name"].lstrip("v"), "date": (top.get("published_at") or "")[:10],
+                         "url": top.get("html_url", ""), "sha": top.get("target_commitish", ""),
+                         "all_url": f"https://github.com/{config.UPDATE_REPO}/releases",
+                         "newer": [{"version": x["tag_name"].lstrip("v"), "date": (x.get("published_at") or "")[:10],
+                                    "url": x.get("html_url", ""), "notes": release_notes(x.get("body", ""))}
+                                   for x in (newer if running else newer[:1])]}
+    except (httpx.HTTPError, KeyError, ValueError, TypeError):
         value = None
     _latest.update(at=time.monotonic(), value=value)
     return value
+
+
+def is_behind(new: Optional[dict]) -> bool:
+    """Is a newer version published than the one running?"""
+    if not new:
+        return False
+    running, top = version_tuple(config.VERSION), version_tuple(new["version"])
+    if running and top:
+        return top > running
+    # built before version numbers: compare commits
+    sha = new.get("sha", "")
+    return bool(config.COMMIT and sha and not sha.startswith(config.COMMIT[:7]) and not config.COMMIT.startswith(sha[:7]))
 
 
 def request_update() -> None:
@@ -388,11 +432,10 @@ def nightly_update() -> None:
 @router.get("/settings/updates")
 def updates_page(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
     new = latest()
-    behind = bool(new and config.COMMIT and not new["sha"].startswith(config.COMMIT[:7])
-                  and not config.COMMIT.startswith(new["sha"][:7]))
     return render(request, "settings_updates.html", user, tab="updates", ready=updater_ready(),
-                  status=update_status(), pending=UPDATE_REQUEST.exists(), new=new, behind=behind,
-                  auto=get(session, "update.auto", "0") == "1", commit=config.COMMIT[:7])
+                  status=update_status(), pending=UPDATE_REQUEST.exists(), new=new, behind=is_behind(new),
+                  auto=get(session, "update.auto", "0") == "1", commit=config.COMMIT[:7],
+                  version=config.VERSION if version_tuple(config.VERSION) else "")
 
 
 @router.post("/settings/updates/now")

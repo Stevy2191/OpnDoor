@@ -42,8 +42,19 @@ jobs:
       contents: read
       packages: write
 
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # all of main's history, to count its commits for the version number
+
+      # The version is VERSION (major.minor, changed by hand for a big step) plus the number of commits on
+      # main, so every update gets the next number by itself: 1.0.117, 1.0.118, ...
+      - name: Version number
+        id: version
+        run: echo "version=$(tr -d '[:space:]' < VERSION).$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
 
       # Build for regular PCs/servers (amd64) and ARM boards like Raspberry Pi 4/5 (arm64)
       - uses: docker/setup-qemu-action@v3
@@ -66,6 +77,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=ref,event=branch
             type=sha,format=short
             type=semver,pattern={{version}}
@@ -81,7 +93,27 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            APP_VERSION=${{ github.ref_name }}
+            APP_VERSION=${{ github.ref == 'refs/heads/main' && steps.version.outputs.version || github.ref_name }}
             APP_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Publish each version on main as a GitHub Release, with the changes since the last one. OpnDoor's
+  # Settings > Updates page reads these to show the newest version and what's new.
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$VERSION is already published"; exit 0
+          fi
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "OpnDoor $VERSION" --generate-notes --latest

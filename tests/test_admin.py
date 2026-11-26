@@ -168,3 +168,49 @@ def test_unifi_network_decides_online(client, fake, monkeypatch):
     cecc = page.split("UA Int Viewer 9999")[1].split("</div>")[0]
     assert "offline" not in sholl and "offline" in cecc
     assert seen[0] == ("https://192.168.1.1/proxy/network/integration/v1/sites", "netkey")
+
+
+RELEASES = [
+    {"tag_name": "v1.0.120", "published_at": "2026-11-27T10:00:00Z", "html_url": "https://github.com/o/r/releases/tag/v1.0.120",
+     "target_commitish": "ccc", "body": "## What's Changed\n* Month view by @someone in https://github.com/o/r/pull/63\n\n"
+                                        "**Full Changelog**: https://github.com/o/r/compare/v1.0.119...v1.0.120"},
+    {"tag_name": "v1.0.119", "published_at": "2026-11-26T10:00:00Z", "html_url": "https://github.com/o/r/releases/tag/v1.0.119",
+     "target_commitish": "bbb", "body": "## What's Changed\n* Version numbers by @someone in https://github.com/o/r/pull/62\n"},
+    {"tag_name": "v1.0.118", "published_at": "2026-11-25T10:00:00Z", "html_url": "", "target_commitish": "aaa", "body": ""},
+    {"tag_name": "nightly", "draft": False, "prerelease": True},
+]
+
+
+def test_updates_page_shows_versions_and_whats_new(client, monkeypatch):
+    import httpx
+    from app import admin, config
+
+    class Resp:
+        status_code = 200
+
+        def json(self):
+            return RELEASES
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: Resp())
+    monkeypatch.setattr(config, "VERSION", "1.0.118")
+    monkeypatch.setattr(config, "COMMIT", "aaa1234")
+    admin._latest.update(at=0.0, value=None)
+    setup_admin(client)
+    page = client.get("/settings/updates").text
+    assert "OpnDoor 1.0.118" in page and "OpnDoor 1.0.120" in page and "Update available" in page
+    assert "What's new" in page and "Month view" in page and "Version numbers" in page
+    assert "Full Changelog" not in page and "@someone" not in page
+    # on the newest version: up to date, nothing new to list
+    monkeypatch.setattr(config, "VERSION", "1.0.120")
+    admin._latest.update(at=0.0, value=None)
+    page = client.get("/settings/updates").text
+    assert "Up to date" in page and "What's new" not in page
+    admin._latest.update(at=0.0, value=None)
+
+
+def test_version_numbers():
+    from app.admin import release_notes, version_tuple
+    assert version_tuple("v1.0.118") == (1, 0, 118) and version_tuple("1.2") == (1, 2)
+    assert version_tuple("main") is None and version_tuple("dev") is None and version_tuple("") is None
+    assert release_notes("* Fix doors by @a in https://x/pull/1\n- Plain line\n**Full Changelog**: x") == [
+        {"title": "Fix doors", "url": "https://x/pull/1"}, {"title": "Plain line", "url": ""}]

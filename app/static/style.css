@@ -1299,3 +1299,7 @@ dialog.emdlg::backdrop { background: rgba(0,0,0,.45); }
 .srow.hol { border-left: 4px solid var(--warn); }
 .daynav input[type=date] { width: auto; margin: 0; }
 .byhand { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: .5rem .75rem; margin: .3rem 0 .6rem; }
+.whatsnew { margin: .4rem 0 1rem; border: 1px solid var(--line); border-radius: 10px; padding: .6rem .9rem; }
+.whatsnew summary { cursor: pointer; }
+.wnver { margin-top: .5rem; }
+.wnver ul { margin: .25rem 0 0; padding-left: 1.2rem; }
