@@ -93,7 +93,7 @@ developer API (`PUT /api/v1/developer/doors/{id}/lock_rule`):
 | Door should be | Command | Notes |
 | --- | --- | --- |
 | Unlocked until T | `custom`, interval = minutes until T | The console relocks by itself at T, even if OpnDoor is down. Back-to-back periods (e.g. regular hours running into an event) are sent as one unlock. |
-| Kept locked | `keep_lock` | Also overrides unlock schedules set up inside UniFi Access itself. |
+| Kept locked | `reset` | The door's normal UniFi rule: locked, and badges still work. OpnDoor never sends `keep_lock` (UniFi treats it as a lockdown of the door); only the **Lockdown** button locks doors down. Unlock schedules set up inside UniFi Access itself still run. |
 | Back to normal | `reset` | Sent when an override or unlock ends early, is deleted, or a lock override ends. |
 
 After a restart it catches up on whatever should be happening now. Doors are listed with

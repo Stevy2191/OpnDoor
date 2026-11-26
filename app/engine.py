@@ -214,7 +214,9 @@ def reconcile(now_utc: Optional[datetime] = None) -> None:
                         st.until, st.schedule_id, st.label, st.last_error = want.end, sid, label, ""
                     elif want and want.state == "lock":
                         if st.mode != "lock":
-                            client.keep_lock(door.remote_id)
+                            # Back to its normal UniFi rule: locked, badges work. Never keep_lock: UniFi treats that
+                            # as a lockdown of the door and refuses badges. Only the Lockdown button locks doors down.
+                            client.reset(door.remote_id)
                             audit(s, "door.lock", f"{door.name} kept locked until "
                                   f"{to_local(want.end, tz):%a %b %-d %-I:%M %p} ({label})", door_ids=[door.id])
                             st.mode, st.applied_at = "lock", now
