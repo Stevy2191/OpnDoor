@@ -1,0 +1,17 @@
+{# Schedules page header: title, Week / Month / List / Day tabs, New schedule. Used by schedules.html and day.html. #}
+{% set qs = 'q=' ~ ((q or '')|urlencode) ~ '&type=' ~ (type or '') ~ '&building=' ~ (building or '') %}
+<div class="pagehead">
+  <div>
+    <h1>Schedules</h1>
+    <p class="muted">{{ sched_sub }}</p>
+  </div>
+  <div class="btnrow">
+    <div class="segtabs" role="tablist">
+      <a href="/schedules?view=week&{{ qs }}" class="{{ 'on' if view == 'week' }}">📅 Week</a>
+      <a href="/schedules?view=month&{{ qs }}" class="{{ 'on' if view == 'month' }}">🗓 Month</a>
+      <a href="/schedules?view=list&{{ qs }}" class="{{ 'on' if view == 'list' }}">☰ List</a>
+      <a href="/day" class="{{ 'on' if view == 'day' }}">☀ Day</a>
+    </div>
+    {% if user.schedules %}<a class="button primary" href="/schedules/new">+ New schedule</a>{% endif %}
+  </div>
+</div>

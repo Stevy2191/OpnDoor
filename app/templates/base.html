@@ -74,7 +74,7 @@
     <a href="/doors" class="{{ 'on' if p.startswith('/doors') }}">{{ icon('door') }}Doors{% if nav_unlocked %}<span class="navbadge">{{ nav_unlocked }} unlocked</span>{% endif %}</a>
     <a href="/map" class="{{ 'on' if p.startswith('/map') or p.startswith('/floorplans') }}">{{ icon('map') }}Map</a>
     <a href="/door-activity" class="{{ 'on' if p.startswith('/door-activity') }}">{{ icon('pulse') }}Activity</a>
-    {% if user.schedules %}<a href="/schedules" class="{{ 'on' if p.startswith('/schedules') }}">{{ icon('list') }}Schedules</a>{% endif %}
+    {% if user.schedules %}<a href="/schedules" class="{{ 'on' if p.startswith('/schedules') or p == '/day' }}">{{ icon('list') }}Schedules</a>{% endif %}
     {% if user.schedules %}<a href="/visitors" class="{{ 'on' if p.startswith('/visitors') }}">{{ icon('badge') }}Visitors</a>{% endif %}
     {% if user.is_manager %}<a href="/holidays" class="{{ 'on' if p.startswith('/holidays') }}">{{ icon('star') }}Holidays</a>{% endif %}
     {% if user.is_manager %}<a href="/calendars" class="{{ 'on' if p.startswith('/calendars') }}">{{ icon('cal') }}Calendars{% if nav_pending %}<span class="navbadge">{{ nav_pending }} to approve</span>{% endif %}</a>{% endif %}

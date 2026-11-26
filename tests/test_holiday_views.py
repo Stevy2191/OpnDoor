@@ -78,3 +78,23 @@ def test_old_shorter_hours_become_locked_from_closing_time(fresh_db):
         h = s.exec(select(Holiday)).one()
         assert (h.hours, h.locked, h.when_text()) == ("", "12:00-23:59", "From 12 PM")
         assert s.exec(text("SELECT count(*) FROM holiday")).one()[0] == 1
+
+
+def test_month_view_list_holidays_and_day_tab(client, fake):
+    setup_admin(client)
+    tomorrow = now_local().date() + timedelta(days=1)
+    client.post("/schedules", data={"mode": "unlock", "label": "Board meeting", "door_ids": ["1:demo-front"],
+                                    "day": tomorrow.isoformat(), "start": "18:00", "end": "20:00"})
+    client.post("/holidays", data={"name": "Founders Day", "start": tomorrow.isoformat(), "mode": "allday", "site": "1"})
+    month = client.get(f"/schedules?view=month&month={tomorrow:%Y-%m}").text
+    assert tomorrow.strftime("%B %Y") in month and "★ Founders Day" in month and "Board meeting" in month
+    assert 'class="month"' in month and client.get("/schedules?view=month&month=bad").status_code == 200
+    # the list shows upcoming holidays too
+    lst = client.get("/schedules?view=list").text
+    assert "Holidays" in lst and "★ Founders Day" in lst and "Locked all day" in lst and "All doors kept locked" in lst
+    assert "Founders Day" not in client.get("/schedules?view=list&type=default").text
+    # the day view sits in Schedules (same tabs) and is remembered
+    day = client.get("/day").text
+    assert "<h1>Schedules</h1>" in day and "Month</a>" in day
+    assert client.get("/schedules", follow_redirects=False).headers["location"] == "/day"
+    assert 'class="on">☰ List' in client.get("/schedules?view=list").text
