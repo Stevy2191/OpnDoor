@@ -13,7 +13,7 @@ from sqlmodel import Session, select
 from . import engine, unifi
 from .db import session_scope
 from .models import Door, DoorState, Site, UnifiRuleSeen, utcnow
-from .schedules import to_local
+from .schedules import to_local, to_utc
 
 log = logging.getLogger(__name__)
 KEEP_DAYS = 60
@@ -50,7 +50,10 @@ def watch_all() -> None:
                 errors.pop(site.id, None)
                 st = states.get(door.id)
                 ours = bool(st and st.mode and st.until and st.until > now)
-                record(s, door.id, classify(rule.get("type", ""), ours), now)
+                kind = classify(rule.get("type", ""), ours)
+                record(s, door.id, kind, now)
+                if kind != "schedule" and not ours and not site.emergency:
+                    note_miss(s, door, now)
         for seg in s.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.end == None)).all():  # noqa: E711
             if now - seg.last_seen > STALE:  # OpnDoor was off for a while: end it where we last saw it
                 seg.end = seg.last_seen
@@ -58,6 +61,36 @@ def watch_all() -> None:
         for seg in s.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.start < now - timedelta(days=KEEP_DAYS))).all():
             s.delete(seg)
         s.commit()
+
+
+MISS_MARGIN = timedelta(minutes=15)
+
+
+def note_miss(session: Session, door: Door, now: datetime) -> None:
+    """The learned schedule says UniFi should be unlocking this door now, but it isn't: the schedule was changed
+    or removed in UniFi. Note it once a day, so that day drops out of the pattern straight away."""
+    tz = engine.site_tz(session.get(Site, door.site_id))
+    local = to_local(now, tz)
+    for p in pattern(session, door, now):
+        if local.weekday() not in p["days"]:
+            continue
+        a, b = datetime.combine(local.date(), p["start"]), datetime.combine(local.date(), p["end"])
+        if a + MISS_MARGIN <= local <= b - MISS_MARGIN:
+            day0 = to_utc(datetime.combine(local.date(), time()), tz)
+            if not session.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.door_id == door.id,
+                                                            UnifiRuleSeen.kind == "schedule_miss",
+                                                            UnifiRuleSeen.start >= day0)).first():
+                session.add(UnifiRuleSeen(door_id=door.id, kind="schedule_miss", start=now, end=now, last_seen=now))
+            return
+
+
+def forget_schedules(session: Session, door_ids: list[str]) -> int:
+    """Drop what OpnDoor learned about UniFi's own unlock schedules on these doors. It learns again as it watches."""
+    rows = session.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.door_id.in_(door_ids),
+                                                    UnifiRuleSeen.kind.in_(["schedule", "schedule_miss"]))).all()
+    for r in rows:
+        session.delete(r)
+    return len({r.door_id for r in rows if r.kind == "schedule"})
 
 
 def record(session: Session, door_id: str, kind: Optional[str], now: datetime) -> None:
@@ -90,6 +123,17 @@ def pattern(session: Session, door: Door, now: Optional[datetime] = None) -> lis
     tz = engine.site_tz(session.get(Site, door.site_id))
     segs = session.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.door_id == door.id, UnifiRuleSeen.kind == "schedule",
                                                     UnifiRuleSeen.start >= now - timedelta(days=LOOK_BACK))).all()
+    # the last day each weekday's schedule was seen running, and the last day it should have and didn't
+    last_seen: dict[int, datetime] = {}
+    for g in segs:
+        wd = to_local(g.start, tz).weekday()
+        last_seen[wd] = max(last_seen.get(wd, g.start), g.start)
+    gone = set()
+    for m in session.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.door_id == door.id, UnifiRuleSeen.kind == "schedule_miss",
+                                                      UnifiRuleSeen.start >= now - timedelta(days=LOOK_BACK))).all():
+        wd = to_local(m.start, tz).weekday()
+        if m.start > last_seen.get(wd, datetime.min):
+            gone.add(wd)
     windows: dict[int, Counter] = defaultdict(Counter)
     for g in segs:
         end = g.end or g.last_seen
@@ -101,6 +145,8 @@ def pattern(session: Session, door: Door, now: Optional[datetime] = None) -> lis
         windows[a.weekday()][(_round(a), _round(b))] += 1
     by_window: dict = defaultdict(lambda: {"days": [], "seen": 0})
     for wd, counts in windows.items():
+        if wd in gone:
+            continue  # UniFi stopped unlocking on this weekday: the schedule was changed or removed there
         (win, n), = counts.most_common(1)
         by_window[win]["days"].append(wd)
         by_window[win]["seen"] += n

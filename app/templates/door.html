@@ -110,6 +110,7 @@
     {% if unifi.pattern %}
     <p><b>UniFi's own unlock schedule</b>, as seen: {{ unifi.text }}</p>
     <p class="muted small">OpnDoor can't read UniFi's door schedules, so it learns them by watching. While an OpnDoor schedule is on, it takes over this door; when it ends, UniFi's schedule is back in charge. To keep it simple, set these hours in OpnDoor (Set regular hours) and clear the Unlock Schedule in UniFi.</p>
+    <p class="muted small">Removed it in UniFi already? Each day drops off here the first time it should have unlocked the door and didn't.{% if user.is_admin %} To clear it now, use <b>Reload from UniFi</b> on the Doors page.{% endif %}</p>
     {% endif %}
     {% if unifi.error %}<p class="muted small">UniFi Access didn't say what this door is doing: {{ unifi.error }}</p>{% endif %}
   </section>

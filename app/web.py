@@ -1203,9 +1203,17 @@ def doors_page(request: Request, user: User = Depends(require_user), session: Se
 @router.post("/doors/sync")
 def doors_sync(request: Request, user: User = Depends(require_admin), session: Session = Depends(get_session)):
     engine.sync_doors()
-    for site in session.exec(select(Site).where(Site.enabled == True)).all():  # noqa: E712
+    from .unifiwatch import forget_schedules
+    sites = session.exec(select(Site).where(Site.enabled == True)).all()  # noqa: E712
+    for site in sites:
         session.refresh(site)
         flash(request, f"{site.name}: {site.last_sync_status}", "error" if site.last_sync_status.startswith("Error") else "ok")
+    # UniFi's own unlock schedules can't be read, only watched: start learning them again from now
+    n = forget_schedules(session, list(session.exec(select(Door.id).where(Door.site_id.in_([x.id for x in sites]))).all()))
+    session.commit()
+    if n:
+        flash(request, f"Cleared the UniFi unlock schedules OpnDoor had learned on {n} door{'' if n == 1 else 's'}. "
+                       "Any still set in UniFi Access show again the next time they unlock a door.")
     return redirect("/doors")
 
 
