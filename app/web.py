@@ -781,13 +781,15 @@ def schedules_list(request: Request, view: str = "", week: str = "", q: str = ""
 
 
 def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kind: str = "override",
-              site_id: Optional[int] = None):
+              site_id: Optional[int] = None, pre: Optional[Schedule] = None):
+    """sched = the schedule being edited; pre = settings to start a new one from (a template)."""
     now = now_local()
-    if sched:
-        kind = sched.kind
-        start = sched.start_local
-        end = start + timedelta(minutes=sched.duration_minutes)
-        days = weekdays_of(sched)
+    pre = sched or pre
+    if pre:
+        kind = pre.kind
+        start = pre.start_local
+        end = start + timedelta(minutes=pre.duration_minutes)
+        days = weekdays_of(pre)
     elif kind == "default":
         start = now.replace(hour=8, minute=0, second=0, microsecond=0)
         end = start.replace(hour=17)
@@ -804,12 +806,13 @@ def _form_ctx(session, user, sched: Optional[Schedule], selected: list[str], kin
     doors = doors_for(session, user)
     if site_id is not None:  # follow the sidebar site switcher, but never hide doors already picked
         doors = [d for d in doors if d.site_id == site_id or d.id in set(selected)]
-    action = sched.action if sched else "unlock"
+    action = pre.action if pre else "unlock"
     mode = "default" if kind == "default" else ("lock" if action == "lock" else "unlock")
-    return dict(sched=sched, doors=doors, selected=set(selected), kind=kind, mode=mode,
-                action=action, people=people,
+    from .templates_ import templates_for
+    return dict(sched=sched, pre=pre, doors=doors, selected=set(selected), kind=kind, mode=mode,
+                action=action, people=people, tpls=templates_for(session, user) if not sched else [],
                 until_val=sched.repeat_until.isoformat() if sched and sched.repeat_until else "",
-                event_type=sched.event_type if sched else "event",
+                event_type=pre.event_type if pre else "event",
                 date_val=start.date().isoformat(), start_val=start.strftime("%H:%M"),
                 end_val=end.strftime("%H:%M"), days=days, unifi_pats=_unifi_pats(session, doors))
 
@@ -821,10 +824,19 @@ def _unifi_pats(session, doors) -> dict:
 
 @router.get("/schedules/new")
 def schedule_new(request: Request, door: list[str] = Query([]), kind: str = "override", day: str = "",
-                 user: User = Depends(require_scheduler), session: Session = Depends(get_session)):
-    """`?door=a&door=b` preselects doors; `?kind=default` starts regular hours; `?day=2030-01-31` sets the date."""
+                 template: int = 0, user: User = Depends(require_scheduler), session: Session = Depends(get_session)):
+    """`?door=a&door=b` preselects doors; `?kind=default` starts regular hours; `?day=2030-01-31` sets the date;
+    `?template=3` starts from a saved template."""
     kind = "default" if kind == "default" else "override"
-    ctx = _form_ctx(session, user, None, door, kind, current_site_id(request, session, user))
+    pre, tpl = None, None
+    if template:
+        from .templates_ import as_schedule, usable
+        tpl = usable(session, user, template)
+        if tpl:
+            pre = as_schedule(tpl, now_local().date())
+            door = [d for d in tpl.doors if d in allowed_door_ids(session, user)]
+    ctx = _form_ctx(session, user, None, door, kind, current_site_id(request, session, user), pre=pre)
+    ctx["tpl"] = tpl
     try:
         ctx["date_val"] = date.fromisoformat(day).isoformat()
     except ValueError:

@@ -67,15 +67,16 @@ def holidays_page(request: Request, year: Optional[int] = None, user: User = Dep
     sites = {x.id: x for x in session.exec(select(Site).order_by(Site.name)).all() if x.id in managed}
     today = date.today()
     rows = [h for h in session.exec(select(Holiday).order_by(Holiday.start_date)).all() if _sees(managed, h)]
-    upcoming = [h for h in rows if h.end_date >= today]
-    past = [h for h in rows if h.end_date < today][-10:]
+    nxt = {h.id: h.next_span(today) for h in rows}
+    upcoming = sorted([h for h in rows if nxt[h.id]], key=lambda h: nxt[h.id][0])
+    past = [h for h in rows if not nxt[h.id]][-10:]
     year = year or (today.year + (1 if today.month == 12 else 0))
-    have = {(h.name, h.start_date) for h in rows}
+    have = {(h.name, a) for h in rows for a, _ in h.spans(year)}
     us = [(n, d, (n, d) in have) for n, d in us_holidays(year)]
     site_doors = _site_doors(session, user, managed)
     return render(request, "holidays.html", user, upcoming=upcoming, past=past, hsites=sites, us=us, year=year,
                   site_doors=site_doors, h=None, hol_where={x.id: _where(session, x, site_doors) for x in rows},
-                  can_edit={x.id for x in rows if _can_h(user, managed, x)},
+                  can_edit={x.id for x in rows if _can_h(user, managed, x)}, nxt=nxt,
                   us_default=US_DEFAULT, today=today)
 
 
@@ -144,6 +145,11 @@ async def _read(request: Request, session: Session, user: User, h: Holiday) -> s
     h.site_ids = ",".join(str(s) for s in sites) if len(sites) > 1 else ""
     h.name, h.start_date, h.end_date = (str(f.get("name", "")).strip() or "Holiday")[:80], d0, d1
     h.hours, h.door_ids = hours, ",".join(door_ids)
+    rep = str(f.get("yearly", ""))
+    if rep in ("date", "nth", "last"):
+        h.yearly = rep
+    elif not (rep == "keep" and h.yearly.startswith("us:")):
+        h.yearly = ""
     return ""
 
 
@@ -234,24 +240,27 @@ async def holiday_save(request: Request, hid: int, bg: BackgroundTasks, user: Us
 
 @router.post("/holidays/us")
 def holiday_us(request: Request, bg: BackgroundTasks, year: int = Form(...), names: list[str] = Form([]),
-               site: str = Form(""), user: User = Depends(require_manager), session: Session = Depends(get_session)):
+               site: str = Form(""), every_year: bool = Form(False), user: User = Depends(require_manager),
+               session: Session = Depends(get_session)):
     managed = managed_site_ids(session, user)
     site_id = int(site) if site.isdigit() else None
     if not _can(user, managed, site_id):
         flash(request, "Only admins can add holidays for every site. Pick one of your sites.", "error")
         return redirect(f"/holidays?year={year}")
-    have = {(h.name, h.start_date, h.site_id) for h in session.exec(select(Holiday)).all()}
+    have = {(h.name, a, h.site_id) for h in session.exec(select(Holiday)).all() for a, _ in h.spans(year)}
     added = []
     for n, d in us_holidays(year):
         if n in names and (n, d, site_id) not in have:
-            session.add(Holiday(site_id=site_id, name=n, start_date=d, end_date=d, created_by=user.id))
+            session.add(Holiday(site_id=site_id, name=n, start_date=d, end_date=d, created_by=user.id,
+                                yearly=f"us:{n}" if every_year else ""))
             added.append(n)
     if added:
         audit.record(session, "holiday.update", f"{user.display} added {len(added)} US holidays for {year}", user=user,
                      changes=[["Holidays", "", ", ".join(added)]], site_ids=[site_id] if site_id else None)
     session.commit()
     kick_reconcile(bg)
-    flash(request, f"Added {len(added)} holiday{'' if len(added) == 1 else 's'} for {year}." if added
+    flash(request, (f"Added {len(added)} holiday{'' if len(added) == 1 else 's'}"
+                    + (", every year from now on." if every_year else f" for {year}.")) if added
           else "Those holidays were already there.")
     return redirect("/holidays")
 
@@ -271,6 +280,8 @@ def holiday_delete(request: Request, hid: int, bg: BackgroundTasks, user: User =
 
 
 def _when(h: Holiday) -> str:
+    if h.yearly:
+        return h.repeat_text() or f"Every year ({h.name})"
     s = f"{h.start_date:%a %b %-d, %Y}"
     if h.end_date != h.start_date:
         s += f" to {h.end_date:%a %b %-d}"

@@ -11,6 +11,10 @@
 {% if not doors %}
 <div class="card empty"><p>You don't have access to any doors yet.</p></div>
 {% else %}
+{% if tpl %}<div class="tplnote">Started from the template <b>{{ tpl.name }}</b>. Pick the date, check the rest, and save.</div>
+{% elif tpls %}<div class="tplpick small"><span class="muted">Start from a template:</span>
+  {% for t in tpls %}<a class="button small" href="/schedules/new?template={{ t.id }}">{{ t.name }}</a>{% endfor %}
+  <a class="small" href="/templates">Manage</a></div>{% endif %}
 <form method="post" action="/schedules{% if sched %}/{{ sched.id }}{% endif %}" id="sform" class="sform">
   <div class="sgrid">
   <div class="ssteps">
@@ -29,13 +33,13 @@
 
     <section class="card step">
       <h2><span class="num">2</span><span class="m-event">What's it for?</span><span class="m-default">Name these hours</span></h2>
-      <input name="label" class="biginput" value="{{ sched.label if sched else ('Regular hours' if mode == 'default' else '') }}"
+      <input name="label" class="biginput" value="{{ pre.label if pre else ('Regular hours' if mode == 'default' else '') }}"
              placeholder="e.g. Smith wedding" aria-label="Name" autocomplete="off">
       <div class="m-event">
-        <details class="more" {% if sched and (sched.contact or sched.notes) %}open{% endif %}>
+        <details class="more" {% if pre and (pre.contact or pre.notes) %}open{% endif %}>
           <summary>Add a contact person or notes</summary>
-          <label>Contact person <input name="contact" value="{{ sched.contact if sched else '' }}" placeholder="e.g. Jane Smith, 555-0123"></label>
-          <label>Notes <textarea name="notes" rows="2">{{ sched.notes if sched else '' }}</textarea></label>
+          <label>Contact person <input name="contact" value="{{ pre.contact if pre else '' }}" placeholder="e.g. Jane Smith, 555-0123"></label>
+          <label>Notes <textarea name="notes" rows="2">{{ pre.notes if pre else '' }}</textarea></label>
         </details>
       </div>
     </section>
@@ -90,7 +94,7 @@
         </div>
         {% endif %}
         <input type="hidden" name="holidays_field" value="1">
-        <label class="check holcheck"><input type="checkbox" name="follow_holidays" value="1" {% if not sched or sched.on_holidays != 'run' %}checked{% endif %}>
+        <label class="check holcheck"><input type="checkbox" name="follow_holidays" value="1" {% if not pre or pre.on_holidays != 'run' %}checked{% endif %}>
           <span>Skip on holidays <small class="muted">(doors stay locked that day, or open the holiday's shorter hours; see <a href="/holidays">Holidays</a>)</small></span></label>
       </div>
     </section>
@@ -107,6 +111,12 @@
   </div>
 </form>
 {% if sched %}
+<form method="post" action="/templates" class="tplsave">
+  <input type="hidden" name="sid" value="{{ sched.id }}">
+  <label class="small">Save as a template, to reuse with a new date
+    <span class="btnrow"><input name="name" value="{{ sched.label }}" maxlength="80" aria-label="Template name" style="margin:0;max-width:280px">
+    <button class="small">Save as template</button></span></label>
+</form>
 <form method="post" action="/schedules/{{ sched.id }}/delete" class="delform" onsubmit="return confirm('Delete this schedule? Doors it is holding open or locked right now go back to their other schedules.')">
   <button class="danger">Delete this schedule</button>
 </form>
