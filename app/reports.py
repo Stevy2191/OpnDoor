@@ -247,7 +247,7 @@ def report_new(request: Request, user: User = Depends(require_manager), session:
     return _form(request, user, session, Report(name="", user_ids=str(user.id)))
 
 
-@router.get("/reports/{rid}")
+@router.get("/reports/{rid:int}")
 def report_edit(request: Request, rid: int, user: User = Depends(require_manager), session: Session = Depends(get_session)):
     r = _mine(session, user, rid)
     return _form(request, user, session, r) if r else redirect("/reports")
@@ -282,7 +282,7 @@ async def report_save(request: Request, user: User = Depends(require_manager), s
     return redirect("/reports")
 
 
-@router.get("/reports/{rid}/preview", response_class=HTMLResponse)
+@router.get("/reports/{rid:int}/preview", response_class=HTMLResponse)
 def report_preview(rid: int, user: User = Depends(require_manager), session: Session = Depends(get_session)):
     r = _mine(session, user, rid)
     if not r:
@@ -292,7 +292,7 @@ def report_preview(rid: int, user: User = Depends(require_manager), session: Ses
     return HTMLResponse(html)
 
 
-@router.post("/reports/{rid}/send")
+@router.post("/reports/{rid:int}/send")
 def report_send(request: Request, rid: int, user: User = Depends(require_manager), session: Session = Depends(get_session)):
     r = _mine(session, user, rid)
     if r:
@@ -301,7 +301,7 @@ def report_send(request: Request, rid: int, user: User = Depends(require_manager
     return redirect("/reports")
 
 
-@router.post("/reports/{rid}/delete")
+@router.post("/reports/{rid:int}/delete")
 def report_delete(request: Request, rid: int, user: User = Depends(require_manager), session: Session = Depends(get_session)):
     r = _mine(session, user, rid)
     if r:

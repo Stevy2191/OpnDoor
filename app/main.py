@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
-from . import access, activity, admin, dayview, templates_, whocan, pwa, alerts, devices, reports, unifiwatch, history, holidays, live, mailer, maps, screens, sso, unifipeople, video, visitors
+from . import access, activity, admin, dayview, templates_, whocan, pwa, accessreport, alerts, devices, reports, unifiwatch, history, holidays, live, mailer, maps, screens, sso, unifipeople, video, visitors
 from .security import SecurityMiddleware
 from .web import render, router
 
@@ -73,6 +73,7 @@ app.include_router(dayview.router)
 app.include_router(templates_.router)
 app.include_router(whocan.router)
 app.include_router(pwa.router)
+app.include_router(accessreport.router)
 app.include_router(activity.router)
 app.include_router(visitors.router)
 app.include_router(screens.router)
