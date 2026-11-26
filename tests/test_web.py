@@ -343,3 +343,21 @@ def test_saving_a_schedule_goes_back_to_schedules_on_its_date(client):
     r = client.post("/schedules", data={"mode": "unlock", "label": "Choir", "door_ids": ["1:demo-front"],
                                         "day": day, "start": "18:00", "end": "19:00"}, follow_redirects=True)
     assert r.url.path == "/day" and "Saved “Choir”" in r.text
+
+
+def test_keep_unlocked_is_not_a_schedule(client, fake):
+    setup_admin(client)
+    client.post("/quick-unlock", data={"door_ids": ["1:demo-side"], "mode": "hold"})
+    client.post("/quick-unlock", data={"door_ids": ["1:demo-front"], "minutes": "30"})
+    from app import engine
+    engine.reconcile()
+    week = client.get("/schedules?view=week").text
+    assert "Kept unlocked by" not in week and "Unlock now by" not in week
+    assert "Opened by hand right now" in week and "kept unlocked until someone sets it back" in week
+    assert "Side Door" in week and "Front Entrance" in week
+    assert "Kept unlocked by" not in client.get("/schedules?view=list").text
+    assert "navbadge" not in week  # no "2 unlocked" in the sidebar
+    home = client.get("/").text
+    today = home[home.index('id="today"'):]
+    assert "Kept unlocked by" not in today and "Unlock now by" not in today
+    assert "until set back" in home  # Right now still says what the doors are doing

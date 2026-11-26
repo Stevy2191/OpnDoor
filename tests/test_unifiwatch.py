@@ -88,11 +88,11 @@ def test_raw_views_for_admins(client, fake):
 
 
 def test_a_removed_unifi_schedule_drops_out_when_it_doesnt_run(client, fake):
-    """Seen Mon-Fri 8-5 for two weeks; then on its latest weekday UniFi didn't unlock at noon: that weekday goes."""
+    """Seen Mon-Fri 8-5 for three weeks; then on its latest weekday UniFi didn't unlock at noon: that weekday goes."""
     from app.config import TZ
     from app.schedules import to_local
     setup_admin(client)
-    seen_weekdays("1:demo-front")
+    seen_weekdays("1:demo-front", weeks=3)
     with session_scope() as s:
         door = s.get(Door, "1:demo-front")
         segs = s.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.door_id == door.id)).all()
@@ -123,3 +123,11 @@ def test_reload_from_unifi_forgets_learned_schedules(client, fake):
     with session_scope() as s:
         assert not s.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.kind == "schedule")).all()
     assert "UniFi schedule" not in client.get("/doors").text
+
+
+def test_seen_once_is_not_a_schedule(client, fake):
+    """One stretch (someone in the UniFi app, a one-off) isn't shown as UniFi's schedule until it repeats."""
+    setup_admin(client)
+    seen_weekdays("1:demo-front", weeks=1)
+    with session_scope() as s:
+        assert unifiwatch.pattern(s, s.get(Door, "1:demo-front")) == []

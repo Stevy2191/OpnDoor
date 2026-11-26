@@ -39,6 +39,11 @@
   <span><i class="sw lock"></i>Kept locked</span><span><i class="sw cal"></i>From a calendar</span><span><i class="sw hol"></i>Holiday (doors locked)</span>{% if unifi_blocks %}<span><i class="sw unifi"></i>UniFi Access's own schedule (as seen)</span>{% endif %}
 </div>
 
+{% if by_hand %}
+<p class="small byhand">🔓 Opened by hand right now (not a schedule):
+  {% for r in by_hand %}<a href="/doors/{{ r.door.id|urlencode }}">{{ r.door.name }}</a> <span class="muted">({{ 'kept unlocked until someone sets it back' if r.held else 'until ' ~ (r.until|local|time) }})</span>{% if not loop.last %} · {% endif %}{% endfor %}.
+  <span class="muted">Set {{ 'it' if by_hand|length == 1 else 'them' }} back to normal on the door's page.</span></p>
+{% endif %}
 {% if type not in ('default', 'all') %}<p class="muted small hintline">Regular hours are on each door's page. To see them here, choose <a href="?view={{ view }}&type=default">Regular hours</a> in the filter.</p>{% endif %}
 {% if view == 'week' %}
 <div class="weeknav">
@@ -125,7 +130,7 @@ document.querySelectorAll('.wday[data-day]').forEach(function (d) {
   <div class="srow {{ kindclass(s) }} {{ 'ended' if c.ended }}">
     <div class="smain">
       <div class="stitle"><strong>{{ s.label }}</strong> {{ whatpill(s) }}
-        {% if s.source == 'calendar' %}<span class="pill cal">📅 {{ c.feed or 'calendar' }}</span>{% elif s.source == 'quick' %}<span class="pill">Unlock now</span>{% endif %}</div>
+        {% if s.source == 'calendar' %}<span class="pill cal">📅 {{ c.feed or 'calendar' }}</span>{% endif %}</div>
       <div class="swhen">
         {% if s.repeat_weekdays %}{{ describe_repeat(s) }}, {{ span(s.start_local, s.start_local + minutes(s.duration_minutes)) }}
         {% else %}{{ s.start_local|day }}, {{ span(s.start_local, s.start_local + minutes(s.duration_minutes)) }}{% endif %}
