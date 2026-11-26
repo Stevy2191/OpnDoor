@@ -52,8 +52,9 @@ def _save(session: Session, values: dict) -> None:
 
 
 def send(cfg: dict, to: str, subject: str, text: str, html: str = "",
-         images: Optional[dict] = None) -> None:
-    """Send one message. images: {name: png bytes} shown inline in the html as cid:name."""
+         images: Optional[dict] = None, files: Optional[list] = None) -> None:
+    """Send one message. images: {name: png bytes} shown inline in the html as cid:name.
+    files: [(filename, bytes, "maintype/subtype")] attached."""
     if not (cfg.get("host") and cfg.get("sender")):
         raise MailError("Email isn't set up yet. An admin can add an email server under Manage → Email.")
     def one_line(v: str) -> str:
@@ -72,6 +73,9 @@ def send(cfg: dict, to: str, subject: str, text: str, html: str = "",
         part = msg.get_payload()[1]
         for name, data in (images or {}).items():
             part.add_related(data, maintype="image", subtype="png", cid=f"<{cids[name]}>", filename=f"{name}.png")
+    for fname, data, mime in files or []:
+        main, _, subtype = mime.partition("/")
+        msg.add_attachment(data, maintype=main, subtype=subtype or "octet-stream", filename=fname)
     port = int(cfg.get("port") or 587)
     try:
         if cfg.get("security") == "ssl":

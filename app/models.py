@@ -483,6 +483,8 @@ class Report(SQLModel, table=True):
     weekday: int = 0  # weekly: 0 = Monday
     hour: int = 7  # local hour it goes out
     sections: str = "activity,visitors,alerts,devices,changes,upcoming"
+    attach: str = ""  # spreadsheets attached to each email: report types from downloads.KINDS, comma separated
+    attach_fmt: str = "xlsx"  # xlsx | csv
     user_ids: str = ""
     emails: str = ""
     created_by: Optional[int] = Field(default=None, foreign_key="user.id")

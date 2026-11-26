@@ -235,6 +235,33 @@ def build(session: Session, user: User, kind: str, p: dict) -> tuple[list, list,
     return [], [], ""
 
 
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def make_file(header: list, rows: list, title: str, stem: str, fmt: str) -> tuple[str, bytes, str]:
+    """(filename, bytes, mime type)."""
+    if not rows:
+        rows = [["Nothing found for these choices."]]
+    if fmt == "csv":
+        out = io.StringIO()
+        w = csv.writer(out)
+        w.writerow(header)
+        for r in rows:
+            w.writerow([_safe(c) for c in r])
+        return f"{stem}.csv", ("\ufeff" + out.getvalue()).encode("utf-8"), "text/csv"
+    return f"{stem}.xlsx", xlsx.build(title[:31] or "Report", header, rows), XLSX
+
+
+def for_email(session: Session, owner: User, kind: str, site_id, start: date, end: date, fmt: str):
+    """A report type as an attachment for an emailed summary covering [start, end)."""
+    p = {"site": str(site_id or ""), "from": start.isoformat(), "to": (end - timedelta(days=1)).isoformat(),
+         "unifi": "1", "app": "1", "denied": None, "doors": []}
+    if kind == "access":
+        p["doors"] = [d.id for d in report_doors(session, owner) if not site_id or d.site_id == site_id]
+    header, rows, title = build(session, owner, kind, p)
+    return make_file(header, rows, title, f"{kind}-{start:%Y-%m-%d}", fmt)
+
+
 @router.get("/reports/new")
 def report_kinds(request: Request, user: User = Depends(require_manager)):
     return render(request, "report_kinds.html", user, kinds=KINDS)
@@ -280,17 +307,6 @@ def report_download(request: Request, kind: str, door: list[str] = Query([]), fm
     audit.record(session, "report.download", f"{user.display} downloaded the {KINDS[kind][0].lower()} report", user=user,
                  door_ids=door if kind in ("access", "activity") else None)
     session.commit()
-    stem = f"{kind}-{now_local():%Y-%m-%d}"
-    if not rows:
-        rows = [["Nothing found for these choices."]]
-    if fmt == "csv":
-        out = io.StringIO()
-        w = csv.writer(out)
-        w.writerow(header)
-        for r in rows:
-            w.writerow([_safe(c) for c in r])
-        return Response("﻿" + out.getvalue(), media_type="text/csv; charset=utf-8",
-                        headers={"Content-Disposition": f'attachment; filename="{stem}.csv"'})
-    return Response(xlsx.build(title[:31] or "Report", header, rows),
-                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f'attachment; filename="{stem}.xlsx"'})
+    name, data, mime = make_file(header, rows, title, f"{kind}-{now_local():%Y-%m-%d}", "csv" if fmt == "csv" else "xlsx")
+    return Response(data, media_type=mime + ("; charset=utf-8" if fmt == "csv" else ""),
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
