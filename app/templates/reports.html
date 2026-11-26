@@ -6,7 +6,7 @@
     <h1>Reports</h1>
     <p class="muted">Download a report now, or have a summary emailed every day, week or month.</p>
   </div>
-  <div class="btnrow"><a class="button primary" href="/reports/new">+ New report</a></div>
+  <div class="btnrow"><a class="button" href="/reports/access">Door access report</a> <a class="button primary" href="/reports/new">+ New report</a></div>
 </div>
 {% if not mail_ready %}<div class="flash info">Reports are sent by email, and email isn't set up yet.{% if user.is_admin %} <a href="/settings/email">Set up email</a>.{% endif %} You can still preview them.</div>{% endif %}
 {% if reps %}
