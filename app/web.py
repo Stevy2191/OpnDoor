@@ -111,18 +111,12 @@ def render(request: Request, name: str, user: Optional[User], **ctx) -> HTMLResp
             mine = visible_site_ids(s, user)
             sites = {k: v for k, v in sites.items() if k in mine}
         managed_ids = managed_site_ids(s, user) if user else set()
-        nav_unlocked = nav_pending = 0
+        nav_pending = 0
         if user and user.is_manager:
             nav_pending = len(s.exec(select(Schedule.id).where(Schedule.status == "pending")).all())
-        if user:
-            allowed = allowed_door_ids(s, user)
-            now = utcnow()
-            nav_unlocked = sum(1 for st in s.exec(select(DoorState)).all()
-                               if st.door_id in allowed and st.mode == "unlock" and st.until and st.until > now)
     demo = config.DRY_RUN or any(x.is_demo for x in sites.values())
     ctx.setdefault("emergencies", [x for x in sites.values() if x.emergency])
     ctx.setdefault("managed_ids", managed_ids)
-    ctx.setdefault("nav_unlocked", nav_unlocked)
     ctx.setdefault("nav_pending", nav_pending)
     ctx.setdefault("sites", sites)
     ctx.setdefault("nav_sites", sites)
@@ -194,6 +188,20 @@ def schedule_doors(session: Session, ids: list[int]) -> dict[int, list[str]]:
         for row in session.exec(select(ScheduleDoor).where(ScheduleDoor.schedule_id.in_(ids))).all():
             out[row.schedule_id].append(row.door_id)
     return out
+
+
+def doors_opened_by_hand(session: Session, doors: list[Door]) -> list[dict]:
+    """[{door, held, until}] for doors unlocked right now with Unlock now or Keep unlocked (not by a schedule)."""
+    ids = {d.id: d for d in doors}
+    now = utcnow()
+    out = []
+    for st in session.exec(select(DoorState).where(DoorState.mode == "unlock")).all():
+        if st.door_id not in ids or not st.until or st.until <= now or not st.schedule_id:
+            continue
+        sched = session.get(Schedule, st.schedule_id)
+        if sched and sched.source == "quick":
+            out.append({"door": ids[st.door_id], "held": st.until - now > engine.HOLD_AFTER, "until": st.until})
+    return sorted(out, key=lambda r: r["door"].name.lower())
 
 
 def visible_schedules(session: Session, user: User) -> list[Schedule]:
@@ -493,7 +501,7 @@ def dashboard(request: Request, user: User = Depends(require_user), session: Ses
     # Events (overrides) today and in the next 7 days
     now = now_local()
     today = now.date()
-    scheds = [x for x in visible_schedules(session, user) if x.kind == "override"]
+    scheds = [x for x in visible_schedules(session, user) if x.kind == "override" and x.source != "quick"]
     sd = schedule_doors(session, [x.id for x in scheds])
     namer = DoorNamer(session, doors)
     agenda_today, agenda_week = [], {}
@@ -773,7 +781,9 @@ def schedules_list(request: Request, view: str = "", week: str = "", month: str 
                        key=lambda b: namer.buildings[b].lower())
     bdoors = {d.id for d in doors if building.isdigit() and d.building_id == int(building)}
 
-    scheds = visible_schedules(session, user)
+    # "Unlock now", "Keep unlocked" and "Lock now" are things done to a door, not schedules: they're on the Doors
+    # and Home pages (and each door's day), not in the Schedules calendar
+    scheds = [x for x in visible_schedules(session, user) if x.source != "quick"]
     sd = schedule_doors(session, [x.id for x in scheds])
     feeds = {f.id: f.name for f in session.exec(select(CalendarFeed)).all()}
     door_text = {d.id: d.name.lower() for d in doors}
@@ -799,7 +809,8 @@ def schedules_list(request: Request, view: str = "", week: str = "", month: str 
         return {"s": x, "o": o, "doors": namer(ids), "ndoors": len(ids), "feed": feeds.get(x.feed_id),
                 "editable": can_edit(session, user, x, sd[x.id])}
 
-    ctx = dict(view=view, q=q, type=type, building=building, past=past, types=SCHEDULE_TYPES,
+    by_hand = doors_opened_by_hand(session, doors)
+    ctx = dict(view=view, q=q, type=type, building=building, past=past, types=SCHEDULE_TYPES, by_hand=by_hand,
                building_opts=[(b, namer.buildings[b]) for b in buildings], total=len(scheds))
     hmaps = engine.door_holiday_maps(session, doors)
 

@@ -18,6 +18,7 @@ from .schedules import to_local, to_utc
 log = logging.getLogger(__name__)
 KEEP_DAYS = 60
 LOOK_BACK = 28  # days of watching used for the weekly pattern
+MIN_SEEN = 2  # a weekday's window counts as UniFi's schedule once seen on this many days (different weeks)
 STALE = timedelta(minutes=5)
 errors: dict = {}  # site id -> why the console can't say (shown on the door page)
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -148,6 +149,8 @@ def pattern(session: Session, door: Door, now: Optional[datetime] = None) -> lis
         if wd in gone:
             continue  # UniFi stopped unlocking on this weekday: the schedule was changed or removed there
         (win, n), = counts.most_common(1)
+        if n < MIN_SEEN:
+            continue  # seen once could be anything (someone in the UniFi app, a one-off): not a schedule yet
         by_window[win]["days"].append(wd)
         by_window[win]["seen"] += n
     out = [{"days": sorted(v["days"]), "start": w[0], "end": w[1], "seen": v["seen"]} for w, v in by_window.items()]

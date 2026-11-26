@@ -1298,3 +1298,4 @@ dialog.emdlg::backdrop { background: rgba(0,0,0,.45); }
 }
 .srow.hol { border-left: 4px solid var(--warn); }
 .daynav input[type=date] { width: auto; margin: 0; }
+.byhand { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: .5rem .75rem; margin: .3rem 0 .6rem; }
