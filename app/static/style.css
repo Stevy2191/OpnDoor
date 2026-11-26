@@ -1148,3 +1148,6 @@ ol.steps .linkbox input { max-width: 520px; }
 .holsitehead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
 .holsiteblock .holdoorlist { margin-top: .5rem; }
 .holwhererow + .holwhererow { margin-top: .35rem; }
+.holsitegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: .1rem .75rem; padding: .4rem .8rem; }
+.holsitegrid .dpkdoor small { margin-left: auto; padding-left: .5rem; white-space: nowrap; }
+.holevery { width: 18px; height: 18px; margin: 0; }
