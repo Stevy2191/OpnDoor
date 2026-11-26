@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, select
 
 from . import engine, unifi
 from .auth import allowed_door_ids
@@ -21,7 +21,6 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 FIRST_DAYS = 30  # how far back the first copy reaches
-KEEP_DAYS = 120  # older entries are dropped
 MAX_PAGES = 60
 
 METHODS = {"NFC": "Card", "PIN_CODE": "PIN", "PIN": "PIN", "MOBILE_TAP": "Phone", "MOBILE_BUTTON": "Phone",
@@ -81,8 +80,7 @@ def sync_site(session: Session, site: Site) -> int:
         return added
     site.log_until, site.log_status = now, ""
     session.add(site)
-    session.exec(delete(DoorEvent).where(DoorEvent.site_id == site.id,
-                                         DoorEvent.at < now - timedelta(days=KEEP_DAYS)))
+    # old entries are removed by the nightly data cleanup (Settings → Data cleanup)
     return added
 
 

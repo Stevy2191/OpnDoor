@@ -1331,3 +1331,7 @@ dialog.daypanel[open] { display: flex; flex-direction: column; }
 .daypanel .dlghead, .daypanel .dpfoot { flex: none; }
 .daypanel .dpbody { flex: 1 1 auto; min-height: 0; }
 .dptitle { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+/* data cleanup */
+.cleanrow { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .8rem 0; border-top: 1px solid var(--line); }
+.cleanrow select { width: auto; min-width: 11rem; margin: 0; }
+.warnline { color: #b45309; margin-top: .2rem; }

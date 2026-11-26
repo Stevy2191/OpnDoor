@@ -60,6 +60,7 @@ ACTIONS = {
     "settings.signin": ("site", "Changed the Microsoft sign-in settings"),
     "settings.backup": ("site", "Made a backup"),
     "settings.restore": ("site", "Restored a backup"),
+    "settings.cleanup": ("site", "Cleaned up old data"),
     "settings.update": ("site", "Started an update"),
     "alert.save": ("site", "Changed an alert"),
     "alert.delete": ("site", "Deleted an alert"),

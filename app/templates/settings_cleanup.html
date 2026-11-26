@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Data cleanup · Settings · OpnDoor{% endblock %}
+{% block content %}
+{% include "_settingstabs.html" %}
+<section class="card">
+  <div class="cardhead">
+    <div><h2>Data cleanup</h2>
+      <p class="muted" style="margin:.3rem 0 0">How long OpnDoor keeps old records. Anything older is deleted every night at about 2:45 AM.
+        Only the main admin can change this.{% if size %} The database is {{ size }} right now.{% endif %}</p></div>
+    <form method="post" action="/settings/cleanup/now" onsubmit="return confirm('Delete everything older than these settings now? It can\'t be undone, except by restoring a backup.')">
+      <button>Clean up now</button></form>
+  </div>
+  <form method="post" action="/settings/cleanup" class="cleanform">
+    {% for k, (title, desc, choices, default) in kinds.items() %}
+    <div class="cleanrow">
+      <div><b>{{ title }}</b><div class="muted small">{{ desc }}</div>
+        {% if counts[k] %}<div class="small warnline">{{ counts[k] }} {{ 'is' if counts[k] == 1 else 'are' }} older than this now and will be removed tonight.</div>{% endif %}</div>
+      <select name="{{ k }}" aria-label="Keep {{ title|lower }}">
+        {% for n in choices %}<option value="{{ n }}" {% if cur[k] == n %}selected{% endif %}>{{ label(n) }}{{ ' (default)' if n == default }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endfor %}
+    <div class="btnrow" style="margin-top:1rem"><button class="primary">Save</button></div>
+  </form>
+  <p class="hint">Deleted records are gone for good, but your nightly backups (Settings → Backups) still have them until those backups are removed.
+    Removing old schedules doesn't change any door: they've already finished.</p>
+</section>
+{% endblock %}

@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import calendars, config, engine
 from .auth import AdminRequired, LoginRequired
 from .db import init_db
-from . import access, activity, admin, dayview, templates_, whocan, pwa, downloads, alerts, devices, reports, unifiwatch, history, holidays, live, mailer, maps, screens, sso, unifipeople, video, visitors
+from . import access, activity, admin, dayview, retention, templates_, whocan, pwa, downloads, alerts, devices, reports, unifiwatch, history, holidays, live, mailer, maps, screens, sso, unifipeople, video, visitors
 from .security import SecurityMiddleware
 from .web import render, router
 
@@ -33,6 +33,7 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(engine.safe(unifiwatch.watch_all), "interval", minutes=1, id="unifiwatch", **opts)
     sched.add_job(engine.safe(alerts.check_all), "interval", minutes=1, id="alerts", **opts)
     sched.add_job(engine.safe(reports.send_due), "cron", minute=5, id="reports", **opts)
+    sched.add_job(engine.safe(retention.nightly), "cron", hour=2, minute=47, id="cleanup", **opts)
     sched.add_job(engine.safe(admin.nightly_backup), "cron", hour=2, minute=17, id="backup", **opts)
     sched.add_job(engine.safe(admin.nightly_update), "cron", hour=3, minute=41, id="update", **opts)
     sched.start()
@@ -74,6 +75,7 @@ app.include_router(templates_.router)
 app.include_router(whocan.router)
 app.include_router(pwa.router)
 app.include_router(downloads.router)
+app.include_router(retention.router)
 app.include_router(activity.router)
 app.include_router(visitors.router)
 app.include_router(screens.router)
