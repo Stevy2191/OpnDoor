@@ -14,6 +14,13 @@
   {% if b.accent %}--accent: {{ b.accent }}; --accent-ink: {{ b.accent }}; --accent-soft: color-mix(in srgb, {{ b.accent }} 14%, var(--card));{% endif %}
   {% if b.nav %}--nav: {{ b.nav }}; --nav-2: color-mix(in srgb, {{ b.nav }} 85%, #fff); --nav-line: color-mix(in srgb, {{ b.nav }} 70%, #fff);{% endif %}
 }</style>{% endif %}
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="{{ b.name or 'OpnDoor' }}">
+<meta name="theme-color" content="{{ b.nav or '#0f1b33' }}">
+<script>if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='5' y='2' width='14' height='20' rx='2' fill='%230f766e'/><circle cx='15' cy='12' r='1.6' fill='white'/></svg>">
 </head>
 <body class="{{ 'app' if user else 'bare' }}">
