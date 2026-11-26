@@ -4,9 +4,9 @@
 <div class="pagehead">
   <div>
     <h1>Reports</h1>
-    <p class="muted">A summary by email, every day, week or month, for the people you pick.</p>
+    <p class="muted">Download a report now, or have a summary emailed every day, week or month.</p>
   </div>
-  <div class="btnrow"><a class="button" href="/reports/access">Door access report</a> <a class="button primary" href="/reports/new">+ New report</a></div>
+  <div class="btnrow"><a class="button primary" href="/reports/new">+ New report</a></div>
 </div>
 {% if not mail_ready %}<div class="flash info">Reports are sent by email, and email isn't set up yet.{% if user.is_admin %} <a href="/settings/email">Set up email</a>.{% endif %} You can still preview them.</div>{% endif %}
 {% if reps %}
@@ -21,6 +21,7 @@
       </div>
       <div class="btnrow">
         <a class="button small" href="/reports/{{ r.id }}/preview" target="_blank" rel="noopener">Preview</a>
+        <a class="button small" href="/reports/{{ r.id }}/download">Download</a>
         <form method="post" action="/reports/{{ r.id }}/send"><button class="small" {% if not mail_ready %}disabled{% endif %}>Send now</button></form>
         <a class="button small" href="/reports/{{ r.id }}">Edit</a>
         <form method="post" action="/reports/{{ r.id }}/delete" onsubmit="return confirm('Delete the report {{ r.name|e }}?')"><button class="small danger">Delete</button></form>
@@ -30,6 +31,6 @@
   </div>
 </section>
 {% else %}
-<section class="card"><p class="muted empty">No reports yet. A weekly report on Monday mornings is a good start: door activity, visitors, alerts, offline devices, what changed and what's coming up.</p></section>
+<section class="card"><p class="muted empty">No emailed summaries yet. Click <b>New report</b> to download a report now (door access, activity, visitors, schedules and more) or to set up a weekly email.</p></section>
 {% endif %}
 {% endblock %}

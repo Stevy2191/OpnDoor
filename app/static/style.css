@@ -1215,3 +1215,11 @@ label.chip input:checked + span { background: none; color: inherit; }
 label.chip input:checked + span::before { content: none; }
 label.chip input:checked + span small { color: var(--muted); opacity: 1; }
 label.chip input:focus-visible + span { outline: none; }
+/* report types */
+.kindhead { margin: 1.4rem 0 .6rem; font-size: 1.05rem; }
+.kindgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: .8rem; }
+.kindcard { display: flex; flex-direction: column; gap: .3rem; padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); color: var(--text); text-decoration: none; }
+.kindcard:hover { border-color: var(--accent); }
+.kindcard strong { font-size: 1rem; }
+.rangequick { margin: .3rem 0 .8rem; gap: .8rem; }

@@ -19,7 +19,7 @@ def _clean(v) -> str:
 
 
 def build(sheet: str, header: list[str], rows: list[list]) -> bytes:
-    widths = [min(60, max([len(str(h)) for h in [header[i]]] + [len(str(r[i] or "")) for r in rows]) + 2)
+    widths = [min(60, max([len(str(header[i]))] + [len(str(r[i] or "")) for r in rows if i < len(r)]) + 2)
               for i in range(len(header))]
     xml_rows = []
     for ri, row in enumerate([header] + rows, start=1):

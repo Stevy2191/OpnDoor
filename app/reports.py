@@ -242,8 +242,8 @@ def _form(request: Request, user: User, session: Session, r: Report):
                   mail_ready=mailer.configured(session))
 
 
-@router.get("/reports/new")
-def report_new(request: Request, user: User = Depends(require_manager), session: Session = Depends(get_session)):
+def report_new_summary(request: Request, user: User, session: Session):
+    """The form for a new email summary (Reports > New report > Email summary)."""
     return _form(request, user, session, Report(name="", user_ids=str(user.id)))
 
 
@@ -290,6 +290,19 @@ def report_preview(rid: int, user: User = Depends(require_manager), session: Ses
     from .admin import brand
     html, _ = render_html(session, r, "/brand/logo" if brand()["logo"] else "")
     return HTMLResponse(html)
+
+
+@router.get("/reports/{rid:int}/download")
+def report_download_html(rid: int, user: User = Depends(require_manager), session: Session = Depends(get_session)):
+    """The summary as a file to keep, print or save as PDF."""
+    from fastapi.responses import Response
+    r = _mine(session, user, rid)
+    if not r:
+        return redirect("/reports")
+    html, _ = render_html(session, r, "")
+    name = "".join(ch if ch.isalnum() else "-" for ch in r.name.lower()).strip("-") or "report"
+    return Response(html, media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}-{now_local():%Y-%m-%d}.html"'})
 
 
 @router.post("/reports/{rid:int}/send")
