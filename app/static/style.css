@@ -1303,3 +1303,31 @@ dialog.emdlg::backdrop { background: rgba(0,0,0,.45); }
 .whatsnew summary { cursor: pointer; }
 .wnver { margin-top: .5rem; }
 .wnver ul { margin: .25rem 0 0; padding-left: 1.2rem; }
+
+/* Month: fits the window; click a day for everything on it */
+.month.fit { grid-template-rows: auto repeat(var(--weeks), minmax(0, 1fr)); }
+.month.fit .mday { min-height: 0; overflow: hidden; cursor: pointer; }
+.month .mday:hover { background: color-mix(in srgb, var(--accent-soft) 40%, var(--card)); }
+.month .mday.other:hover { background: color-mix(in srgb, var(--accent-soft) 40%, var(--bg)); }
+.month .mday:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.month .mnum { pointer-events: none; }
+.mmore { font-size: .72rem; color: var(--muted); padding: 0 .3rem; }
+.mhol { cursor: pointer; }
+dialog.daypanel { width: min(620px, calc(100vw - 2rem)); }
+.daypanel .dpbody { padding: .2rem 1.25rem .6rem; overflow: auto; }
+.daypanel .dpfoot { padding: .6rem 1.25rem 1rem; justify-content: flex-end; border-top: 1px solid var(--line); }
+.dprow { display: flex; justify-content: space-between; align-items: flex-start; gap: .8rem; padding: .7rem 0 .7rem .7rem;
+  border-top: 1px solid var(--line); border-left: 3px solid var(--line); margin-left: -.1rem; }
+.dprow:first-child { border-top: none; }
+.dprow.unl { border-left-color: var(--unl); } .dprow.lock { border-left-color: var(--lockc); }
+.dprow.def { border-left-color: var(--def); } .dprow.cal { border-left-color: var(--calc); }
+.dprow.hol { border-left-color: var(--warn); } .dprow.skipped { opacity: .65; }
+.dprow.skipped b { text-decoration: line-through; }
+.dpmain { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.dprow .btnrow { flex: none; flex-wrap: nowrap; }
+.dprow .btnrow form { display: inline; }
+.month.fit .mev, .month.fit .mhol, .month.fit .mtop, .month.fit .mmore { flex-shrink: 0; }
+dialog.daypanel[open] { display: flex; flex-direction: column; }
+.daypanel .dlghead, .daypanel .dpfoot { flex: none; }
+.daypanel .dpbody { flex: 1 1 auto; min-height: 0; }
+.dptitle { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }

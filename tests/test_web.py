@@ -333,16 +333,16 @@ def test_saving_a_schedule_goes_back_to_schedules_on_its_date(client):
     day = (now_local().date() + timedelta(days=10)).isoformat()
     r = client.post("/schedules", data={"mode": "unlock", "label": "Board meeting", "door_ids": ["1:demo-front"],
                                         "day": day, "start": "18:00", "end": "20:00"}, follow_redirects=False)
-    assert r.headers["location"] == f"/schedules?view=week&week={day}"
+    assert r.headers["location"] == f"/schedules?view=month&month={day[:7]}&d={day}"  # Month is the default
     client.get("/schedules?view=month")
     r = client.post("/schedules", data={"mode": "default", "label": "Office hours", "door_ids": ["1:demo-front"],
                                         "day": day, "start": "08:00", "end": "17:00", "repeat": "weekly",
                                         "weekdays": ["0", "1", "2", "3", "4"]}, follow_redirects=False)
-    assert r.headers["location"] == f"/schedules?view=month&month={day[:7]}&type=all"
-    client.get("/day")
+    assert r.headers["location"] == f"/schedules?view=month&month={day[:7]}&d={day}&type=all"
+    client.get("/schedules?view=week")
     r = client.post("/schedules", data={"mode": "unlock", "label": "Choir", "door_ids": ["1:demo-front"],
-                                        "day": day, "start": "18:00", "end": "19:00"}, follow_redirects=True)
-    assert r.url.path == "/day" and "Saved “Choir”" in r.text
+                                        "day": day, "start": "18:00", "end": "19:00"}, follow_redirects=False)
+    assert r.headers["location"] == f"/schedules?view=week&week={day}"
 
 
 def test_keep_unlocked_is_not_a_schedule(client, fake):

@@ -43,8 +43,6 @@ def test_unifi_schedule_is_cut_where_a_holiday_holds_the_door(client, fake):
         whole = unifiwatch.week_blocks(s, [door], mon, hol_maps={door.id: {mon: Holiday(name="X", start_date=mon,
                                                                                             end_date=mon)}})
         assert mon not in whole
-    day = client.get(f"/day?d={mon.isoformat()}").text
-    assert "UniFi unlocks" in day
 
 
 def test_part_day_holiday_form_and_door_page(client, fake):
@@ -88,13 +86,13 @@ def test_month_view_list_holidays_and_day_tab(client, fake):
     client.post("/holidays", data={"name": "Founders Day", "start": tomorrow.isoformat(), "mode": "allday", "site": "1"})
     month = client.get(f"/schedules?view=month&month={tomorrow:%Y-%m}").text
     assert tomorrow.strftime("%B %Y") in month and "★ Founders Day" in month and "Board meeting" in month
-    assert 'class="month"' in month and client.get("/schedules?view=month&month=bad").status_code == 200
+    assert 'class="month fit"' in month and client.get("/schedules?view=month&month=bad").status_code == 200
     # the list shows upcoming holidays too
     lst = client.get("/schedules?view=list").text
     assert "Holidays" in lst and "★ Founders Day" in lst and "Locked all day" in lst and "All doors · locked, badges still work" in lst
     assert "Founders Day" not in client.get("/schedules?view=list&type=default").text
-    # the day view sits in Schedules (same tabs) and is remembered
-    day = client.get("/day").text
-    assert "<h1>Schedules</h1>" in day and "Month</a>" in day
-    assert client.get("/schedules", follow_redirects=False).headers["location"] == "/day"
+    # the Day view is gone: old links open that day in the month, and Month is the default
+    r = client.get(f"/day?d={tomorrow.isoformat()}", follow_redirects=False)
+    assert r.headers["location"] == f"/schedules?view=month&month={tomorrow:%Y-%m}&d={tomorrow.isoformat()}"
+    assert "☀ Day" not in month
     assert 'class="on">☰ List' in client.get("/schedules?view=list").text

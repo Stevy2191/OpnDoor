@@ -764,15 +764,22 @@ def week_holidays(maps: dict, doors: list[Door], days: list[date]) -> dict:
 
 @router.get("/schedules")
 def schedules_list(request: Request, view: str = "", week: str = "", month: str = "", q: str = "", type: str = "",
-                   building: str = "", past: str = "", user: User = Depends(require_user),
+                   building: str = "", past: str = "", d: str = "", user: User = Depends(require_user),
                    session: Session = Depends(get_session)):
+    """Month (the default), Week or List. ?d=2026-11-26 opens that day's panel in the month."""
     if view in ("week", "month", "list"):
         request.session["sched_view"] = view
-    elif request.session.get("sched_view") == "day":
-        return redirect("/day")
-    view = request.session.get("sched_view", "week")
+    view = request.session.get("sched_view", "month")
     if view not in ("week", "month", "list"):
-        view = "week"
+        view = "month"
+    if d and not view == "month":
+        view = "month"
+    try:
+        open_day = date.fromisoformat(d) if d else None
+    except ValueError:
+        open_day = None
+    if open_day and not month:
+        month = f"{open_day:%Y-%m}"
     site_id = current_site_id(request, session, user)
     doors = [d for d in doors_for(session, user) if site_id is None or d.site_id == site_id]
     in_view = {d.id for d in doors}
@@ -864,9 +871,10 @@ def schedules_list(request: Request, view: str = "", week: str = "", month: str 
         end += timedelta(days=6 - end.weekday())  # the Sunday on or after the last day
         ndays = (end - start).days + 1
         days = [start + timedelta(days=k) for k in range(ndays)]
-        by_day, _ = gather(start, ndays)
+        by_day, skipped = gather(start, ndays)
         prev = (first - timedelta(days=1)).replace(day=1)
         ctx.update(weeks=[days[i:i + 7] for i in range(0, ndays, 7)], by_day=by_day, today=today, month_first=first,
+                   skipped=skipped, open_day=open_day,
                    day_hols=week_holidays(hmaps, doors, days), prev_month=f"{prev:%Y-%m}", next_month=f"{nxt:%Y-%m}",
                    is_this_month=first == today.replace(day=1))
     else:
@@ -1070,15 +1078,13 @@ def _save_perday(request, bg, session, user, label, door_ids, day, until, allowe
 def back_to_schedules(request: Request, day: date, regular: bool = False) -> str:
     """After saving: Schedules in the view used last (week, month, list or day), open on the schedule's date.
     Regular hours are shown with the Regular hours filter, since they're hidden by default."""
-    view = request.session.get("sched_view", "week")
-    if view == "day":
-        return f"/day?d={day.isoformat()}"
+    view = request.session.get("sched_view", "month")
     t = "&type=all" if regular else ""
     if view == "list":
         return "/schedules?view=list" + t
-    if view == "month":
-        return f"/schedules?view=month&month={day:%Y-%m}" + t
-    return f"/schedules?view=week&week={day.isoformat()}" + t
+    if view == "week":
+        return f"/schedules?view=week&week={day.isoformat()}" + t
+    return f"/schedules?view=month&month={day:%Y-%m}&d={day.isoformat()}" + t
 
 
 @router.post("/schedules")
