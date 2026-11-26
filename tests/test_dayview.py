@@ -28,3 +28,16 @@ def test_day_panel_lists_the_day_with_edit_and_delete(client, fake):
     with session_scope() as s:
         assert not s.exec(select(Schedule)).all()
     assert client.get("/day?d=bad", follow_redirects=False).status_code in (302, 303, 307)
+
+
+def test_week_view_opens_the_same_day_panel(client, fake):
+    setup_admin(client)
+    day = now_local().date() + timedelta(days=2)
+    client.post("/schedules", data={"mode": "unlock", "label": "Choir", "door_ids": ["1:demo-front"],
+                                    "day": day.isoformat(), "start": "18:00", "end": "19:00"})
+    with session_scope() as s:
+        sid = s.exec(select(Schedule)).one().id
+    page = client.get(f"/schedules?view=week&d={day.isoformat()}").text
+    assert 'class="week"' in page and 'id="daypanel"' in page and 'class="mpanel"' in page
+    assert f'action="/schedules/{sid}/delete"' in page and "view=week&amp;week=" in page
+    assert f"data-day=\"{day.isoformat()}\"]" in page  # opens that day on load
