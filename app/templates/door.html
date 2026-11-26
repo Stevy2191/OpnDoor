@@ -136,6 +136,23 @@
       <div class="card empty"><p>No schedules yet. The door stays on its normal UniFi rule.</p></div>
     {% endfor %}
 
+    {% if can_history %}
+    <details class="card whocan" data-src="/doors/{{ door.id|urlencode }}/who">
+      <summary><b>Who can get in</b> <span class="muted small">· people with access to this door</span></summary>
+      <div class="whobody"><p class="muted small">Checking UniFi Access…</p></div>
+    </details>
+    <script>
+    (function () {
+      const d = document.querySelector('.whocan'); if (!d) return;
+      const load = (extra) => fetch(d.dataset.src + (extra || ''), { credentials: 'same-origin' }).then(r => r.text()).then(t => {
+        d.querySelector('.whobody').innerHTML = t;
+        const a = d.querySelector('[data-whorefresh]');
+        if (a) a.addEventListener('click', e => { e.preventDefault(); d.querySelector('.whobody').innerHTML = '<p class="muted small">Checking UniFi Access…</p>'; load('?refresh=1'); });
+      });
+      d.addEventListener('toggle', () => { if (d.open && !d.dataset.done) { d.dataset.done = 1; load(); } });
+    })();
+    </script>
+    {% endif %}
     <h2>Recent openings</h2>
     {% if openings %}
     <ul class="openings">

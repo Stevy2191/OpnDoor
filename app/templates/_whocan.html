@@ -1,0 +1,16 @@
+{% if not door %}<p class="muted small">{{ error }}</p>{% else %}
+<h3 class="whoh">In UniFi Access <small class="muted">· badge, PIN or app, from access policies</small></h3>
+{% if error %}<p class="muted small">UniFi Access didn't answer: {{ error }}. The token needs the Users and Access Policies “View” permissions.</p>
+{% elif people %}
+<table class="list small whotable">
+  <thead><tr><th>Person</th><th>Policy</th><th>When</th></tr></thead>
+  <tbody>{% for r in people %}<tr><td><b>{{ r.name }}</b>{% if r.email %}<div class="muted">{{ r.email }}</div>{% endif %}</td><td>{{ r.policies }}</td><td>{{ r.hours }}</td></tr>{% endfor %}</tbody>
+</table>
+<p class="muted small">{{ people|length }} {{ 'person' if people|length == 1 else 'people' }}. Change these in UniFi Access.</p>
+{% else %}<p class="muted small">No one in UniFi Access has a policy that includes this door.</p>{% endif %}
+<h3 class="whoh">In OpnDoor <small class="muted">· can open or schedule it here</small></h3>
+{% if app_people %}
+<ul class="whoapp small">{% for u in app_people %}<li><b>{{ u.display }}</b> <span class="muted">· {{ u.role_name }}{% if u.follows_unifi %} (from UniFi){% endif %}</span></li>{% endfor %}</ul>
+{% else %}<p class="muted small">Nobody.</p>{% endif %}
+<p class="small"><a href="#" data-whorefresh>Check again</a></p>
+{% endif %}

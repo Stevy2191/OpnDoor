@@ -1181,3 +1181,8 @@ ol.steps .linkbox input { max-width: 520px; }
 .tplpick { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 1rem; }
 .tplnote { margin: 0 0 1rem; padding: .6rem .8rem; border-radius: 10px; background: var(--accent-soft); }
 .tplsave { margin-top: 1.5rem; }
+/* who can get in */
+.whocan summary { cursor: pointer; }
+.whoh { font-size: .95rem; margin: 1rem 0 .4rem; }
+.whotable td { vertical-align: top; }
+.whoapp { margin: 0; padding-left: 1.1rem; columns: 2 220px; }
