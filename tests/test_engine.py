@@ -65,11 +65,13 @@ def test_lock_override_beats_default_then_default_resumes(fake):
     assert fake.calls[-1][0] == "unlock"
     lock = add(-1, 30, action="lock")  # holiday closure starts now
     engine.reconcile()
-    assert fake.calls[-1] == ("lock", "demo-front")
+    # back to its normal UniFi rule (locked, badges work), never keep_lock (a lockdown of the door)
+    assert fake.calls[-1] == ("reset", "demo-front")
     with session_scope() as s:
         assert s.get(DoorState, FRONT).mode == "lock"
     engine.reconcile()
-    assert fake.calls[-1] == ("lock", "demo-front") and len(fake.calls) == 2  # no repeat
+    assert fake.calls[-1] == ("reset", "demo-front") and len(fake.calls) == 2  # no repeat
+    assert not [c for c in fake.calls if c[0] == "lock"]
     delete(lock)
     engine.reconcile()
     assert fake.calls[-1][0] == "unlock"  # back to regular hours
@@ -87,7 +89,7 @@ def test_lock_override_ending_with_nothing_after_resets(fake):
     setup_site()
     sid = add(-5, 30, action="lock")
     engine.reconcile()
-    assert fake.calls == [("lock", "demo-front")]
+    assert fake.calls == [("reset", "demo-front")]
     delete(sid)
     engine.reconcile()
     assert fake.calls[-1] == ("reset", "demo-front")
@@ -144,3 +146,17 @@ def test_each_site_uses_its_own_console():
     engine.reconcile()
     assert consoles[1].calls == []
     assert consoles[2].calls == [("unlock", "demo-hall", 60)]
+
+
+def test_doors_older_versions_held_with_keep_lock_are_reset_on_start(fake):
+    from app import db
+    setup_site()
+    add(-5, 30, action="lock")
+    with session_scope() as s:
+        s.add(DoorState(door_id=FRONT, mode="lock", until=utcnow() + timedelta(minutes=25)))
+        s.commit()
+    db.init_db()
+    engine.reconcile()
+    assert fake.calls == [("reset", "demo-front")]
+    with session_scope() as s:
+        assert s.get(DoorState, FRONT).mode == "lock"  # still shown as kept locked

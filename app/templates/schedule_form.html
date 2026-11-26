@@ -25,7 +25,7 @@
         <label class="mcard"><input type="radio" name="mode" value="unlock" {% if mode == 'unlock' %}checked{% endif %}>
           <span><b class="mi">{{ padlock(True) }}</b><strong>Unlock doors</strong><small>For an event, rental or meeting. The doors unlock, then lock again afterwards.</small></span></label>
         <label class="mcard"><input type="radio" name="mode" value="lock" {% if mode == 'lock' %}checked{% endif %}>
-          <span><b class="mi">{{ padlock(False) }}</b><strong>Keep doors locked</strong><small>For a holiday or closure. The doors stay locked, even during their regular hours.</small></span></label>
+          <span><b class="mi">{{ padlock(False) }}</b><strong>Keep doors locked</strong><small>For a holiday or closure. The doors stay locked, even during their regular hours. Badges still work.</small></span></label>
         <label class="mcard"><input type="radio" name="mode" value="default" {% if mode == 'default' %}checked{% endif %}>
           <span><b class="mi">🕘</b><strong>Set regular hours</strong><small>The normal times these doors are unlocked each week.</small></span></label>
       </div>

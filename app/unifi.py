@@ -4,7 +4,8 @@ Uses the developer API on each console (port 12445):
   GET /api/v1/developer/doors                      list doors
   PUT /api/v1/developer/doors/{id}/lock_rule       temporary lock rule
       {"type": "custom", "interval": <minutes>}   unlock, relock after N minutes
-      {"type": "keep_lock"}                       stay locked (overrides UniFi's own schedules)
+      {"type": "keep_lock"}                       lockdown of one door: badges refused (OpnDoor doesn't use it;
+                                                  only the site-wide Lockdown button locks doors down)
       {"type": "reset"}                           back to the door's normal rule
 
   PUT /api/v1/developer/doors/{id}/unlock          open now (like a badge tap; relocks by itself)

@@ -52,6 +52,9 @@ def init_db() -> None:
         conn.exec_driver_sql(
             "UPDATE holiday SET locked = substr(hours, 7, 5) || '-23:59', hours = '' "
             "WHERE hours LIKE '__:__-__:__' AND (locked = '' OR locked IS NULL)")
+        # Older versions held "kept locked" doors with keep_lock (a lockdown of the door: badges refused).
+        # Forget that, so the next check sends reset and the door is locked on its normal rule with badges working.
+        conn.exec_driver_sql("UPDATE doorstate SET mode = '', schedule_id = NULL WHERE mode = 'lock'")
 
 
 def _sql_literal(v) -> str:
