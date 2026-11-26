@@ -64,7 +64,7 @@ jobs:
       # Only log in when we will actually push (not for PR builds)
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
