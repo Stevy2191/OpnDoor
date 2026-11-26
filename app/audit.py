@@ -36,6 +36,8 @@ ACTIONS = {
     "building.update": ("site", "Changed buildings"),
     "floorplan.update": ("site", "Changed a floor plan"),
     "holiday.update": ("schedule", "Changed holidays"),
+    "template.create": ("schedule", "Saved a schedule template"),
+    "template.delete": ("schedule", "Removed a schedule template"),
     "calendar.approve": ("calendar", "Approved or skipped a calendar event"),
     "calendar.create": ("calendar", "Connected a calendar"),
     "calendar.update": ("calendar", "Changed a calendar"),

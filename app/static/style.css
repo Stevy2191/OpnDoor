@@ -1176,3 +1176,8 @@ ol.steps .linkbox input { max-width: 520px; }
   .dayrow { grid-template-columns: 1fr; }
   .dayaxis { display: none; }
 }
+
+/* event templates */
+.tplpick { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 1rem; }
+.tplnote { margin: 0 0 1rem; padding: .6rem .8rem; border-radius: 10px; background: var(--accent-soft); }
+.tplsave { margin-top: 1.5rem; }

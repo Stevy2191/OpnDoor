@@ -524,3 +524,27 @@ class AuditLog(SQLModel, table=True):
     site_ids: str = ""  # ",1,2," for filtering
     door_ids: str = ""  # ",1:abc,2:def,"
     schedule_id: Optional[int] = None
+
+
+class EventTemplate(SQLModel, table=True):
+    """A saved schedule to reuse: the doors, times and details, without the date."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    label: str
+    kind: str = "override"
+    action: str = "unlock"
+    event_type: str = "event"
+    contact: str = ""
+    notes: str = ""
+    start_time: str = "09:00"  # HH:MM
+    duration_minutes: int = 120
+    repeat_weekdays: str = ""
+    on_holidays: str = "skip"
+    door_ids: str = ""  # comma separated
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+
+    @property
+    def doors(self) -> list[str]:
+        return [d for d in self.door_ids.split(",") if d]
