@@ -28,8 +28,9 @@
     <div class="holsites">
       {% if hsites|length > 1 or user.is_admin %}
       <p class="hint" style="margin:0 0 .4rem">Tick one site or a few.</p>
-      <div class="chips">
-        {% for x in hsites.values() %}<label class="chip"><input type="checkbox" name="sites" value="{{ x.id }}" class="holsite" {% if x.id in hs or (not h and hsites|length == 1) %}checked{% endif %}><span>{{ x.name }}</span></label>{% endfor %}
+      <div class="dpklist holsitegrid">
+        {% for x in hsites.values() %}<label class="dpkdoor"><input type="checkbox" name="sites" value="{{ x.id }}" class="holsite" {% if x.id in hs or (not h and hsites|length == 1) %}checked{% endif %}><span>{{ x.name }}</span>
+          <small class="muted">{{ site_doors.get(x.id, [])|length }} doors</small></label>{% endfor %}
       </div>
       {% else %}{% for x in hsites.values() %}<input type="checkbox" name="sites" value="{{ x.id }}" class="holsite" checked hidden>{% endfor %}{% endif %}
       {% for x in hsites.values() %}{% set picked = h.site_doors(x.id) if h else [] %}
