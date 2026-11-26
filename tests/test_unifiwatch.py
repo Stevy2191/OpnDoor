@@ -85,3 +85,41 @@ def test_raw_views_for_admins(client, fake):
     fake.lock_rules = {"demo-front": "schedule"}
     rules = client.get("/devices/raw?site=1&what=rules").json()
     assert rules["Front Entrance"] == {"type": "schedule"}
+
+
+def test_a_removed_unifi_schedule_drops_out_when_it_doesnt_run(client, fake):
+    """Seen Mon-Fri 8-5 for two weeks; then on its latest weekday UniFi didn't unlock at noon: that weekday goes."""
+    from app.config import TZ
+    from app.schedules import to_local
+    setup_admin(client)
+    seen_weekdays("1:demo-front")
+    with session_scope() as s:
+        door = s.get(Door, "1:demo-front")
+        segs = s.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.door_id == door.id)).all()
+        last = max(segs, key=lambda g: g.start)
+        d = to_local(last.start, TZ).date()
+        s.delete(last)  # that day it didn't run
+        s.commit()
+        assert d.weekday() in unifiwatch.pattern(s, door)[0]["days"]
+        noon = to_utc(datetime(d.year, d.month, d.day, 12, 0), TZ)
+        unifiwatch.note_miss(s, door, noon)
+        unifiwatch.note_miss(s, door, noon + timedelta(minutes=1))  # once a day
+        s.commit()
+        assert len(s.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.kind == "schedule_miss")).all()) == 1
+        days = [x for p in unifiwatch.pattern(s, door) for x in p["days"]]
+        assert d.weekday() not in days and len(days) == 4
+        # outside the schedule's hours nothing is noted
+        unifiwatch.note_miss(s, door, to_utc(datetime(d.year, d.month, d.day, 20, 0), TZ) + timedelta(days=7))
+        s.commit()
+        assert len(s.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.kind == "schedule_miss")).all()) == 1
+
+
+def test_reload_from_unifi_forgets_learned_schedules(client, fake):
+    setup_admin(client)
+    seen_weekdays("1:demo-front")
+    assert "UniFi schedule" in client.get("/doors").text
+    r = client.post("/doors/sync", follow_redirects=True)
+    assert "Cleared the UniFi unlock schedules OpnDoor had learned on 1 door" in r.text
+    with session_scope() as s:
+        assert not s.exec(select(UnifiRuleSeen).where(UnifiRuleSeen.kind == "schedule")).all()
+    assert "UniFi schedule" not in client.get("/doors").text
